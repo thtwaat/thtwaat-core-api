@@ -11,6 +11,7 @@ import app.companies.model
 import app.users.model
 import app.auth.model
 import app.apps.model
+import app.storage.model
 from app.models.base import Base
 
 # this is the Alembic Config object, which provides

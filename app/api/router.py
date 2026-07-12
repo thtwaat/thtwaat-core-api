@@ -3,6 +3,7 @@ from app.companies.router import router as companies_router
 from app.users.router import router as users_router
 from app.auth.router import router as auth_router
 from app.apps.router import router as apps_router
+from app.storage.router import router as storage_router
 
 # Central versioned router — all module routers are registered here
 api_router = APIRouter(prefix="/api/v1")
@@ -12,6 +13,7 @@ api_router.include_router(companies_router)
 api_router.include_router(users_router)
 api_router.include_router(auth_router)
 api_router.include_router(apps_router)
+api_router.include_router(storage_router)
 
 # ── System Endpoints ──────────────────────────────────────────────────────────
 

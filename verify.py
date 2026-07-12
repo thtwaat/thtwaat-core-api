@@ -11,6 +11,8 @@ client = TestClient(app)
 
 def run_tests():
     logger.info("Starting verification...")
+    import uuid
+    uid = uuid.uuid4().hex[:6]
 
     # 1. Verify all routers are in swagger
     resp = client.get("/openapi.json")
@@ -25,9 +27,9 @@ def run_tests():
 
     # 2. CRUD Test - Create Company
     resp = client.post("/api/v1/companies/", json={
-        "name": "Test Company",
-        "slug": "test-company",
-        "domain": "test.com"
+        "name": f"Test Company {uid}",
+        "slug": f"test-company-{uid}",
+        "domain": f"test{uid}.com"
     })
     assert resp.status_code == 201, f"Failed to create company: {resp.text}"
     company_id = resp.json()["id"]
@@ -35,7 +37,7 @@ def run_tests():
 
     # 3. CRUD Test - Create User
     resp = client.post("/api/v1/users/", json={
-        "email": "admin@test.com",
+        "email": f"admin{uid}@test.com",
         "password": "securepassword",
         "company_id": company_id,
         "first_name": "Admin",
@@ -47,7 +49,7 @@ def run_tests():
 
     # 4. Login works
     resp = client.post("/api/v1/auth/login", json={
-        "email": "admin@test.com",
+        "email": f"admin{uid}@test.com",
         "password": "securepassword"
     })
     assert resp.status_code == 200, f"Login failed: {resp.text}"
@@ -67,6 +69,31 @@ def run_tests():
     assert resp.status_code == 201, f"App creation failed (RBAC issue?): {resp.text}"
     logger.info("✅ RBAC returns correct permissions.")
     logger.info("✅ Apps CRUD works.")
+
+    # 6. Test Storage Upload
+    import os
+    with open("dummy.txt", "w") as f:
+        f.write("Hello world!")
+    
+    with open("dummy.txt", "rb") as f:
+        resp = client.post(
+            "/api/v1/storage/upload",
+            headers={"Authorization": f"Bearer {access_token}"},
+            files={"file": ("dummy.txt", f, "text/plain")}
+        )
+    assert resp.status_code == 201, f"Upload failed: {resp.text}"
+    file_id = resp.json()["id"]
+    logger.info("✅ Upload endpoint works.")
+    
+    # 7. Get Metadata
+    resp = client.get(
+        f"/api/v1/storage/{file_id}",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"Get metadata failed: {resp.text}"
+    logger.info("✅ File metadata retrieval works.")
+    
+    os.remove("dummy.txt")
 
     logger.info("All verifications passed!")
 
