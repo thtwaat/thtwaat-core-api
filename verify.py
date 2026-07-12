@@ -95,6 +95,33 @@ def run_tests():
     
     os.remove("dummy.txt")
 
+    # 8. Test Notifications
+    resp = client.post(
+        "/api/v1/notifications/send",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "channel": "email",
+            "recipient": "test@example.com",
+            "subject": "Test Notification",
+            "body": "Hello {name}",
+            "template_name": "welcome_email",
+            "template_data": {"name": "Admin"}
+        }
+    )
+    assert resp.status_code == 201, f"Notification send failed: {resp.text}"
+    notif_id = resp.json()["id"]
+    logger.info("✅ Notification send endpoint works.")
+    
+    # 9. Test Notification History
+    resp = client.get(
+        "/api/v1/notifications/history",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"Notification history failed: {resp.text}"
+    history = resp.json()
+    assert len(history) >= 1
+    logger.info("✅ Notification history retrieval works.")
+
     logger.info("All verifications passed!")
 
 if __name__ == "__main__":

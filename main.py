@@ -12,7 +12,8 @@ import app.companies.model
 import app.users.model
 import app.auth.model
 import app.apps.model
-import app.storage.model  # noqa
+import app.storage.model
+import app.notifications.model  # noqa
 
 # Use lifespan events for startup and shutdown instead of deprecated @app.on_event
 @asynccontextmanager
