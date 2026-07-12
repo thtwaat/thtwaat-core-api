@@ -8,7 +8,8 @@ import uuid
 from typing import Optional
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 
-from app.users.model import UserRole, UserStatus
+from app.users.model import UserStatus
+from app.rbac.enums import EnterpriseRole
 
 
 # ── Shared base ─────────────────────────────────────────────────────────────
@@ -25,7 +26,7 @@ class UserCreate(UserBase):
     """Schema used when registering or creating a new user."""
     password: str = Field(..., min_length=8, max_length=128)
     company_id: uuid.UUID
-    role: UserRole = Field(default=UserRole.MEMBER)
+    role: EnterpriseRole = Field(default=EnterpriseRole.EMPLOYEE)
 
 
 # ── Update (PATCH — all optional) ───────────────────────────────────────────
@@ -35,7 +36,7 @@ class UserUpdate(BaseModel):
     email: Optional[EmailStr] = None
     first_name: Optional[str] = Field(None, min_length=1, max_length=100)
     last_name: Optional[str] = Field(None, min_length=1, max_length=100)
-    role: Optional[UserRole] = None
+    role: Optional[EnterpriseRole] = None
     status: Optional[UserStatus] = None
     is_active: Optional[bool] = None
     password: Optional[str] = Field(None, min_length=8, max_length=128)
@@ -47,7 +48,7 @@ class UserResponse(UserBase):
     """Safe response schema returned by API endpoints. (No passwords!)"""
     id: uuid.UUID
     company_id: uuid.UUID
-    role: UserRole
+    role: EnterpriseRole
     status: UserStatus
     is_active: bool
 

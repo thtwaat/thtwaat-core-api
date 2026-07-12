@@ -55,8 +55,8 @@ def list_companies(
     return service.list_companies(
         page=page,
         page_size=page_size,
-        status=status_filter,
-        plan=plan_filter,
+        status_filter=status_filter,
+        plan_filter=plan_filter,
     )
 
 
@@ -80,19 +80,6 @@ def create_company(
 
 
 @router.get(
-    "/{company_id}",
-    response_model=CompanyResponse,
-    summary="Get company by ID",
-)
-def get_company(
-    company_id: uuid.UUID,
-    service: CompanyService = Depends(get_company_service),
-):
-    """Retrieve a single company by its UUID."""
-    return service.get_company(company_id)
-
-
-@router.get(
     "/slug/{slug}",
     response_model=CompanyResponse,
     summary="Get company by slug",
@@ -103,6 +90,19 @@ def get_company_by_slug(
 ):
     """Retrieve a company by its URL-safe slug (e.g. acme-corp)."""
     return service.get_company_by_slug(slug)
+
+
+@router.get(
+    "/{company_id}",
+    response_model=CompanyResponse,
+    summary="Get company by ID",
+)
+def get_company(
+    company_id: uuid.UUID,
+    service: CompanyService = Depends(get_company_service),
+):
+    """Retrieve a single company by its UUID."""
+    return service.get_company(company_id)
 
 
 @router.patch(

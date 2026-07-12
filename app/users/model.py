@@ -11,15 +11,10 @@ from sqlalchemy import (
     Column, String, Boolean, Enum as SAEnum, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from app.models.base import Base, TimestampMixin
-
-
-class UserRole(str, enum.Enum):
-    """Access control roles within a company."""
-    SUPER_ADMIN   = "super_admin"
-    COMPANY_ADMIN = "company_admin"
-    MEMBER        = "member"
+from app.rbac.enums import EnterpriseRole
 
 
 class UserStatus(str, enum.Enum):
@@ -62,8 +57,8 @@ class User(Base, TimestampMixin):
 
     # ── Access & Status ─────────────────────────────────────────────────────
     role = Column(
-        SAEnum(UserRole, name="user_role_enum"),
-        default=UserRole.MEMBER,
+        SAEnum(EnterpriseRole, name="user_role_enum"),
+        default=EnterpriseRole.EMPLOYEE,
         nullable=False,
     )
     status = Column(
@@ -79,6 +74,9 @@ class User(Base, TimestampMixin):
     __table_args__ = (
         UniqueConstraint("company_id", "email", name="uq_user_company_email"),
     )
+
+    company = relationship("Company", back_populates="users")
+    refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")
 
     def __repr__(self) -> str:
         return f"<User id={self.id} email={self.email!r} role={self.role}>"

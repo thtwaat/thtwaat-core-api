@@ -10,6 +10,7 @@ from sqlalchemy import (
     Column, String, Enum as SAEnum, ForeignKey, UniqueConstraint
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy.orm import relationship
 
 from app.models.base import Base, TimestampMixin
 
@@ -71,6 +72,8 @@ class App(Base, TimestampMixin):
         # Ensure an app slug is unique per company
         UniqueConstraint("company_id", "slug", name="uq_app_company_slug"),
     )
+
+    company = relationship("Company", back_populates="apps")
 
     def __repr__(self) -> str:
         return f"<App id={self.id} slug={self.slug!r} company_id={self.company_id}>"

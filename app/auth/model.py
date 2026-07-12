@@ -8,6 +8,7 @@ Stores Refresh Tokens to allow token revocation and tracking.
 import uuid
 from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import relationship
 
 from app.models.base import Base, TimestampMixin
 
@@ -36,6 +37,8 @@ class RefreshToken(Base, TimestampMixin):
     token = Column(String(500), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     revoked_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", back_populates="refresh_tokens")
 
     def __repr__(self) -> str:
         return f"<RefreshToken id={self.id} user_id={self.user_id}>"
