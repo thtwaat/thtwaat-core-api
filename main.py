@@ -4,12 +4,25 @@ from fastapi.responses import JSONResponse
 
 from app.config.settings import settings
 from app.api.router import api_router
+from app.database.database import engine
+from app.models.base import Base
+
+# Ensure all models are imported before Base.metadata.create_all
+import app.companies.model
+import app.users.model
+import app.auth.model
+import app.apps.model  # noqa
 
 # Use lifespan events for startup and shutdown instead of deprecated @app.on_event
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup event: Initialize connections, load models, etc.
     print(f"Starting up {settings.app_name}...")
+    
+    # Create all database tables (useful for development)
+    # Note: In a pure production environment, Alembic migrations are preferred
+    Base.metadata.create_all(bind=engine)
+    
     yield
     # Shutdown event: Close connections, clean up resources, etc.
     print(f"Shutting down {settings.app_name}...")

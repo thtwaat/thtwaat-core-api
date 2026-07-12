@@ -16,7 +16,8 @@ except for raising HTTPException for now (acceptable in FastAPI projects).
 
 import uuid
 from typing import Optional
-from fastapi import HTTPException, status
+from fastapi import HTTPException
+from fastapi import status as http_status
 from sqlalchemy.orm import Session
 
 from app.companies.model import Company, CompanyPlan, CompanyStatus
@@ -62,7 +63,7 @@ class CompanyService:
         company = self.repo.get_by_id(company_id)
         if not company:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Company with id '{company_id}' not found.",
             )
         return company
@@ -71,7 +72,7 @@ class CompanyService:
         """Raise 403 if the company account is not active."""
         if not company.is_active:
             raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
+                status_code=http_status.HTTP_403_FORBIDDEN,
                 detail="This company account is inactive or has been deactivated.",
             )
 
@@ -81,10 +82,10 @@ class CompanyService:
         """Enforce the status state machine."""
         if target not in ALLOWED_STATUS_TRANSITIONS.get(current, []):
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail=(
                     f"Invalid status transition: '{current}' → '{target}'. "
-                    f"Allowed: {ALLOWED_STATUS_TRANSITIONS[current]}"
+                    f"Allowed: {[s.value for s in ALLOWED_STATUS_TRANSITIONS[current]]}"
                 ),
             )
 
@@ -98,17 +99,18 @@ class CompanyService:
         """
         if self.repo.slug_exists(data.slug):
             raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
+                status_code=http_status.HTTP_409_CONFLICT,
                 detail=f"Slug '{data.slug}' is already taken. Please choose another.",
             )
 
-        # Apply plan limits automatically on creation
+        # Apply FREE plan limits automatically on creation
+        # Plan is always FREE at registration; admin can upgrade later
         limits = PLAN_LIMITS[CompanyPlan.FREE]
         company_data = data.model_dump()
-        company_data.update(limits)
+        company_data.setdefault("max_users", limits["max_users"])
+        company_data.setdefault("max_apps", limits["max_apps"])
 
-        from app.companies.schema import CompanyCreate as CC
-        company = self.repo.create(CC(**company_data))
+        company = self.repo.create_from_dict(company_data)
         return CompanyResponse.model_validate(company)
 
     def get_company(self, company_id: uuid.UUID) -> CompanyResponse:
@@ -120,7 +122,7 @@ class CompanyService:
         company = self.repo.get_by_slug(slug)
         if not company:
             raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
+                status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Company with slug '{slug}' not found.",
             )
         self._assert_active(company)
@@ -130,19 +132,21 @@ class CompanyService:
         self,
         page: int = 1,
         page_size: int = 20,
-        status: Optional[CompanyStatus] = None,
-        plan: Optional[CompanyPlan] = None,
+        status_filter: Optional[CompanyStatus] = None,
+        plan_filter: Optional[CompanyPlan] = None,
     ) -> CompanyListResponse:
+        # page_size already capped at 100 by Query(le=100) in router,
+        # but we guard here too for direct service calls
         if page_size > 100:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
                 detail="page_size cannot exceed 100.",
             )
         rows, total = self.repo.list_all(
             page=page,
             page_size=page_size,
-            status=status,
-            plan=plan,
+            status=status_filter,
+            plan=plan_filter,
             is_active=True,
         )
         return CompanyListResponse(
