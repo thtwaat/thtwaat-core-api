@@ -1,9 +1,15 @@
 from fastapi import APIRouter
+from app.companies.router import router as companies_router
 
-# Production-ready router with appropriate tags and prefix
-api_router = APIRouter(prefix="/api/v1", tags=["System Status"])
+# Central versioned router — all module routers are registered here
+api_router = APIRouter(prefix="/api/v1")
 
-@api_router.get("/status", summary="Get API Status")
+# ── Module Routers ────────────────────────────────────────────────────────────
+api_router.include_router(companies_router)
+
+# ── System Endpoints ──────────────────────────────────────────────────────────
+
+@api_router.get("/status", summary="Get API Status", tags=["System"])
 async def get_status():
     """
     Retrieve the current status of the API and company information.

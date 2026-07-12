@@ -1,0 +1,155 @@
+"""
+app/companies/router.py
+
+FastAPI APIRouter for the Companies module.
+Router's only job: HTTP concerns (request parsing, response codes, DI).
+All logic is delegated to CompanyService.
+"""
+
+import uuid
+from typing import Optional
+from fastapi import APIRouter, Depends, status, Query
+from sqlalchemy.orm import Session
+
+from app.database.database import get_db
+from app.companies.model import CompanyPlan, CompanyStatus
+from app.companies.schema import (
+    CompanyCreate,
+    CompanyUpdate,
+    CompanyAdminUpdate,
+    CompanyResponse,
+    CompanyListResponse,
+)
+from app.companies.service import CompanyService
+
+
+router = APIRouter(
+    prefix="/companies",
+    tags=["Companies"],
+)
+
+
+def get_company_service(db: Session = Depends(get_db)) -> CompanyService:
+    """FastAPI dependency — provides a CompanyService with a DB session."""
+    return CompanyService(db)
+
+
+# ── Public Endpoints ──────────────────────────────────────────────────────────
+
+@router.get(
+    "/",
+    response_model=CompanyListResponse,
+    summary="List all active companies",
+)
+def list_companies(
+    page: int = Query(default=1, ge=1, description="Page number"),
+    page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
+    status_filter: Optional[CompanyStatus] = Query(default=None, alias="status"),
+    plan_filter: Optional[CompanyPlan] = Query(default=None, alias="plan"),
+    service: CompanyService = Depends(get_company_service),
+):
+    """
+    Retrieve a paginated list of active company tenants.
+    Supports filtering by status and subscription plan.
+    """
+    return service.list_companies(
+        page=page,
+        page_size=page_size,
+        status=status_filter,
+        plan=plan_filter,
+    )
+
+
+@router.post(
+    "/",
+    response_model=CompanyResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new company tenant",
+)
+def create_company(
+    payload: CompanyCreate,
+    service: CompanyService = Depends(get_company_service),
+):
+    """
+    Register a new company on the THTWAAT platform.
+    - Validates slug uniqueness
+    - Auto-assigns FREE plan limits
+    - Sets status to TRIAL
+    """
+    return service.create_company(payload)
+
+
+@router.get(
+    "/{company_id}",
+    response_model=CompanyResponse,
+    summary="Get company by ID",
+)
+def get_company(
+    company_id: uuid.UUID,
+    service: CompanyService = Depends(get_company_service),
+):
+    """Retrieve a single company by its UUID."""
+    return service.get_company(company_id)
+
+
+@router.get(
+    "/slug/{slug}",
+    response_model=CompanyResponse,
+    summary="Get company by slug",
+)
+def get_company_by_slug(
+    slug: str,
+    service: CompanyService = Depends(get_company_service),
+):
+    """Retrieve a company by its URL-safe slug (e.g. acme-corp)."""
+    return service.get_company_by_slug(slug)
+
+
+@router.patch(
+    "/{company_id}",
+    response_model=CompanyResponse,
+    summary="Update company details",
+)
+def update_company(
+    company_id: uuid.UUID,
+    payload: CompanyUpdate,
+    service: CompanyService = Depends(get_company_service),
+):
+    """Partially update company information (name, description, logo, etc.)."""
+    return service.update_company(company_id, payload)
+
+
+# ── Admin Endpoints ───────────────────────────────────────────────────────────
+
+@router.patch(
+    "/{company_id}/admin",
+    response_model=CompanyResponse,
+    summary="[Admin] Update plan, status, limits",
+)
+def admin_update_company(
+    company_id: uuid.UUID,
+    payload: CompanyAdminUpdate,
+    service: CompanyService = Depends(get_company_service),
+):
+    """
+    Admin-only endpoint to change subscription plan, company status,
+    verification, and resource limits.
+    Enforces status transition rules (state machine).
+    """
+    return service.admin_update_company(company_id, payload)
+
+
+@router.delete(
+    "/{company_id}",
+    status_code=status.HTTP_200_OK,
+    summary="Deactivate (soft-delete) a company",
+)
+def deactivate_company(
+    company_id: uuid.UUID,
+    service: CompanyService = Depends(get_company_service),
+):
+    """
+    Soft-delete a company — marks it as inactive.
+    Data is preserved for audit and compliance purposes.
+    """
+    return service.deactivate_company(company_id)
