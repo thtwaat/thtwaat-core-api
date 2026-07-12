@@ -7,9 +7,6 @@ from app.models.base import Base
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Ensure tables are created (TestClient might not trigger lifespan properly depending on setup, but we call create_all anyway for safety)
-Base.metadata.create_all(bind=engine)
-
 client = TestClient(app)
 
 def run_tests():
