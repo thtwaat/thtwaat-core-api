@@ -80,9 +80,9 @@ class CompanyRepository:
 
     # ── Write ─────────────────────────────────────────────────────────────────
 
-    def create(self, data: CompanyCreate) -> Company:
-        """Persist a new Company record and return the ORM object."""
-        company = Company(**data.model_dump())
+    def create_from_dict(self, data: dict) -> Company:
+        """Persist a new Company record from a dictionary and return the ORM object."""
+        company = Company(**data)
         self.db.add(company)
         self.db.commit()
         self.db.refresh(company)

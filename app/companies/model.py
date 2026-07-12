@@ -14,10 +14,9 @@ import uuid
 import enum
 from sqlalchemy import (
     Column, String, Boolean, Integer,
-    Enum as SAEnum, Text, JSON
+    Enum as SAEnum, Text
 )
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 
 from app.models.base import Base, TimestampMixin
 
@@ -89,7 +88,7 @@ class Company(Base, TimestampMixin):
 
     # ── Feature Flags / Tenant Settings (JSONB) ─────────────────────────────
     # Example: {"ai_enabled": true, "custom_domain": "acme.thtwaat.com"}
-    settings = Column(JSON, default=dict, nullable=False)
+    settings = Column(JSONB, default=dict, nullable=False)
 
     # ── Verification / Security ─────────────────────────────────────────────
     is_verified = Column(Boolean, default=False, nullable=False)
