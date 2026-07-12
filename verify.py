@@ -122,6 +122,49 @@ def run_tests():
     assert len(history) >= 1
     logger.info("✅ Notification history retrieval works.")
 
+    # 10. Test Payments
+    resp = client.post(
+        "/api/v1/payments/",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "amount": "100.50",
+            "currency": "USD",
+            "payment_method": "card",
+            "gateway": "stripe",
+            "invoice_number": "INV-1001",
+            "metadata": {"source": "verify.py"}
+        }
+    )
+    assert resp.status_code == 201, f"Payment creation failed: {resp.text}"
+    payment_data = resp.json()
+    payment_id = payment_data["id"]
+    assert payment_data["status"] == "success", "Stub should have marked as success"
+    assert payment_data["gateway_transaction_id"] is not None
+    logger.info("✅ Payment creation (Stripe Stub) works.")
+
+    resp = client.get(
+        f"/api/v1/payments/{payment_id}",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"Get payment failed: {resp.text}"
+    logger.info("✅ Get single payment works.")
+
+    resp = client.post(
+        f"/api/v1/payments/{payment_id}/refund",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"Refund failed: {resp.text}"
+    assert resp.json()["status"] == "refunded", "Stub should have refunded"
+    logger.info("✅ Payment refund (Stripe Stub) works.")
+    
+    resp = client.get(
+        "/api/v1/payments/",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"List payments failed: {resp.text}"
+    assert len(resp.json()) >= 1
+    logger.info("✅ List payments works.")
+
     logger.info("All verifications passed!")
 
 if __name__ == "__main__":
