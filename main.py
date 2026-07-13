@@ -3,9 +3,19 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from app.config.settings import settings
+from app.config.logging import configure_logging
 from app.api.router import api_router
 from app.database.database import engine
 from app.models.base import Base
+from app.api.exceptions import (
+    http_exception_handler, 
+    validation_exception_handler, 
+    sqlalchemy_exception_handler, 
+    global_exception_handler
+)
+from fastapi.exceptions import RequestValidationError
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy.exc import SQLAlchemyError
 
 # Ensure all models are imported before Base.metadata.create_all
 import app.companies.model
@@ -36,6 +46,14 @@ app = FastAPI(
     description="Core API for THTWAAT Technology Solutions",
     lifespan=lifespan,
 )
+
+configure_logging()
+
+# Register Exception Handlers
+app.add_exception_handler(StarletteHTTPException, http_exception_handler)
+app.add_exception_handler(RequestValidationError, validation_exception_handler)
+app.add_exception_handler(SQLAlchemyError, sqlalchemy_exception_handler)
+app.add_exception_handler(Exception, global_exception_handler)
 
 # Include the main API router
 app.include_router(api_router)

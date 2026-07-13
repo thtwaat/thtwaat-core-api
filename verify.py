@@ -23,7 +23,7 @@ def run_tests():
     assert "/api/v1/users/" in paths, "Users router missing"
     assert "/api/v1/auth/login" in paths, "Auth router missing"
     assert "/api/v1/apps/" in paths, "Apps router missing"
-    logger.info("✅ All routers appear in Swagger.")
+    logger.info("[OK] All routers appear in Swagger.")
 
     # 2. CRUD Test - Create Company
     resp = client.post("/api/v1/companies/", json={
@@ -33,7 +33,7 @@ def run_tests():
     })
     assert resp.status_code == 201, f"Failed to create company: {resp.text}"
     company_id = resp.json()["id"]
-    logger.info("✅ Company CRUD works.")
+    logger.info("[OK] Company CRUD works.")
 
     # 3. CRUD Test - Create User
     resp = client.post("/api/v1/users/", json={
@@ -45,7 +45,7 @@ def run_tests():
         "role": "admin"
     })
     assert resp.status_code == 201, f"Failed to create user: {resp.text}"
-    logger.info("✅ User CRUD works.")
+    logger.info("[OK] User CRUD works.")
 
     # 4. Login works
     resp = client.post("/api/v1/auth/login", json={
@@ -55,7 +55,7 @@ def run_tests():
     assert resp.status_code == 200, f"Login failed: {resp.text}"
     tokens = resp.json()
     access_token = tokens["access_token"]
-    logger.info("✅ Login works.")
+    logger.info("[OK] Login works.")
 
     # 5. RBAC returns correct permissions (Create App requires APPS_CREATE)
     # The 'admin' role has APPS_CREATE permission in policy.py
@@ -67,8 +67,8 @@ def run_tests():
         "company_id": company_id
     }, headers=headers)
     assert resp.status_code == 201, f"App creation failed (RBAC issue?): {resp.text}"
-    logger.info("✅ RBAC returns correct permissions.")
-    logger.info("✅ Apps CRUD works.")
+    logger.info("[OK] RBAC returns correct permissions.")
+    logger.info("[OK] Apps CRUD works.")
 
     # 6. Test Storage Upload
     import os
@@ -83,7 +83,7 @@ def run_tests():
         )
     assert resp.status_code == 201, f"Upload failed: {resp.text}"
     file_id = resp.json()["id"]
-    logger.info("✅ Upload endpoint works.")
+    logger.info("[OK] Upload endpoint works.")
     
     # 7. Get Metadata
     resp = client.get(
@@ -91,7 +91,7 @@ def run_tests():
         headers={"Authorization": f"Bearer {access_token}"}
     )
     assert resp.status_code == 200, f"Get metadata failed: {resp.text}"
-    logger.info("✅ File metadata retrieval works.")
+    logger.info("[OK] File metadata retrieval works.")
     
     os.remove("dummy.txt")
 
@@ -110,7 +110,7 @@ def run_tests():
     )
     assert resp.status_code == 201, f"Notification send failed: {resp.text}"
     notif_id = resp.json()["id"]
-    logger.info("✅ Notification send endpoint works.")
+    logger.info("[OK] Notification send endpoint works.")
     
     # 9. Test Notification History
     resp = client.get(
@@ -120,7 +120,7 @@ def run_tests():
     assert resp.status_code == 200, f"Notification history failed: {resp.text}"
     history = resp.json()
     assert len(history) >= 1
-    logger.info("✅ Notification history retrieval works.")
+    logger.info("[OK] Notification history retrieval works.")
 
     # 10. Test Payments
     resp = client.post(
@@ -131,7 +131,7 @@ def run_tests():
             "currency": "USD",
             "payment_method": "card",
             "gateway": "stripe",
-            "invoice_number": "INV-1001",
+            "invoice_number": f"INV-{uid}",
             "metadata": {"source": "verify.py"}
         }
     )
@@ -140,14 +140,14 @@ def run_tests():
     payment_id = payment_data["id"]
     assert payment_data["status"] == "success", "Stub should have marked as success"
     assert payment_data["gateway_transaction_id"] is not None
-    logger.info("✅ Payment creation (Stripe Stub) works.")
+    logger.info("[OK] Payment creation (Stripe Stub) works.")
 
     resp = client.get(
         f"/api/v1/payments/{payment_id}",
         headers={"Authorization": f"Bearer {access_token}"}
     )
     assert resp.status_code == 200, f"Get payment failed: {resp.text}"
-    logger.info("✅ Get single payment works.")
+    logger.info("[OK] Get single payment works.")
 
     resp = client.post(
         f"/api/v1/payments/{payment_id}/refund",
@@ -155,7 +155,7 @@ def run_tests():
     )
     assert resp.status_code == 200, f"Refund failed: {resp.text}"
     assert resp.json()["status"] == "refunded", "Stub should have refunded"
-    logger.info("✅ Payment refund (Stripe Stub) works.")
+    logger.info("[OK] Payment refund (Stripe Stub) works.")
     
     resp = client.get(
         "/api/v1/payments/",
@@ -163,7 +163,7 @@ def run_tests():
     )
     assert resp.status_code == 200, f"List payments failed: {resp.text}"
     assert len(resp.json()) >= 1
-    logger.info("✅ List payments works.")
+    logger.info("[OK] List payments works.")
 
     logger.info("All verifications passed!")
 

@@ -12,6 +12,8 @@ from fastapi import APIRouter, Depends, status, Query
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
+from app.auth.router import get_current_user
+from app.auth.schema import UserProfileResponse
 from app.companies.model import CompanyPlan, CompanyStatus
 from app.companies.schema import (
     CompanyCreate,
@@ -46,6 +48,7 @@ def list_companies(
     page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
     status_filter: Optional[CompanyStatus] = Query(default=None, alias="status"),
     plan_filter: Optional[CompanyPlan] = Query(default=None, alias="plan"),
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
     """
@@ -86,6 +89,7 @@ def create_company(
 )
 def get_company_by_slug(
     slug: str,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
     """Retrieve a company by its URL-safe slug (e.g. acme-corp)."""
@@ -99,6 +103,7 @@ def get_company_by_slug(
 )
 def get_company(
     company_id: uuid.UUID,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
     """Retrieve a single company by its UUID."""
@@ -113,6 +118,7 @@ def get_company(
 def update_company(
     company_id: uuid.UUID,
     payload: CompanyUpdate,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
     """Partially update company information (name, description, logo, etc.)."""
@@ -129,6 +135,7 @@ def update_company(
 def admin_update_company(
     company_id: uuid.UUID,
     payload: CompanyAdminUpdate,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
     """
@@ -146,6 +153,7 @@ def admin_update_company(
 )
 def deactivate_company(
     company_id: uuid.UUID,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
     """
