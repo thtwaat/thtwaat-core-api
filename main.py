@@ -16,6 +16,7 @@ from app.api.exceptions import (
 from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from sqlalchemy.exc import SQLAlchemyError
+from prometheus_fastapi_instrumentator import Instrumentator
 
 # Ensure all models are imported before Base.metadata.create_all
 import app.companies.model
@@ -48,6 +49,9 @@ app = FastAPI(
     description="Core API for THTWAAT Technology Solutions",
     lifespan=lifespan,
 )
+
+# Instrument Prometheus metrics
+Instrumentator().instrument(app).expose(app)
 
 configure_logging()
 

@@ -120,3 +120,15 @@ To validate the docker compose configuration:
 ```bash
 docker compose config
 ```
+
+## Monitoring
+
+### Prometheus & Grafana
+This project uses a production-grade Prometheus and Grafana monitoring stack.
+- **Prometheus**: Scrapes FastAPI metrics, Node Exporter, cAdvisor, and health endpoints. Available at `http://localhost:9090`.
+- **Grafana**: Auto-provisioned with Prometheus datasource and default dashboards. Available at `http://localhost:3000`.
+
+To start the monitoring stack:
+```bash
+docker compose -f docker-compose.monitoring.yml up -d
+```
