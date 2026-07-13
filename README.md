@@ -103,3 +103,20 @@ We have provided an end-to-end integration test script that acts as a client:
 python verify.py
 ```
 This script creates a dummy company, registers an admin user, logs in to obtain a JWT, and exercises the CRUD endpoints across all core modules.
+
+## CI/CD
+
+### GitHub Actions
+This repository uses GitHub Actions for continuous integration and delivery. The workflows are defined in `.github/workflows/`. They include tests, docker validation, and security scans.
+
+### Running tests
+To run tests locally:
+```bash
+pytest
+```
+
+### Docker Build
+To validate the docker compose configuration:
+```bash
+docker compose config
+```

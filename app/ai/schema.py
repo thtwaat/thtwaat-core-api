@@ -5,7 +5,7 @@ Pydantic schemas for AI Gateway validation.
 """
 import uuid
 from typing import Optional, List, Dict, Any, Union
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from app.ai.model import AIRequestStatus
 
@@ -58,5 +58,4 @@ class AIHistoryResponse(BaseModel):
     status: AIRequestStatus
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)

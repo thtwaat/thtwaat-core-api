@@ -5,7 +5,7 @@ Pydantic schemas for Products module.
 """
 import uuid
 from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from datetime import datetime
 from app.products.model import ProductCategory, ProductStatus
 
@@ -67,6 +67,4 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
 
-    class Config:
-        from_attributes = True
-        populate_by_name = True
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)

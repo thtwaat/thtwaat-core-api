@@ -1,0 +1,24 @@
+name: Docker
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Validate docker-compose.yml
+      run: docker compose config
+      
+    - name: Validate Dockerfile
+      run: docker run --rm -i hadolint/hadolint < Dockerfile
+
+    - name: Build Docker image
+      run: docker build -t thtwaat-core-api:latest .
