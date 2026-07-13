@@ -30,6 +30,7 @@ The project strictly adheres to an Enterprise Layered Architecture:
 7. **Notifications**: Pluggable provider strategy (Email, SMS, WhatsApp, Push).
 8. **Payments**: Pluggable provider strategy (Stripe, Razorpay, PayPal, Manual).
 9. **AI Gateway**: Unified enterprise gateway for AI models (OpenAI, Gemini, Anthropic, Ollama, OpenRouter).
+10. **Products**: Central registry for all generated products (Websites, Apps, Agents, etc) with feature flags.
 
 ## 💻 Local Development Setup
 

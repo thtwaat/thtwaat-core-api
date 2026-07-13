@@ -15,6 +15,7 @@ import app.storage.model
 import app.notifications.model
 import app.payments.model
 import app.ai.model
+import app.products.model
 from app.models.base import Base
 
 # this is the Alembic Config object, which provides

@@ -206,6 +206,53 @@ def run_tests():
     assert history_len >= 2, f"Expected at least 2 AI requests in history, got {history_len}"
     logger.info("[OK] AI History endpoint works.")
 
+    # 12. Test Products Module
+    product_name = f"My New Website {uuid.uuid4().hex[:6]}"
+    resp = client.post(
+        "/api/v1/products/",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "name": product_name,
+            "category": "Website",
+            "description": "A test website product",
+            "ai_enabled": True
+        }
+    )
+    assert resp.status_code == 201, f"Product creation failed: {resp.text}"
+    product_data = resp.json()
+    product_id = product_data["id"]
+    expected_slug = product_name.lower().replace(" ", "-")
+    assert product_data["slug"] == expected_slug, f"Slug generation failed: {product_data['slug']}"
+    assert product_data["ai_enabled"] is True
+    logger.info("[OK] Product creation and auto-slug works.")
+
+    resp = client.patch(
+        f"/api/v1/products/{product_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "name": f"Updated {product_name}"
+        }
+    )
+    assert resp.status_code == 200, f"Product update failed: {resp.text}"
+    expected_updated_slug = f"updated-{expected_slug}"
+    assert resp.json()["slug"] == expected_updated_slug, "Slug should auto-update if name changes and slug not provided"
+    logger.info("[OK] Product update works.")
+
+    resp = client.get(
+        "/api/v1/products/",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"List products failed: {resp.text}"
+    assert len(resp.json()) >= 1
+    logger.info("[OK] List products works.")
+
+    resp = client.delete(
+        f"/api/v1/products/{product_id}",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"Delete product failed: {resp.text}"
+    logger.info("[OK] Product deletion works.")
+
     logger.info("All verifications passed!")
 
 if __name__ == "__main__":
