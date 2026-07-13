@@ -165,6 +165,47 @@ def run_tests():
     assert len(resp.json()) >= 1
     logger.info("[OK] List payments works.")
 
+    # 11. Test AI Gateway
+    resp = client.get(
+        "/api/v1/ai/health",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"AI Health failed: {resp.text}"
+    logger.info("[OK] AI Gateway Health endpoint works.")
+
+    resp = client.post(
+        "/api/v1/ai/generate",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "prompt": "Write a test.",
+            "provider": "openai",
+            "model": "gpt-4o"
+        }
+    )
+    assert resp.status_code == 200, f"AI Generate failed: {resp.text}"
+    logger.info("[OK] AI Generate endpoint works (OpenAI Stub).")
+
+    resp = client.post(
+        "/api/v1/ai/chat",
+        headers={"Authorization": f"Bearer {access_token}"},
+        json={
+            "messages": [{"role": "user", "content": "Hello"}],
+            "provider": "gemini",
+            "model": "gemini-1.5-pro"
+        }
+    )
+    assert resp.status_code == 200, f"AI Chat failed: {resp.text}"
+    logger.info("[OK] AI Chat endpoint works (Gemini Stub).")
+
+    resp = client.get(
+        "/api/v1/ai/history",
+        headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert resp.status_code == 200, f"AI History failed: {resp.text}"
+    history_len = len(resp.json())
+    assert history_len >= 2, f"Expected at least 2 AI requests in history, got {history_len}"
+    logger.info("[OK] AI History endpoint works.")
+
     logger.info("All verifications passed!")
 
 if __name__ == "__main__":

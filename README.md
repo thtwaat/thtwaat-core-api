@@ -29,6 +29,7 @@ The project strictly adheres to an Enterprise Layered Architecture:
 6. **Storage**: Asynchronous file uploads (Local stub, extensible to S3/MinIO).
 7. **Notifications**: Pluggable provider strategy (Email, SMS, WhatsApp, Push).
 8. **Payments**: Pluggable provider strategy (Stripe, Razorpay, PayPal, Manual).
+9. **AI Gateway**: Unified enterprise gateway for AI models (OpenAI, Gemini, Anthropic, Ollama, OpenRouter).
 
 ## 💻 Local Development Setup
 

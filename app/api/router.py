@@ -6,6 +6,7 @@ from app.apps.router import router as apps_router
 from app.storage.router import router as storage_router
 from app.notifications.router import router as notifications_router
 from app.payments.router import router as payments_router
+from app.ai.router import router as ai_router
 
 # Central versioned router — all module routers are registered here
 api_router = APIRouter(prefix="/api/v1")
@@ -18,6 +19,7 @@ api_router.include_router(apps_router)
 api_router.include_router(storage_router)
 api_router.include_router(notifications_router)
 api_router.include_router(payments_router)
+api_router.include_router(ai_router)
 
 # ── System Endpoints ──────────────────────────────────────────────────────────
 

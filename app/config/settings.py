@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -15,6 +16,18 @@ class Settings(BaseSettings):
     def database_url(self) -> str:
         """Construct the PostgreSQL database URL from individual components."""
         return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+
+    # Storage
+    STORAGE_PROVIDER: str = "local"
+    LOCAL_STORAGE_DIR: str = "data/uploads"
+
+    # AI Gateway
+    AI_PROVIDER: str = "openai"
+    OPENAI_API_KEY: Optional[str] = None
+    GEMINI_API_KEY: Optional[str] = None
+    ANTHROPIC_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
+    OLLAMA_URL: Optional[str] = "http://localhost:11434"
 
     model_config = SettingsConfigDict(
         env_file=".env", 
