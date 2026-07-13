@@ -193,3 +193,139 @@ class AuthService:
             last_name=user.last_name,
             role=user.role.value
         )
+
+    # ── OTP Foundation ────────────────────────────────────────────────────────
+
+    @staticmethod
+    def generate_otp() -> str:
+        """Generate a secure 6-digit OTP."""
+        import secrets
+        return "".join(str(secrets.randbelow(10)) for _ in range(6))
+
+    @staticmethod
+    def hash_otp(code: str) -> str:
+        """Hash OTP using bcrypt."""
+        salt = bcrypt.gensalt()
+        return bcrypt.hashpw(code.encode("utf-8"), salt).decode("utf-8")
+
+    @staticmethod
+    def verify_otp_hash(code: str, hashed: str) -> bool:
+        """Check if OTP matches hash."""
+        try:
+            return bcrypt.checkpw(code.encode("utf-8"), hashed.encode("utf-8"))
+        except ValueError:
+            return False
+
+    def send_otp(self, purpose, email: Optional[str], phone: Optional[str], ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        from app.auth.model import OTPCode
+        from app.auth.audit import log_otp_event
+        from app.auth.providers.factory import OTPProviderFactory
+        
+        if not email and not phone:
+            raise HTTPException(status_code=400, detail="Must provide email or phone")
+
+        # Rate Limiting: max 5 requests per hour
+        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
+        count = self.repo.count_recent_otps(email=email, phone=phone, since=one_hour_ago)
+        if count >= 5:
+            log_otp_event("OTP Blocked (Rate Limit)", email=email, phone=phone, ip_address=ip_address, user_agent=user_agent)
+            raise HTTPException(status_code=429, detail="Too many OTP requests. Please try again later.")
+
+        # Cooldown: 60 seconds
+        latest = self.repo.get_latest_otp(email=email, phone=phone, purpose=purpose)
+        if latest and latest.created_at >= datetime.now(timezone.utc) - timedelta(seconds=60):
+            raise HTTPException(status_code=429, detail="Please wait 60 seconds before requesting a new OTP.")
+
+        # Lookup user if exists
+        user_id = None
+        company_id = None
+        if email:
+            stmt = select(User).where(User.email == email)
+            user = self.db.scalar(stmt)
+            if user:
+                user_id = user.id
+                company_id = user.company_id
+
+        code = self.generate_otp()
+        hashed = self.hash_otp(code)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
+
+        otp_record = OTPCode(
+            company_id=company_id,
+            user_id=user_id,
+            email=email,
+            phone=phone,
+            purpose=purpose,
+            otp_hash=hashed,
+            expires_at=expires_at
+        )
+        self.repo.create_otp(otp_record)
+
+        channel = "email" if email else "phone"
+        recipient = email if email else phone
+        provider = OTPProviderFactory.get_provider(channel)
+        provider.send_otp(recipient, code)
+
+        log_otp_event("OTP Sent", email=email, phone=phone, user_id=user_id, company_id=company_id, ip_address=ip_address, user_agent=user_agent)
+        return {"detail": "OTP sent successfully"}
+
+    def resend_otp(self, purpose, email: Optional[str], phone: Optional[str], ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        from app.auth.audit import log_otp_event
+        # Resend logic is basically the same as send, but logs "OTP Resent"
+        # We call send_otp directly and override the log if successful
+        res = self.send_otp(purpose=purpose, email=email, phone=phone, ip_address=ip_address, user_agent=user_agent)
+        log_otp_event("OTP Resent", email=email, phone=phone, ip_address=ip_address, user_agent=user_agent)
+        return res
+
+    def verify_otp(self, purpose, code: str, email: Optional[str], phone: Optional[str], ip_address: Optional[str] = None, user_agent: Optional[str] = None):
+        from app.auth.audit import log_otp_event
+        if not email and not phone:
+            raise HTTPException(status_code=400, detail="Must provide email or phone")
+
+        latest = self.repo.get_latest_otp(email=email, phone=phone, purpose=purpose)
+        if not latest:
+            raise HTTPException(status_code=404, detail="No OTP requested")
+
+        # Expiry Check
+        if datetime.now(timezone.utc) > latest.expires_at:
+            log_otp_event("OTP Expired", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
+            raise HTTPException(status_code=400, detail="OTP has expired")
+
+        # Used Check
+        if latest.is_used:
+            log_otp_event("OTP Failed (Reused)", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
+            raise HTTPException(status_code=400, detail="OTP has already been used")
+
+        # Attempts Check
+        if latest.attempts >= 5:
+            log_otp_event("OTP Failed (Max Attempts)", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
+            raise HTTPException(status_code=400, detail="Maximum OTP attempts reached")
+
+        # Validation Check
+        if not self.verify_otp_hash(code, latest.otp_hash):
+            latest.attempts += 1
+            self.repo.update_otp(latest)
+            log_otp_event("OTP Failed", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+
+        # Success
+        latest.is_used = True
+        latest.verified_at = datetime.now(timezone.utc)
+        self.repo.update_otp(latest)
+
+        log_otp_event("OTP Verified", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
+        
+        # If purpose is LOGIN and user_id is present, issue tokens
+        if purpose == "LOGIN" and latest.user_id:
+            stmt = select(User).where(User.id == latest.user_id)
+            user = self.db.scalar(stmt)
+            if user and user.is_active and user.status == UserStatus.ACTIVE:
+                access_token = self.create_access_token(subject=str(user.id))
+                refresh_token = self.create_refresh_token(subject=str(user.id))
+                return TokenResponse(
+                    access_token=access_token,
+                    refresh_token=refresh_token,
+                    expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
+                )
+
+        return {"detail": "OTP verified successfully"}

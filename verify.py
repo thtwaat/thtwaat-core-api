@@ -253,6 +253,33 @@ def run_tests():
     assert resp.status_code == 200, f"Delete product failed: {resp.text}"
     logger.info("[OK] Product deletion works.")
 
+    # 13. Test OTP Flow
+    import unittest.mock as mock
+    from app.auth.service import AuthService
+    with mock.patch.object(AuthService, 'generate_otp', return_value="123456"):
+        resp = client.post("/api/v1/auth/send-otp", json={
+            "purpose": "LOGIN",
+            "email": f"admin{uid}@test.com"
+        })
+        assert resp.status_code == 200, f"Send OTP failed: {resp.text}"
+        logger.info("[OK] OTP Sent.")
+        
+        resp = client.post("/api/v1/auth/verify-otp", json={
+            "purpose": "LOGIN",
+            "email": f"admin{uid}@test.com",
+            "code": "654321"
+        })
+        assert resp.status_code == 400, "Invalid OTP should fail"
+        
+        resp = client.post("/api/v1/auth/verify-otp", json={
+            "purpose": "LOGIN",
+            "email": f"admin{uid}@test.com",
+            "code": "123456"
+        })
+        assert resp.status_code == 200, f"Verify OTP failed: {resp.text}"
+        assert "access_token" in resp.json()
+        logger.info("[OK] OTP Verified.")
+
     logger.info("All verifications passed!")
 
 if __name__ == "__main__":

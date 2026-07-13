@@ -44,3 +44,39 @@ class AuthRepository:
             self.db.commit()
             return True
         return False
+
+    # ── OTP Operations ────────────────────────────────────────────────────────
+    
+    def create_otp(self, otp: "OTPCode") -> "OTPCode":
+        """Persist a new OTP record."""
+        self.db.add(otp)
+        self.db.commit()
+        self.db.refresh(otp)
+        return otp
+
+    def get_latest_otp(self, email: Optional[str], phone: Optional[str], purpose: str) -> Optional["OTPCode"]:
+        """Retrieve the latest OTP for a given email/phone and purpose."""
+        from app.auth.model import OTPCode
+        stmt = select(OTPCode).where(OTPCode.purpose == purpose)
+        if email:
+            stmt = stmt.where(OTPCode.email == email)
+        if phone:
+            stmt = stmt.where(OTPCode.phone == phone)
+        stmt = stmt.order_by(OTPCode.created_at.desc()).limit(1)
+        return self.db.scalar(stmt)
+
+    def count_recent_otps(self, email: Optional[str], phone: Optional[str], since) -> int:
+        """Count OTP requests since a given time for rate limiting."""
+        from app.auth.model import OTPCode
+        stmt = select(func.count(OTPCode.id)).where(OTPCode.created_at >= since)
+        if email:
+            stmt = stmt.where(OTPCode.email == email)
+        if phone:
+            stmt = stmt.where(OTPCode.phone == phone)
+        return self.db.scalar(stmt) or 0
+
+    def update_otp(self, otp: "OTPCode") -> "OTPCode":
+        """Save changes to an existing OTP record."""
+        self.db.commit()
+        self.db.refresh(otp)
+        return otp

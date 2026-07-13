@@ -44,3 +44,23 @@ class UserProfileResponse(BaseModel):
     first_name: str
     last_name: str
     role: str
+
+# ── OTP ──────────────────────────────────────────────────────────────────────
+
+from app.auth.model import OTPPurpose
+
+class SendOTPRequest(BaseModel):
+    purpose: OTPPurpose
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+
+class VerifyOTPRequest(BaseModel):
+    purpose: OTPPurpose
+    code: str = Field(..., min_length=6, max_length=6)
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
+
+class ResendOTPRequest(BaseModel):
+    purpose: OTPPurpose
+    email: Optional[EmailStr] = None
+    phone: Optional[str] = None
