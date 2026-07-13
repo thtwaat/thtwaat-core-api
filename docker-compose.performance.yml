@@ -1,0 +1,15 @@
+services:
+  locust:
+    image: locustio/locust
+    ports:
+      - "8089:8089"
+    volumes:
+      - ./performance:/mnt/locust
+    command: -f /mnt/locust/locustfile.py --host http://api:8000
+
+  k6:
+    image: grafana/k6:latest
+    volumes:
+      - ./performance:/scripts
+    environment:
+      - BASE_URL=http://api:8000

@@ -132,3 +132,19 @@ To start the monitoring stack:
 ```bash
 docker compose -f docker-compose.monitoring.yml up -d
 ```
+
+## Performance Testing
+
+This repository includes enterprise-grade load testing infrastructure using Locust and k6.
+
+### Run Tests
+
+**Locust:**
+```bash
+docker compose -f docker-compose.performance.yml run --rm locust -f /mnt/locust/locustfile.py --host http://api:8000
+```
+
+**k6:**
+```bash
+docker compose -f docker-compose.performance.yml run --rm k6 run /scripts/k6/auth.js
+```
