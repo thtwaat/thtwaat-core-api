@@ -8,7 +8,7 @@ Represents an individual user account belonging to a specific Company.
 import uuid
 import enum
 from sqlalchemy import (
-    Column, String, Boolean, Enum as SAEnum, ForeignKey, UniqueConstraint
+    Column, String, Boolean, Enum as SAEnum, ForeignKey, UniqueConstraint, DateTime
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -69,6 +69,12 @@ class User(Base, TimestampMixin):
 
     # ── Verification / Security ─────────────────────────────────────────────
     is_active = Column(Boolean, default=True, nullable=False)
+    
+    phone = Column(String(50), nullable=True)
+    email_verified = Column(Boolean, default=False, nullable=False)
+    email_verified_at = Column(DateTime(timezone=True), nullable=True)
+    phone_verified = Column(Boolean, default=False, nullable=False)
+    phone_verified_at = Column(DateTime(timezone=True), nullable=True)
 
     # ── Constraints ─────────────────────────────────────────────────────────
     __table_args__ = (

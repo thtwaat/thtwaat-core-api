@@ -280,6 +280,37 @@ def run_tests():
         assert "access_token" in resp.json()
         logger.info("[OK] OTP Verified.")
 
+    # 14. Test Identity Verification Flow
+    with mock.patch.object(AuthService, 'generate_otp', return_value="123456"):
+        # Email Verification
+        resp = client.post("/api/v1/auth/send-email-verification", json={"email": f"admin{uid}@test.com"})
+        assert resp.status_code == 200, f"Send email verification failed: {resp.text}"
+        
+        resp = client.post("/api/v1/auth/verify-email", json={"email": f"admin{uid}@test.com", "code": "123456"})
+        assert resp.status_code == 200, f"Verify email failed: {resp.text}"
+        logger.info("[OK] Email Verification works.")
+        
+        # Phone Verification
+        resp = client.post("/api/v1/auth/send-phone-verification", json={"phone": "+1234567890"})
+        assert resp.status_code == 200, f"Send phone verification failed: {resp.text}"
+        
+        resp = client.post("/api/v1/auth/verify-phone", json={"phone": "+1234567890", "code": "123456"})
+        assert resp.status_code == 200, f"Verify phone failed: {resp.text}"
+        logger.info("[OK] Phone Verification works.")
+        
+        # Forgot Password
+        resp = client.post("/api/v1/auth/forgot-password", json={"email": f"admin{uid}@test.com"})
+        assert resp.status_code == 200, f"Forgot password failed: {resp.text}"
+        
+        # Reset Password
+        resp = client.post("/api/v1/auth/reset-password", json={
+            "email": f"admin{uid}@test.com",
+            "code": "123456",
+            "new_password": "newsecurepassword123"
+        })
+        assert resp.status_code == 200, f"Reset password failed: {resp.text}"
+        logger.info("[OK] Password Reset works.")
+
     logger.info("All verifications passed!")
 
 if __name__ == "__main__":

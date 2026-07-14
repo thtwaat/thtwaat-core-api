@@ -64,3 +64,28 @@ class ResendOTPRequest(BaseModel):
     purpose: OTPPurpose
     email: Optional[EmailStr] = None
     phone: Optional[str] = None
+
+# ── Identity Verification ──────────────────────────────────────────────────
+
+class EmailVerificationRequest(BaseModel):
+    email: EmailStr
+
+class VerifyEmailRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+
+class PhoneVerificationRequest(BaseModel):
+    phone: str = Field(..., min_length=10)
+
+class VerifyPhoneRequest(BaseModel):
+    phone: str = Field(..., min_length=10)
+    code: str = Field(..., min_length=6, max_length=6)
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=8, description="Must be at least 8 characters long")
+

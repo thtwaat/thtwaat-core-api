@@ -329,3 +329,91 @@ class AuthService:
                 )
 
         return {"detail": "OTP verified successfully"}
+
+    # ── Identity Verification ────────────────────────────────────────────────
+
+    def send_email_verification(self, email: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        stmt = select(User).where(User.email == email)
+        user = self.db.scalar(stmt)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user.email_verified:
+            raise HTTPException(status_code=400, detail="Email is already verified")
+            
+        return self.send_otp(purpose="EMAIL_VERIFY", email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
+
+    def verify_email(self, email: str, code: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        from app.auth.audit import log_otp_event
+        stmt = select(User).where(User.email == email)
+        user = self.db.scalar(stmt)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        if user.email_verified:
+            raise HTTPException(status_code=400, detail="Email is already verified")
+            
+        self.verify_otp(purpose="EMAIL_VERIFY", code=code, email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
+        
+        user.email_verified = True
+        user.email_verified_at = datetime.now(timezone.utc)
+        self.db.commit()
+        log_otp_event("EMAIL_VERIFIED", email=email, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
+        return {"detail": "Email verified successfully"}
+
+    def send_phone_verification(self, phone: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        # Note: phone might not be set yet on user registration, 
+        # but if we require it to be attached to a user first, they must update their profile.
+        # Alternatively, verify_phone can just attach it.
+        # The prompt didn't specify, but let's assume the phone is verified globally.
+        return self.send_otp(purpose="PHONE_VERIFY", email=None, phone=phone, ip_address=ip_address, user_agent=user_agent)
+
+    def verify_phone(self, phone: str, code: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        from app.auth.audit import log_otp_event
+        
+        self.verify_otp(purpose="PHONE_VERIFY", code=code, email=None, phone=phone, ip_address=ip_address, user_agent=user_agent)
+        
+        # Link to a user if the phone matches an existing user profile's phone
+        stmt = select(User).where(User.phone == phone)
+        user = self.db.scalar(stmt)
+        if user:
+            user.phone_verified = True
+            user.phone_verified_at = datetime.now(timezone.utc)
+            self.db.commit()
+            log_otp_event("PHONE_VERIFIED", phone=phone, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
+        else:
+            # We still log the verification even if no user found with that phone yet.
+            log_otp_event("PHONE_VERIFIED", phone=phone, ip_address=ip_address, user_agent=user_agent)
+
+        return {"detail": "Phone verified successfully"}
+
+    def forgot_password(self, email: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        stmt = select(User).where(User.email == email)
+        user = self.db.scalar(stmt)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        return self.send_otp(purpose="PASSWORD_RESET", email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
+
+    def reset_password(self, email: str, code: str, new_password: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
+        from app.auth.audit import log_otp_event
+        from sqlalchemy import delete
+        
+        stmt = select(User).where(User.email == email)
+        user = self.db.scalar(stmt)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+            
+        try:
+            self.verify_otp(purpose="PASSWORD_RESET", code=code, email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
+        except Exception as e:
+            log_otp_event("PASSWORD_RESET_FAILED", email=email, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
+            raise e
+            
+        user.hashed_password = self.get_password_hash(new_password)
+        
+        # Invalidate all refresh tokens
+        self.db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
+        self.db.commit()
+        
+        log_otp_event("PASSWORD_RESET", email=email, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
+        return {"detail": "Password reset successfully"}
+

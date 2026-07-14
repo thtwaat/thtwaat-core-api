@@ -17,7 +17,13 @@ from app.auth.schema import (
     UserProfileResponse,
     SendOTPRequest,
     VerifyOTPRequest,
-    ResendOTPRequest
+    ResendOTPRequest,
+    EmailVerificationRequest,
+    VerifyEmailRequest,
+    PhoneVerificationRequest,
+    VerifyPhoneRequest,
+    ForgotPasswordRequest,
+    ResetPasswordRequest
 )
 from app.auth.service import AuthService
 
@@ -154,3 +160,94 @@ def resend_otp(
         ip_address=ip_address,
         user_agent=user_agent
     )
+
+# ── Identity Verification Endpoints ───────────────────────────────────────────
+
+@router.post("/send-email-verification", summary="Send an email verification code")
+def send_email_verification(
+    payload: EmailVerificationRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.send_email_verification(
+        email=payload.email,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.post("/verify-email", summary="Verify email with code")
+def verify_email(
+    payload: VerifyEmailRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.verify_email(
+        email=payload.email,
+        code=payload.code,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.post("/send-phone-verification", summary="Send a phone verification code")
+def send_phone_verification(
+    payload: PhoneVerificationRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.send_phone_verification(
+        phone=payload.phone,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.post("/verify-phone", summary="Verify phone with code")
+def verify_phone(
+    payload: VerifyPhoneRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.verify_phone(
+        phone=payload.phone,
+        code=payload.code,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.post("/forgot-password", summary="Send a password reset code")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.forgot_password(
+        email=payload.email,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.post("/reset-password", summary="Reset password using OTP code")
+def reset_password(
+    payload: ResetPasswordRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.reset_password(
+        email=payload.email,
+        code=payload.code,
+        new_password=payload.new_password,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
