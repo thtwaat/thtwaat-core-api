@@ -54,8 +54,7 @@ from typing import Union
 @router.post(
     "/login",
     response_model=Union[TokenResponse, MFARequiredResponse],
-    summary="Login and obtain tokens",
-    dependencies=[Depends(RateLimiter(times=5, minutes=1))]
+    summary="Login and obtain tokens"
 )
 def login(
     payload: LoginRequest,
@@ -116,7 +115,7 @@ def get_current_user(
 
 # ── OTP Endpoints ─────────────────────────────────────────────────────────────
 
-@router.post("/send-otp", summary="Send an OTP code", dependencies=[Depends(RateLimiter(times=3, minutes=1))])
+@router.post("/send-otp", summary="Send an OTP code")
 def send_otp(
     payload: SendOTPRequest,
     request: Request,
@@ -134,7 +133,7 @@ def send_otp(
     )
 
 
-@router.post("/verify-otp", summary="Verify an OTP code", dependencies=[Depends(RateLimiter(times=5, minutes=1))])
+@router.post("/verify-otp", summary="Verify an OTP code")
 def verify_otp(
     payload: VerifyOTPRequest,
     request: Request,

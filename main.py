@@ -95,6 +95,10 @@ app.add_exception_handler(Exception, global_exception_handler)
 # Include the main API router
 app.include_router(api_router)
 
+# Include the Agent Platform v2 routers (used by platform web)
+from app.agent_platform.routers.agent_router import router as agent_router
+app.include_router(agent_router)
+
 @app.get("/", summary="Root Endpoint", tags=["General"])
 async def root():
     """
