@@ -21,11 +21,13 @@ class AIRepository:
         provider: str,
         model: str,
         prompt: Any,
-        request_metadata: Optional[Dict[str, Any]] = None
+        request_metadata: Optional[Dict[str, Any]] = None,
+        app_id: Optional[uuid.UUID] = None
     ) -> AIRequest:
         db_request = AIRequest(
             company_id=company_id,
             user_id=user_id,
+            app_id=app_id,
             provider=provider,
             model=model,
             prompt=prompt,

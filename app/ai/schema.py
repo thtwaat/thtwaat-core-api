@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 1000
     conversation_id: Optional[str] = None
+    app_id: Optional[uuid.UUID] = None
 
 class GenerateRequest(BaseModel):
     prompt: str
@@ -28,6 +29,7 @@ class GenerateRequest(BaseModel):
     model: str
     temperature: Optional[float] = 0.7
     max_tokens: Optional[int] = 1000
+    app_id: Optional[uuid.UUID] = None
 
 # Responses
 class AIResponseBase(BaseModel):

@@ -76,3 +76,23 @@ class OTPCode(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<OTPCode id={self.id} purpose={self.purpose} email={self.email} phone={self.phone}>"
+
+class MFASettings(Base, TimestampMixin):
+    """
+    Stores MFA settings for a user.
+    """
+    __tablename__ = "mfa_settings"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True, nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), unique=True, nullable=False, index=True)
+    
+    secret = Column(String(255), nullable=True) # TOTP secret
+    enabled = Column(Boolean, default=False, nullable=False)
+    
+    backup_codes = Column(String, nullable=True) # JSON array of hashed strings or just a comma-separated string of hashes
+    trusted_devices = Column(String, nullable=True) # Placeholder for trusted devices (JSON string)
+    
+    user = relationship("User", back_populates="mfa_settings")
+
+    def __repr__(self) -> str:
+        return f"<MFASettings user_id={self.user_id} enabled={self.enabled}>"

@@ -14,6 +14,7 @@ from app.ai.repository import AIRepository
 from app.ai.providers.factory import AIProviderFactory
 from app.ai.schema import ChatRequest, GenerateRequest, ChatResponse, GenerateResponse
 from app.ai.model import AIRequestStatus
+from app.companies.model import Company
 
 logger = logging.getLogger(__name__)
 
@@ -40,13 +41,16 @@ class AIService:
         # Placeholder: $0.0001 per 1k input, $0.0002 per 1k output
         return (input_tokens / 1000.0 * 0.0001) + (output_tokens / 1000.0 * 0.0002)
 
+    def _estimate_upfront_cost(self, model: str, prompt_length: int, max_tokens: int) -> float:
+        max_input = max(prompt_length / 4, 10)
+        return self._calculate_estimated_cost(model, max_input, max_tokens)
+
     async def chat(self, company_id: uuid.UUID, user_id: uuid.UUID, payload: ChatRequest) -> ChatResponse:
         self._check_rate_limits(company_id, user_id)
         
         provider_name = payload.provider or settings.AI_PROVIDER
         provider = AIProviderFactory.get_provider(provider_name)
         
-        # Log request start
         request_meta = {
             "temperature": payload.temperature,
             "max_tokens": payload.max_tokens,
@@ -54,10 +58,22 @@ class AIService:
         }
         
         messages_dict = [m.model_dump() for m in payload.messages]
+        prompt_length = sum(len(m.content) for m in payload.messages)
+        max_tokens = payload.max_tokens or 1000
+        upfront_cost = self._estimate_upfront_cost(payload.model, prompt_length, max_tokens)
+        
+        # Deduct upfront cost
+        company = self.db.query(Company).filter(Company.id == company_id).with_for_update().first()
+        if not company or float(company.credits_balance) < upfront_cost:
+            raise HTTPException(status_code=402, detail="Insufficient credits for AI Request")
+        
+        company.credits_balance = float(company.credits_balance) - upfront_cost
+        self.db.commit()
         
         db_request = self.repo.create_request(
             company_id=company_id,
             user_id=user_id,
+            app_id=payload.app_id,
             provider=provider_name,
             model=payload.model,
             prompt=messages_dict,
@@ -66,14 +82,15 @@ class AIService:
 
         start_time = time.time()
         try:
-            # Streaming Ready:
-            # अभी streaming implement मत करो, लेकिन service layer ऐसा लिखो कि बाद में SSE/WebSocket जोड़ना आसान हो।
-            # e.g., if payload.stream: return StreamingResponse(provider.chat_stream(...))
-            
             ai_response = await provider.chat(messages=messages_dict, model=payload.model, temperature=payload.temperature, max_tokens=payload.max_tokens)
             
             latency_ms = (time.time() - start_time) * 1000
-            cost = self._calculate_estimated_cost(ai_response.model_used, ai_response.input_tokens, ai_response.output_tokens)
+            actual_cost = self._calculate_estimated_cost(ai_response.model_used, ai_response.input_tokens, ai_response.output_tokens)
+            
+            # Reconcile cost
+            company = self.db.query(Company).filter(Company.id == company_id).with_for_update().first()
+            company.credits_balance = float(company.credits_balance) + (upfront_cost - actual_cost)
+            self.db.commit()
             
             # Log success
             self.repo.update_request(
@@ -82,7 +99,7 @@ class AIService:
                 tokens_input=ai_response.input_tokens,
                 tokens_output=ai_response.output_tokens,
                 latency=latency_ms,
-                estimated_cost=cost,
+                estimated_cost=actual_cost,
                 status=AIRequestStatus.SUCCESS,
                 additional_metadata={"provider_response_id": ai_response.provider_response_id}
             )
@@ -92,18 +109,26 @@ class AIService:
                 input_tokens=ai_response.input_tokens,
                 output_tokens=ai_response.output_tokens,
                 model_used=ai_response.model_used,
-                estimated_cost=cost,
+                estimated_cost=actual_cost,
                 currency="USD",
                 conversation_id=payload.conversation_id or uuid.uuid4().hex
             )
             
         except Exception as e:
             logger.error(f"AI Chat failed: {str(e)}")
+            
+            # Refund upfront cost on failure
+            company = self.db.query(Company).filter(Company.id == company_id).with_for_update().first()
+            if company:
+                company.credits_balance = float(company.credits_balance) + upfront_cost
+                self.db.commit()
+                
             latency_ms = (time.time() - start_time) * 1000
             self.repo.update_request(
                 request_id=db_request.id,
                 status=AIRequestStatus.FAILED,
                 latency=latency_ms,
+                estimated_cost=0.0,
                 additional_metadata={"error": str(e)}
             )
             raise HTTPException(status_code=500, detail="AI Provider Error")
@@ -119,9 +144,22 @@ class AIService:
             "max_tokens": payload.max_tokens
         }
         
+        prompt_length = len(payload.prompt)
+        max_tokens = payload.max_tokens or 1000
+        upfront_cost = self._estimate_upfront_cost(payload.model, prompt_length, max_tokens)
+        
+        # Deduct upfront cost
+        company = self.db.query(Company).filter(Company.id == company_id).with_for_update().first()
+        if not company or float(company.credits_balance) < upfront_cost:
+            raise HTTPException(status_code=402, detail="Insufficient credits for AI Request")
+        
+        company.credits_balance = float(company.credits_balance) - upfront_cost
+        self.db.commit()
+        
         db_request = self.repo.create_request(
             company_id=company_id,
             user_id=user_id,
+            app_id=payload.app_id,
             provider=provider_name,
             model=payload.model,
             prompt={"text": payload.prompt},
@@ -133,7 +171,12 @@ class AIService:
             ai_response = await provider.generate(prompt=payload.prompt, model=payload.model, temperature=payload.temperature, max_tokens=payload.max_tokens)
             
             latency_ms = (time.time() - start_time) * 1000
-            cost = self._calculate_estimated_cost(ai_response.model_used, ai_response.input_tokens, ai_response.output_tokens)
+            actual_cost = self._calculate_estimated_cost(ai_response.model_used, ai_response.input_tokens, ai_response.output_tokens)
+            
+            # Reconcile cost
+            company = self.db.query(Company).filter(Company.id == company_id).with_for_update().first()
+            company.credits_balance = float(company.credits_balance) + (upfront_cost - actual_cost)
+            self.db.commit()
             
             self.repo.update_request(
                 request_id=db_request.id,
@@ -141,7 +184,7 @@ class AIService:
                 tokens_input=ai_response.input_tokens,
                 tokens_output=ai_response.output_tokens,
                 latency=latency_ms,
-                estimated_cost=cost,
+                estimated_cost=actual_cost,
                 status=AIRequestStatus.SUCCESS,
                 additional_metadata={"provider_response_id": ai_response.provider_response_id}
             )
@@ -151,17 +194,25 @@ class AIService:
                 input_tokens=ai_response.input_tokens,
                 output_tokens=ai_response.output_tokens,
                 model_used=ai_response.model_used,
-                estimated_cost=cost,
+                estimated_cost=actual_cost,
                 currency="USD"
             )
             
         except Exception as e:
             logger.error(f"AI Generate failed: {str(e)}")
+            
+            # Refund upfront cost on failure
+            company = self.db.query(Company).filter(Company.id == company_id).with_for_update().first()
+            if company:
+                company.credits_balance = float(company.credits_balance) + upfront_cost
+                self.db.commit()
+                
             latency_ms = (time.time() - start_time) * 1000
             self.repo.update_request(
                 request_id=db_request.id,
                 status=AIRequestStatus.FAILED,
                 latency=latency_ms,
+                estimated_cost=0.0,
                 additional_metadata={"error": str(e)}
             )
             raise HTTPException(status_code=500, detail="AI Provider Error")

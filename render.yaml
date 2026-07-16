@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: thtwaat-core-api
+    env: docker
+    region: ohio
+    plan: starter
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: thtwaat-core-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: thtwaat-core-redis
+          property: connectionString
+      - key: STORAGE_PROVIDER
+        value: s3
+      - key: GEMINI_API_KEY
+        sync: false
+
+  - type: redis
+    name: thtwaat-core-redis
+    region: ohio
+    plan: free
+    ipAllowList: []
+
+databases:
+  - name: thtwaat-core-db
+    region: ohio
+    plan: starter
+    databaseName: thtwaat_core
+    user: postgres

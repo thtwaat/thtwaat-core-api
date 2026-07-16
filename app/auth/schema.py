@@ -89,3 +89,25 @@ class ResetPasswordRequest(BaseModel):
     code: str = Field(..., min_length=6, max_length=6)
     new_password: str = Field(..., min_length=8, description="Must be at least 8 characters long")
 
+# ── MFA ──────────────────────────────────────────────────────────────────────
+
+class MFASetupResponse(BaseModel):
+    secret: str
+    qr_code_uri: str
+    qr_code_base64: str
+
+class MFAEnableRequest(BaseModel):
+    code: str = Field(..., min_length=6, max_length=6)
+
+class MFAVerifyRequest(BaseModel):
+    mfa_token: Optional[str] = None # Used during login
+    totp: str = Field(..., min_length=6, max_length=10) # Supports 6-8 digit TOTP or recovery codes
+
+class MFABackupCodesResponse(BaseModel):
+    backup_codes: list[str]
+
+class MFARequiredResponse(BaseModel):
+    mfa_required: bool = True
+    mfa_token: str
+    expires_in: int = 300
+

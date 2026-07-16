@@ -6,15 +6,22 @@ class Settings(BaseSettings):
     app_env: str = "development"
     
     # Database connection parameters
-    db_host: str
-    db_port: int
-    db_name: str
-    db_user: str
-    db_password: str
+    db_host: Optional[str] = None
+    db_port: Optional[int] = 5432
+    db_name: Optional[str] = None
+    db_user: Optional[str] = None
+    db_password: Optional[str] = None
+
+    # Redis connection parameters
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
 
     @property
     def database_url(self) -> str:
         """Construct the PostgreSQL database URL from individual components."""
+        import os
+        if os.getenv("DATABASE_URL"):
+            return os.getenv("DATABASE_URL")
         return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
 
     # Storage
@@ -28,6 +35,13 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
     OLLAMA_URL: Optional[str] = "http://localhost:11434"
+    
+    # Auth & Security
+    JWT_SECRET_KEY: str
+    JWT_REFRESH_SECRET_KEY: str
+    CORS_ORIGINS: list[str] = ["*"]
+    
+    MFA_ISSUER_NAME: str = "THTWAAT Enterprise"
 
     model_config = SettingsConfigDict(
         env_file=".env", 

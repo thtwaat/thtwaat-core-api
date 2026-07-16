@@ -80,3 +80,21 @@ class AuthRepository:
         self.db.commit()
         self.db.refresh(otp)
         return otp
+
+    # ── MFA Operations ────────────────────────────────────────────────────────
+    
+    def get_mfa_settings(self, user_id: uuid.UUID) -> Optional["MFASettings"]:
+        from app.auth.model import MFASettings
+        stmt = select(MFASettings).where(MFASettings.user_id == user_id)
+        return self.db.scalar(stmt)
+        
+    def create_mfa_settings(self, mfa: "MFASettings") -> "MFASettings":
+        self.db.add(mfa)
+        self.db.commit()
+        self.db.refresh(mfa)
+        return mfa
+        
+    def update_mfa_settings(self, mfa: "MFASettings") -> "MFASettings":
+        self.db.commit()
+        self.db.refresh(mfa)
+        return mfa

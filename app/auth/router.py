@@ -23,9 +23,15 @@ from app.auth.schema import (
     PhoneVerificationRequest,
     VerifyPhoneRequest,
     ForgotPasswordRequest,
-    ResetPasswordRequest
+    ResetPasswordRequest,
+    MFASetupResponse,
+    MFAEnableRequest,
+    MFAVerifyRequest,
+    MFABackupCodesResponse,
+    MFARequiredResponse
 )
 from app.auth.service import AuthService
+from fastapi_limiter.depends import RateLimiter
 
 
 router = APIRouter(
@@ -43,10 +49,13 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 
+from typing import Union
+
 @router.post(
     "/login",
-    response_model=TokenResponse,
+    response_model=Union[TokenResponse, MFARequiredResponse],
     summary="Login and obtain tokens",
+    dependencies=[Depends(RateLimiter(times=5, minutes=1))]
 )
 def login(
     payload: LoginRequest,
@@ -107,7 +116,7 @@ def get_current_user(
 
 # ── OTP Endpoints ─────────────────────────────────────────────────────────────
 
-@router.post("/send-otp", summary="Send an OTP code")
+@router.post("/send-otp", summary="Send an OTP code", dependencies=[Depends(RateLimiter(times=3, minutes=1))])
 def send_otp(
     payload: SendOTPRequest,
     request: Request,
@@ -125,7 +134,7 @@ def send_otp(
     )
 
 
-@router.post("/verify-otp", summary="Verify an OTP code")
+@router.post("/verify-otp", summary="Verify an OTP code", dependencies=[Depends(RateLimiter(times=5, minutes=1))])
 def verify_otp(
     payload: VerifyOTPRequest,
     request: Request,
@@ -247,6 +256,86 @@ def reset_password(
         email=payload.email,
         code=payload.code,
         new_password=payload.new_password,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+# ── MFA Endpoints ────────────────────────────────────────────────────────────
+
+@router.post("/mfa/setup", response_model=MFASetupResponse, summary="Setup MFA for the current user")
+def setup_mfa(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    service: AuthService = Depends(get_auth_service),
+):
+    profile = service.get_current_user_profile(credentials.credentials)
+    return service.setup_mfa(user_id=profile.id)
+
+@router.post("/mfa/enable", summary="Enable MFA with verification code")
+def enable_mfa(
+    payload: MFAEnableRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    service: AuthService = Depends(get_auth_service),
+):
+    profile = service.get_current_user_profile(credentials.credentials)
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.enable_mfa(
+        user_id=profile.id,
+        code=payload.code,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.post("/mfa/disable", summary="Disable MFA")
+def disable_mfa(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    service: AuthService = Depends(get_auth_service),
+):
+    profile = service.get_current_user_profile(credentials.credentials)
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.disable_mfa(
+        user_id=profile.id,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.get("/mfa/recovery-codes", summary="Get remaining recovery codes count")
+def get_recovery_codes_status(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    service: AuthService = Depends(get_auth_service),
+):
+    profile = service.get_current_user_profile(credentials.credentials)
+    return service.get_recovery_codes_status(user_id=profile.id)
+
+@router.post("/mfa/regenerate-recovery-codes", response_model=MFABackupCodesResponse, summary="Regenerate recovery codes")
+def regenerate_recovery_codes(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    service: AuthService = Depends(get_auth_service),
+):
+    profile = service.get_current_user_profile(credentials.credentials)
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.regenerate_recovery_codes(
+        user_id=profile.id,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+@router.post("/mfa/verify", response_model=TokenResponse, summary="Verify MFA code and obtain tokens")
+def verify_mfa(
+    payload: MFAVerifyRequest,
+    request: Request,
+    service: AuthService = Depends(get_auth_service),
+):
+    ip_address = request.client.host if request.client else None
+    user_agent = request.headers.get("user-agent")
+    return service.verify_mfa(
+        mfa_token=payload.mfa_token,
+        totp_code=payload.totp,
         ip_address=ip_address,
         user_agent=user_agent
     )

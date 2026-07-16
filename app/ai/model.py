@@ -21,6 +21,7 @@ class AIRequest(Base):
     
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id"), nullable=False, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+    app_id = Column(UUID(as_uuid=True), ForeignKey("apps.id", ondelete="SET NULL"), nullable=True, index=True)
     
     provider = Column(String, nullable=False, index=True)
     model = Column(String, nullable=False)

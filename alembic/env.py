@@ -16,6 +16,9 @@ import app.notifications.model
 import app.payments.model
 import app.ai.model
 import app.products.model
+import app.api_keys.model
+import app.webhooks.model
+import app.agent_platform.models
 from app.models.base import Base
 
 # this is the Alembic Config object, which provides

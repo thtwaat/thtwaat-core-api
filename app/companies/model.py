@@ -91,6 +91,10 @@ class Company(Base, TimestampMixin):
     # Example: {"ai_enabled": true, "custom_domain": "acme.thtwaat.com"}
     settings = Column(JSONB, default=dict, nullable=False)
 
+    # ── Credits ─────────────────────────────────────────────────────────────
+    from sqlalchemy import Numeric
+    credits_balance = Column(Numeric(precision=10, scale=4), default=0.0, nullable=False)
+
     users = relationship("User", back_populates="company", cascade="all, delete-orphan")
     apps = relationship("App", back_populates="company", cascade="all, delete-orphan")
 

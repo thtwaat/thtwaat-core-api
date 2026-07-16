@@ -291,10 +291,11 @@ def run_tests():
         logger.info("[OK] Email Verification works.")
         
         # Phone Verification
-        resp = client.post("/api/v1/auth/send-phone-verification", json={"phone": "+1234567890"})
+        test_phone = f"+1{uuid.uuid4().int % 10000000000:010}"
+        resp = client.post("/api/v1/auth/send-phone-verification", json={"phone": test_phone})
         assert resp.status_code == 200, f"Send phone verification failed: {resp.text}"
         
-        resp = client.post("/api/v1/auth/verify-phone", json={"phone": "+1234567890", "code": "123456"})
+        resp = client.post("/api/v1/auth/verify-phone", json={"phone": test_phone, "code": "123456"})
         assert resp.status_code == 200, f"Verify phone failed: {resp.text}"
         logger.info("[OK] Phone Verification works.")
         
@@ -310,6 +311,47 @@ def run_tests():
         })
         assert resp.status_code == 200, f"Reset password failed: {resp.text}"
         logger.info("[OK] Password Reset works.")
+
+    # 15. Test MFA Flow
+    # First login with new password to get access token
+    resp = client.post("/api/v1/auth/login", json={
+        "email": f"admin{uid}@test.com",
+        "password": "newsecurepassword123"
+    })
+    assert resp.status_code == 200
+    access_token = resp.json()["access_token"]
+    headers = {"Authorization": f"Bearer {access_token}"}
+    
+    # Setup MFA
+    resp = client.post("/api/v1/auth/mfa/setup", headers=headers)
+    assert resp.status_code == 200, f"MFA Setup failed: {resp.text}"
+    mfa_secret = resp.json()["secret"]
+    logger.info("[OK] MFA Setup works.")
+    
+    # Enable MFA
+    import pyotp
+    totp = pyotp.TOTP(mfa_secret)
+    valid_code = totp.now()
+    resp = client.post("/api/v1/auth/mfa/enable", headers=headers, json={"code": valid_code})
+    assert resp.status_code == 200, f"MFA Enable failed: {resp.text}"
+    logger.info("[OK] MFA Enable works.")
+    
+    # Login again with MFA enabled
+    resp = client.post("/api/v1/auth/login", json={
+        "email": f"admin{uid}@test.com",
+        "password": "newsecurepassword123"
+    })
+    assert resp.status_code == 200, f"Login with MFA enabled failed: {resp.text}"
+    assert resp.json()["mfa_required"] == True
+    mfa_token = resp.json()["mfa_token"]
+    logger.info("[OK] Login returned MFA token.")
+    
+    # Verify MFA
+    valid_code = totp.now()
+    resp = client.post("/api/v1/auth/mfa/verify", json={"mfa_token": mfa_token, "totp": valid_code})
+    assert resp.status_code == 200, f"MFA Verify failed: {resp.text}"
+    assert "access_token" in resp.json()
+    logger.info("[OK] MFA Verify works.")
 
     logger.info("All verifications passed!")
 

@@ -41,6 +41,25 @@ async def upload_file(
     """
     Upload a file securely to the configured storage provider.
     """
+    MAX_SIZE = 5 * 1024 * 1024 # 5MB
+    ALLOWED_TYPES = [
+        "image/jpeg", "image/png", "image/gif", "image/webp", 
+        "application/pdf", "text/plain", "text/csv", 
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    ]
+    
+    # 1. Content Type Validation
+    if file.content_type not in ALLOWED_TYPES:
+        raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
+        
+    # 2. File Size Validation (fast initial check if content-length header is present, fallback to read)
+    file.file.seek(0, 2)
+    size = file.file.tell()
+    file.file.seek(0)
+    
+    if size > MAX_SIZE:
+        raise HTTPException(status_code=413, detail="File too large. Maximum size is 5MB.")
+
     db_file = await service.upload_file(
         file=file,
         company_id=current_user.company_id,

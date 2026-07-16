@@ -1,13 +1,21 @@
 services:
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - api
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+
   api:
     build: .
-    ports:
-      - "8000:8000"
     volumes:
       - .:/app
     env_file:
       - .env
-    command: bash -c "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    command: bash -c "uvicorn main:app --host 0.0.0.0 --port 8000"
     depends_on:
       db:
         condition: service_healthy
@@ -16,7 +24,7 @@ services:
       minio:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/docs"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/liveness"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -29,8 +37,6 @@ services:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -41,8 +47,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
     volumes:
       - redisdata:/data
     healthcheck:
@@ -56,9 +60,6 @@ services:
     command: server /data --console-address ":9001"
     env_file:
       - .env
-    ports:
-      - "9000:9000"
-      - "9001:9001"
     volumes:
       - miniodata:/data
     healthcheck:
@@ -71,8 +72,6 @@ services:
     image: dpage/pgadmin4
     env_file:
       - .env
-    ports:
-      - "5050:80"
     volumes:
       - pgadmindata:/var/lib/pgadmin
     depends_on:
