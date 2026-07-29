@@ -54,6 +54,14 @@ class Permission(str, enum.Enum):
     # White-label branding
     BRANDING_READ   = "branding:read"
     BRANDING_MANAGE = "branding:manage"
+
+    # Enterprise administration
+    ENTERPRISE_READ       = "enterprise:read"
+    ENTERPRISE_MANAGE     = "enterprise:manage"
+    ENTERPRISE_SECURITY   = "enterprise:security"
+    ENTERPRISE_AUDIT      = "enterprise:audit"
+    ENTERPRISE_COMPLIANCE = "enterprise:compliance"
+    ENTERPRISE_REPORTS    = "enterprise:reports"
     
     # Platform (Super Admin only)
     PLATFORM_ADMIN = "platform:admin"

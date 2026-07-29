@@ -20,6 +20,9 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
         Permission.TEMPLATES_READ, Permission.TEMPLATES_MANAGE,
         Permission.BRANDING_READ, Permission.BRANDING_MANAGE,
+        Permission.ENTERPRISE_READ, Permission.ENTERPRISE_MANAGE,
+        Permission.ENTERPRISE_SECURITY, Permission.ENTERPRISE_AUDIT,
+        Permission.ENTERPRISE_COMPLIANCE, Permission.ENTERPRISE_REPORTS,
     },
     
     EnterpriseRole.ADMIN: {
@@ -31,6 +34,9 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
         Permission.TEMPLATES_READ, Permission.TEMPLATES_MANAGE,
         Permission.BRANDING_READ, Permission.BRANDING_MANAGE,
+        Permission.ENTERPRISE_READ, Permission.ENTERPRISE_MANAGE,
+        Permission.ENTERPRISE_SECURITY, Permission.ENTERPRISE_AUDIT,
+        Permission.ENTERPRISE_COMPLIANCE, Permission.ENTERPRISE_REPORTS,
     },
     
     EnterpriseRole.MANAGER: {
@@ -41,6 +47,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.DOMAINS_READ,
         Permission.TEMPLATES_READ,
         Permission.BRANDING_READ,
+        Permission.ENTERPRISE_READ, Permission.ENTERPRISE_REPORTS,
     },
     
     EnterpriseRole.DEVELOPER: {
@@ -51,6 +58,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
         Permission.TEMPLATES_READ, Permission.TEMPLATES_MANAGE,
         Permission.BRANDING_READ,
+        Permission.ENTERPRISE_READ, Permission.ENTERPRISE_REPORTS,
     },
     
     EnterpriseRole.EMPLOYEE: {
@@ -61,6 +69,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.DOMAINS_READ,
         Permission.TEMPLATES_READ,
         Permission.BRANDING_READ,
+        Permission.ENTERPRISE_READ,
     },
     
     EnterpriseRole.VIEWER: {
@@ -71,5 +80,6 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.DOMAINS_READ,
         Permission.TEMPLATES_READ,
         Permission.BRANDING_READ,
+        Permission.ENTERPRISE_READ,
     }
 }

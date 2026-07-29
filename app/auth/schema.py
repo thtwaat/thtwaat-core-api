@@ -14,6 +14,10 @@ class LoginRequest(BaseModel):
     """Schema for JSON payload on POST /login."""
     email: EmailStr
     password: str = Field(..., min_length=1)
+    company_slug: Optional[str] = Field(
+        None,
+        description="Required when the same email belongs to multiple tenants",
+    )
 
 
 class RefreshRequest(BaseModel):

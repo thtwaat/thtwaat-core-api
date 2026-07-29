@@ -57,6 +57,18 @@ def tick(r):
             except Exception as exc:
                 logger.error("backup_failed %s", exc)
                 enqueue(r, {"type": "backup.full"})
+
+        # Daily enterprise retention application reuses the existing scheduler.
+        retention_key = (
+            f"thtwaat:enterprise:retention:"
+            f"{datetime.now(timezone.utc).date().isoformat()}"
+        )
+        if not r.get(retention_key):
+            from app.enterprise.service import EnterpriseService
+
+            result = EnterpriseService(db).apply_all_retention_policies()
+            r.setex(retention_key, 86400, "1")
+            logger.info("enterprise_retention_complete %s", result)
     finally:
         db.close()
 

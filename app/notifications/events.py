@@ -45,6 +45,10 @@ EVENT_TEMPLATES: dict[str, tuple[str, str]] = {
         "Company setup complete",
         "Your company '{company_name}' has been created and is ready to use."
     ),
+    "enterprise.member_invited": (
+        "You have been invited to {company_name}",
+        "An administrator invited {email} to join {company_name}."
+    ),
     "document.indexed": (
         "Document indexed",
         "Document '{document_name}' has been indexed and is ready for semantic search."
@@ -80,6 +84,26 @@ EVENT_TEMPLATES: dict[str, tuple[str, str]] = {
     "ai_quota.warning": (
         "AI credits running low",
         "Your AI credits balance is {credits} units. Top up to continue using AI features without interruption."
+    ),
+    "onboarding.started": (
+        "Welcome — let's get you live",
+        "Your onboarding wizard has started. Resume anytime with your saved progress."
+    ),
+    "onboarding.completed": (
+        "You're live on THTWAAT",
+        "Customer onboarding is complete. Your product is ready to serve customers."
+    ),
+    "ops.alert": (
+        "Ops alert: {title}",
+        "Severity {severity}. Alert id {alert_id}."
+    ),
+    "copilot.task_completed": (
+        "Copilot task completed",
+        "Your Copilot task ({intent}) finished successfully. Task id {task_id}.",
+    ),
+    "copilot.task_failed": (
+        "Copilot task failed",
+        "Your Copilot task ({intent}) failed. Open diagnostics for task {task_id}.",
     ),
 }
 

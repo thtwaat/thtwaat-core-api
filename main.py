@@ -38,6 +38,7 @@ import app.domains.models  # noqa — company_domains
 import app.marketplace.models  # noqa
 import app.product_generator.models  # noqa
 import app.branding.models  # noqa — company_branding, branding_assets
+import app.enterprise.models  # noqa — enterprise administration and governance
 import app.payments.plans.model  # noqa — plans + usage limit columns
 import app.payments.subscriptions.model  # noqa
 import app.payments.invoices.model  # noqa
@@ -99,6 +100,10 @@ app.add_middleware(SecurityHeadersMiddleware)
 
 from app.deploy.middleware import RequestContextMiddleware
 app.add_middleware(RequestContextMiddleware)
+
+from app.enterprise.middleware import EnterpriseAuditMiddleware, EnterpriseSecurityMiddleware
+app.add_middleware(EnterpriseSecurityMiddleware)
+app.add_middleware(EnterpriseAuditMiddleware)
 
 # Instrument Prometheus metrics
 Instrumentator().instrument(app).expose(app)

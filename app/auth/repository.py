@@ -46,6 +46,23 @@ class AuthRepository:
             return True
         return False
 
+    def revoke_all_user_tokens(self, user_id: uuid.UUID) -> int:
+        """Revoke every active refresh token for a user (enterprise session control)."""
+        from datetime import datetime, timezone
+
+        tokens = self.db.scalars(
+            select(RefreshToken).where(
+                RefreshToken.user_id == user_id,
+                RefreshToken.revoked_at.is_(None),
+            )
+        ).all()
+        now = datetime.now(timezone.utc)
+        for token in tokens:
+            token.revoked_at = now
+        if tokens:
+            self.db.commit()
+        return len(tokens)
+
     # ── OTP Operations ────────────────────────────────────────────────────────
     
     def create_otp(self, otp: "OTPCode") -> "OTPCode":

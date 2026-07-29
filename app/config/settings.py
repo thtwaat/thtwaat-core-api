@@ -66,6 +66,10 @@ class Settings(BaseSettings):
     BACKUP_HOUR_UTC: int = 3
     SCHEDULER_INTERVAL_SECONDS: int = 300
 
+    # Observability (links only — Prometheus scrape remains Instrumentator /metrics)
+    PROMETHEUS_URL: str = "http://localhost:9090"
+    GRAFANA_URL: str = "http://localhost:3000"
+
     # Security
     TRUSTED_PROXIES: list[str] = ["nginx", "127.0.0.1"]
     CSP_POLICY: str = "default-src 'self'; frame-ancestors 'self'; object-src 'none'"

@@ -26,6 +26,10 @@ import app.domains.models  # noqa — company_domains
 import app.marketplace.models  # noqa — marketplace_templates, versions, installations
 import app.product_generator.models  # noqa — product_generations
 import app.branding.models  # noqa — company_branding, branding_assets
+import app.enterprise.models  # noqa — enterprise administration and governance
+import app.onboarding.models  # noqa — customer onboarding wizard
+import app.monitoring.models  # noqa — monitoring & admin operations
+import app.copilot.models  # noqa — AI Copilot orchestration
 import app.payments.plans.model  # noqa
 import app.payments.subscriptions.model  # noqa
 import app.payments.invoices.model  # noqa

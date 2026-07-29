@@ -23,6 +23,14 @@ from app.deploy.router import router as deploy_router
 from app.marketplace.router import router as marketplace_router
 from app.product_generator.router import router as product_generator_router
 from app.branding.router import router as branding_router
+from app.enterprise.router import router as enterprise_router
+from app.onboarding.router import router as onboarding_router
+from app.monitoring.router import (
+    admin_router,
+    operations_router,
+    monitoring_router,
+)
+from app.copilot.router import router as copilot_router
 
 # Central versioned router — all module routers are registered here
 api_router = APIRouter(prefix="/api/v1")
@@ -52,6 +60,12 @@ api_router.include_router(deploy_router)
 api_router.include_router(marketplace_router)
 api_router.include_router(product_generator_router)
 api_router.include_router(branding_router)
+api_router.include_router(enterprise_router)
+api_router.include_router(onboarding_router)
+api_router.include_router(admin_router)
+api_router.include_router(operations_router)
+api_router.include_router(monitoring_router)
+api_router.include_router(copilot_router)
 
 # ── System Endpoints ──────────────────────────────────────────────────────────
 

@@ -76,7 +76,45 @@ class AuthService:
 
     def create_refresh_token(self, subject: str) -> str:
         """Create a long-lived JWT refresh token and store it in DB."""
+        user_id = uuid.UUID(subject)
         expires_delta = timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+        # Enterprise session policy extends existing token issuance without
+        # creating a parallel session implementation.
+        try:
+            from app.enterprise.models import EnterpriseSecurityPolicy
+
+            user = self.db.get(User, user_id)
+            policy = (
+                self.db.scalar(
+                    select(EnterpriseSecurityPolicy).where(
+                        EnterpriseSecurityPolicy.company_id == user.company_id
+                    )
+                )
+                if user
+                else None
+            )
+            if policy:
+                expires_delta = timedelta(minutes=policy.session_ttl_minutes)
+                active = list(
+                    self.db.scalars(
+                        select(RefreshToken)
+                        .where(
+                            RefreshToken.user_id == user_id,
+                            RefreshToken.revoked_at.is_(None),
+                            RefreshToken.expires_at > datetime.now(timezone.utc),
+                        )
+                        .order_by(RefreshToken.created_at.asc())
+                    ).all()
+                )
+                excess = len(active) - policy.max_sessions_per_user + 1
+                for old_token in active[:max(0, excess)]:
+                    old_token.revoked_at = datetime.now(timezone.utc)
+                if excess > 0:
+                    self.db.commit()
+        except Exception:
+            # Token issuance remains available if the optional enterprise
+            # module has not been migrated yet.
+            pass
         expire = datetime.now(timezone.utc) + expires_delta
         
         to_encode = {"exp": expire, "sub": str(subject), "type": "refresh", "jti": str(uuid.uuid4())}
@@ -84,7 +122,7 @@ class AuthService:
         
         # Save to DB for revocation tracking
         self.repo.save_refresh_token(
-            user_id=uuid.UUID(subject),
+            user_id=user_id,
             token=encoded_jwt,
             expires_at=expire
         )
@@ -108,7 +146,22 @@ class AuthService:
         # Fetch user directly using SQLAlchemy to avoid tight coupling if preferred,
         # but we can just use the DB session here.
         stmt = select(User).where(User.email == data.email)
-        user = self.db.scalar(stmt)
+        if data.company_slug:
+            from app.companies.model import Company
+
+            stmt = stmt.join(Company, Company.id == User.company_id).where(
+                Company.slug == data.company_slug
+            )
+        candidates = list(self.db.scalars(stmt.limit(2)).all())
+        if not data.company_slug and len(candidates) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "company_required",
+                    "message": "This email belongs to multiple organizations; provide company_slug.",
+                },
+            )
+        user = candidates[0] if candidates else None
         
         if not user:
             raise HTTPException(
@@ -123,6 +176,35 @@ class AuthService:
                 detail="Invalid email or password",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+        # Enforced enterprise SSO replaces password login for matching domains.
+        try:
+            from app.enterprise.models import EnterpriseSSOConnection
+
+            email_domain = user.email.rsplit("@", 1)[-1].lower()
+            sso = self.db.scalar(
+                select(EnterpriseSSOConnection).where(
+                    EnterpriseSSOConnection.company_id == user.company_id,
+                    EnterpriseSSOConnection.domain == email_domain,
+                    EnterpriseSSOConnection.enforce_sso.is_(True),
+                    EnterpriseSSOConnection.is_active.is_(True),
+                )
+            )
+            if sso:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail={
+                        "code": "sso_required",
+                        "provider": sso.provider.value,
+                        "connection_id": str(sso.id),
+                        "initiate_endpoint": f"/api/v1/enterprise/sso/{sso.id}/initiate",
+                    },
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            # Login remains available before enterprise migrations are applied.
+            pass
             
         if not user.is_active or user.status != UserStatus.ACTIVE:
             raise HTTPException(
@@ -130,10 +212,6 @@ class AuthService:
                 detail="User account is suspended or inactive.",
             )
 
-        # Generate tokens
-        access_token = self.create_access_token(subject=str(user.id))
-        refresh_token = self.create_refresh_token(subject=str(user.id))
-        
         # Check if MFA is enabled
         from app.auth.model import MFASettings
         stmt = select(MFASettings).where(MFASettings.user_id == user.id)
@@ -148,6 +226,11 @@ class AuthService:
                 mfa_token=mfa_token,
                 expires_in=300
             )
+
+        # Generate standard tokens only after MFA gating, so a pending MFA
+        # challenge never leaves an active refresh session behind.
+        access_token = self.create_access_token(subject=str(user.id))
+        refresh_token = self.create_refresh_token(subject=str(user.id))
 
         return TokenResponse(
             access_token=access_token,
