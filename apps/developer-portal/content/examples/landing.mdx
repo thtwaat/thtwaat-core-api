@@ -1,0 +1,22 @@
+---
+title: Landing Integration
+description: High-converting landing page with inline AI assistant.
+order: 2
+---
+
+## Setup
+
+```bash
+cd apps/templates/landing
+cp .env.example .env.local
+npm install
+npm run dev
+```
+
+## Leads
+
+`POST /api/leads` forwards to your webhook or Core notifications endpoint.
+
+## AI FAQ
+
+`AiFaq` streams answers via `/api/chat/stream`.

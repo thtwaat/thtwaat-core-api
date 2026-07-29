@@ -1,0 +1,20 @@
+---
+title: Next.js
+description: App Router integration patterns.
+order: 5
+---
+
+## Client SDK
+
+```ts
+import { THTWAAT } from "@thtwaat/sdk";
+
+export const tht = new THTWAAT({
+  apiKey: process.env.NEXT_PUBLIC_AGENT_API_KEY!,
+  apiUrl: process.env.NEXT_PUBLIC_API_URL!,
+});
+```
+
+## Server route proxy
+
+Prefer server routes when you must hide JWT secrets — never expose owner JWTs to the browser.

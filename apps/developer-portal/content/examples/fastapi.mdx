@@ -1,0 +1,29 @@
+---
+title: FastAPI
+description: Python proxy to THTWAAT public chat.
+order: 8
+---
+
+```python
+import os, httpx
+from fastapi import FastAPI
+from pydantic import BaseModel
+
+app = FastAPI()
+API = os.environ["THTWAAT_API_URL"].rstrip("/")
+KEY = os.environ["THTWAAT_API_KEY"]
+
+class ChatIn(BaseModel):
+    message: str
+
+@app.post("/chat")
+async def chat(body: ChatIn):
+    async with httpx.AsyncClient(timeout=60) as client:
+        r = await client.post(
+            f"{API}/public/v1/chat",
+            headers={"Authorization": f"Bearer {KEY}", "Content-Type": "application/json"},
+            json={"message": body.message},
+        )
+        r.raise_for_status()
+        return r.json()
+```

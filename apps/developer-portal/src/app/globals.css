@@ -1,0 +1,60 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --ink: 15 23 42;
+  --muted: 100 116 139;
+  --canvas: 248 250 252;
+  --panel: 255 255 255;
+  --line: 226 232 240;
+  --brand: 15 118 110;
+  --brand-soft: 204 251 241;
+}
+
+.dark {
+  color-scheme: dark;
+  --ink: 241 245 249;
+  --muted: 148 163 184;
+  --canvas: 2 6 23;
+  --panel: 15 23 42;
+  --line: 51 65 85;
+  --brand: 45 212 191;
+  --brand-soft: 19 78 74;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0;
+  color: rgb(var(--ink));
+  background: rgb(var(--canvas));
+  font-family: var(--font-geist), IBM Plex Sans, system-ui, sans-serif;
+}
+a { color: inherit; text-decoration: none; }
+::selection { background: rgb(var(--brand-soft)); }
+
+.swagger-ui .topbar { display: none; }
+.swagger-ui .info { margin: 1rem 0; }
+.dark .swagger-ui,
+.dark .swagger-ui .opblock-tag,
+.dark .swagger-ui .opblock .opblock-summary-description,
+.dark .swagger-ui .opblock-description-wrapper p,
+.dark .swagger-ui table thead tr td,
+.dark .swagger-ui table thead tr th,
+.dark .swagger-ui .parameter__name,
+.dark .swagger-ui .parameter__type,
+.dark .swagger-ui .response-col_status,
+.dark .swagger-ui .response-col_description,
+.dark .swagger-ui .tab li,
+.dark .swagger-ui label,
+.dark .swagger-ui .info .title {
+  color: #e2e8f0 !important;
+}
+.dark .swagger-ui .scheme-container,
+.dark .swagger-ui section.models,
+.dark .swagger-ui .opblock {
+  background: #0f172a !important;
+  border-color: #334155 !important;
+}

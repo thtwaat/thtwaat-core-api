@@ -1,0 +1,50 @@
+---
+title: Errors
+description: HTTP status codes and SDK error objects.
+order: 10
+section: API
+---
+
+## HTTP status map
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Validation / bad request |
+| 401 | Missing or invalid credentials |
+| 403 | Authenticated but not permitted |
+| 404 | Resource not found |
+| 409 | Conflict (duplicate slug/install) |
+| 413 | Upload too large |
+| 415 | Unsupported media type |
+| 429 | Rate limited / quota exceeded |
+| 5xx | Server / upstream failure |
+
+## JavaScript SDK
+
+```ts
+import { THTWAATError } from "@thtwaat/sdk";
+
+try {
+  await client.chat("hi");
+} catch (e) {
+  if (e instanceof THTWAATError && e.status === 429) {
+    // backoff
+  }
+}
+```
+
+## REST SDK
+
+```ts
+import { RestError } from "@thtwaat/rest";
+
+try {
+  await api.agents.chat({ message: "hi" });
+} catch (e) {
+  if (e instanceof RestError) {
+    console.log(e.status, e.code, e.retryable, e.details);
+  }
+}
+```
+
+Fields: `status`, `code`, `message`, `details`, `retryable`.

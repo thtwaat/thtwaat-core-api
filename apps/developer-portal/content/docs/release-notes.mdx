@@ -1,0 +1,33 @@
+---
+title: Release Notes
+description: Highlights for the current platform release.
+order: 12
+section: Guides
+---
+
+## THTWAAT AI Platform v1.0 Foundation
+
+This release packages a production-ready AI product factory:
+
+### Backend
+
+- Core API with RBAC, usage quotas, billing, domains, marketplace, product generator
+
+### SDKs
+
+- `@thtwaat/sdk` — chat, stream, knowledge, widget bridge
+- `@thtwaat/rest` — typed REST client from OpenAPI
+- `@thtwaat/widget` — embeddable chat widget
+
+### Templates
+
+- Website, Landing, SaaS starters wired to existing APIs
+
+### Developer experience
+
+- OpenAPI explorer, Postman export, MDX docs, light/dark portal
+
+### Upgrade notes
+
+- Seed marketplace templates before using Product Generator
+- Apply Alembic migrations through `b2c3d4e5f6a7`

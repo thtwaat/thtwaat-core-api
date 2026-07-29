@@ -1,0 +1,17 @@
+---
+title: Node.js
+description: Server-side chat with the REST SDK.
+order: 6
+---
+
+```ts
+import { RestClient } from "@thtwaat/rest";
+
+const api = new RestClient({
+  apiUrl: process.env.THTWAAT_API_URL!,
+  apiKey: process.env.THTWAAT_API_KEY!,
+});
+
+const res = await api.agents.chat({ message: "Hello from Node" });
+console.log(res);
+```

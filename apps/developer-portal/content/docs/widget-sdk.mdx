@@ -1,0 +1,48 @@
+---
+title: Widget SDK
+description: Embeddable floating chat widget for any website.
+order: 6
+section: SDKs
+---
+
+## One-line embed
+
+```html
+<script
+  src="https://api.thtwaat.com/widget.js"
+  data-api-key="tht_live_xxxxxxxxx"
+  data-theme="light"
+  data-position="bottom-right"
+  data-primary-color="#111827"
+  data-welcome="Hi! How can I help you today?"
+  data-prompts="Pricing?|Book appointment|Contact support">
+</script>
+```
+
+## Programmatic API
+
+```js
+const chat = window.THTWAAT.init({
+  apiKey: "tht_live_xxx",
+  apiBaseUrl: "https://api.thtwaat.com",
+  theme: { mode: "dark", primaryColor: "#0f766e" },
+  onMessage: (m) => console.log(m),
+});
+
+chat.open();
+chat.sendMessage("Hello");
+chat.setTheme("light");
+chat.identifyUser({ email: "user@acme.com" });
+chat.destroy();
+```
+
+## Features
+
+- Floating launcher with open/close animation
+- Light / dark / auto theme
+- Streaming via `/public/v1/chat/stream`
+- Session persistence
+- Shadow DOM isolation
+- Keyboard accessibility
+
+Package: `sdk/widget` builds `widget.js` served by Core API.

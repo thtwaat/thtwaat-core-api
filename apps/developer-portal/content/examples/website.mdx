@@ -1,0 +1,20 @@
+---
+title: Website Integration
+description: Connect the AI Website Starter to THTWAAT.
+order: 1
+---
+
+## Env
+
+```bash
+NEXT_PUBLIC_API_URL=https://api.thtwaat.com
+NEXT_PUBLIC_AGENT_API_KEY=tht_live_xxx
+```
+
+## Widget
+
+Load `/widget.js` in `layout.tsx` with your API key (see `apps/templates/website`).
+
+## Chat routes
+
+Template routes under `src/app/api/chat` and `src/app/api/knowledge` proxy to Core API.

@@ -1,0 +1,230 @@
+"""Template Registry + Marketplace API routes."""
+from __future__ import annotations
+
+from typing import List, Optional
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, Query, status
+from sqlalchemy.orm import Session
+
+from app.auth.router import get_current_user
+from app.auth.schema import UserProfileResponse
+from app.database.database import get_db
+from app.marketplace.schemas import (
+    CategoryItem,
+    ConnectRequest,
+    InstallRequest,
+    InstallationResponse,
+    MarketplaceDashboard,
+    TemplateCreate,
+    TemplateResponse,
+    TemplateUpdate,
+    TemplateVersionCreate,
+    TemplateVersionResponse,
+    UpdateNotification,
+)
+from app.marketplace.service import MarketplaceService
+from app.rbac.dependencies import RequirePermission
+from app.rbac.enums import Permission
+
+router = APIRouter(prefix="/marketplace", tags=["Template Marketplace"])
+
+
+def get_marketplace_service(db: Session = Depends(get_db)) -> MarketplaceService:
+    return MarketplaceService(db)
+
+
+def require_permission(permission: Permission):
+    def _check(user: UserProfileResponse = Depends(get_current_user)):
+        RequirePermission(permission)(user.role)
+        return user
+
+    return _check
+
+
+# ── Browse ────────────────────────────────────────────────────────────────────
+
+@router.get("/dashboard", response_model=MarketplaceDashboard)
+def marketplace_dashboard(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.dashboard(UUID(str(user.company_id)))
+
+
+@router.get("/categories", response_model=List[CategoryItem])
+def list_categories(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.categories()
+
+
+@router.get("/templates", response_model=List[TemplateResponse])
+def list_templates(
+    q: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    featured: Optional[bool] = Query(default=None),
+    newest: bool = Query(default=False),
+    limit: int = Query(default=50, ge=1, le=100),
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.list_templates(
+        UUID(str(user.company_id)),
+        q=q,
+        category=category,
+        featured=featured,
+        newest=newest,
+        limit=limit,
+    )
+
+
+@router.get("/templates/{template_id}/versions", response_model=List[TemplateVersionResponse])
+def list_versions(
+    template_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.list_versions(template_id)
+
+
+@router.get("/templates/{template_id_or_slug}", response_model=TemplateResponse)
+def get_template(
+    template_id_or_slug: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.get_template(template_id_or_slug, UUID(str(user.company_id)))
+
+
+# ── Installations ─────────────────────────────────────────────────────────────
+
+@router.get("/installed", response_model=List[InstallationResponse])
+def list_installed(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.list_installed(UUID(str(user.company_id)))
+
+
+@router.get("/updates", response_model=List[UpdateNotification])
+def list_updates(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.list_update_notifications(UUID(str(user.company_id)))
+
+
+@router.post(
+    "/templates/{template_id_or_slug}/install",
+    response_model=InstallationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def install_template(
+    template_id_or_slug: str,
+    payload: InstallRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.install(
+        UUID(str(user.company_id)),
+        UUID(str(user.id)),
+        template_id_or_slug,
+        payload,
+    )
+
+
+@router.post("/installations/{install_id}/connect", response_model=InstallationResponse)
+def connect_installation(
+    install_id: UUID,
+    payload: ConnectRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.connect(UUID(str(user.company_id)), install_id, payload)
+
+
+@router.post("/installations/{install_id}/publish", response_model=InstallationResponse)
+def publish_installation(
+    install_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.publish_installation(UUID(str(user.company_id)), install_id)
+
+
+@router.post("/installations/{install_id}/update", response_model=InstallationResponse)
+def update_installation(
+    install_id: UUID,
+    version: Optional[str] = Query(default=None),
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.update_installation(UUID(str(user.company_id)), install_id, version)
+
+
+@router.post("/installations/{install_id}/rollback", response_model=InstallationResponse)
+def rollback_installation(
+    install_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.rollback_installation(UUID(str(user.company_id)), install_id)
+
+
+@router.delete("/installations/{install_id}", status_code=status.HTTP_200_OK)
+def uninstall_template(
+    install_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.uninstall(UUID(str(user.company_id)), install_id)
+
+
+# ── Registry admin (platform / manage) ────────────────────────────────────────
+
+@router.post(
+    "/templates",
+    response_model=TemplateResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_template(
+    payload: TemplateCreate,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.create_template(payload)
+
+
+@router.patch("/templates/{template_id}", response_model=TemplateResponse)
+def update_template(
+    template_id: UUID,
+    payload: TemplateUpdate,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.update_template(template_id, payload)
+
+
+@router.post("/templates/{template_id}/publish", response_model=TemplateResponse)
+def publish_catalog_template(
+    template_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.publish_template(template_id)
+
+
+@router.post(
+    "/templates/{template_id}/versions",
+    response_model=TemplateVersionResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_version(
+    template_id: UUID,
+    payload: TemplateVersionCreate,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.add_version(template_id, payload)

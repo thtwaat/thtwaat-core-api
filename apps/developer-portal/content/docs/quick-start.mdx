@@ -1,0 +1,65 @@
+---
+title: Quick Start
+description: Ship your first THTWAAT AI integration in minutes.
+order: 1
+section: Getting started
+---
+
+## Overview
+
+THTWAAT gives you a production AI stack: agents, knowledge (RAG), publish, widget embed, domains, billing, marketplace, and product generator — all behind one API.
+
+## 1. Get credentials
+
+1. Sign up in the SaaS dashboard
+2. Create an agent
+3. Publish the agent → copy `tht_live_...` API key
+
+Base URL:
+
+```bash
+export THTWAAT_API_URL=https://api.thtwaat.com
+export THTWAAT_API_KEY=tht_live_xxx
+```
+
+## 2. Chat with JavaScript SDK
+
+```bash
+npm install @thtwaat/sdk
+```
+
+```ts
+import { THTWAAT } from "@thtwaat/sdk";
+
+const client = new THTWAAT({
+  apiKey: process.env.THTWAAT_API_KEY!,
+  apiUrl: process.env.THTWAAT_API_URL!,
+});
+
+const { reply } = await client.chat("Hello");
+console.log(reply);
+```
+
+## 3. Embed the Widget
+
+```html
+<script
+  src="https://api.thtwaat.com/widget.js"
+  data-api-key="tht_live_xxx"
+  data-theme="light"
+  data-position="bottom-right">
+</script>
+```
+
+## 4. Explore the API
+
+- Interactive [API Explorer](/api-explorer)
+- Download [OpenAPI JSON](/openapi.json)
+- [Postman collection](/downloads)
+
+## Next steps
+
+- [Authentication](/docs/authentication)
+- [JavaScript SDK](/docs/javascript-sdk)
+- [Widget SDK](/docs/widget-sdk)
+- [Examples](/examples)

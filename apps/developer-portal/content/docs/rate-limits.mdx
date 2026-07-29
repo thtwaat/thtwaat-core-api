@@ -1,0 +1,36 @@
+---
+title: Rate Limits
+description: Quotas, usage meters, and HTTP 429 behavior.
+order: 9
+section: API
+---
+
+## Plan quotas
+
+Usage is metered per company across dimensions such as:
+
+- AI messages / tokens
+- Agents, API keys, domains
+- Knowledge storage / uploads
+- Templates published
+- Widget / API requests
+
+Exceeding a hard quota returns **HTTP 429** with a structured error body.
+
+## Headers
+
+When present, inspect:
+
+- `X-RateLimit-Limit`
+- `X-RateLimit-Remaining`
+- `Retry-After`
+
+## SDK behavior
+
+Both `@thtwaat/sdk` and `@thtwaat/rest` retry **429 / 502 / 503 / 504** with exponential backoff by default.
+
+## Best practices
+
+- Cache knowledge search results when possible
+- Stream long answers instead of polling
+- Use webhooks for async lifecycle events

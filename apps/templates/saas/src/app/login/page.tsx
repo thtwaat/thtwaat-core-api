@@ -1,0 +1,98 @@
+"use client";
+
+import Link from "next/link";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { toast } from "sonner";
+import { AuthShell } from "@/components/layout/auth-shell";
+import { Button } from "@/components/ui/button";
+import { Input, Label } from "@/components/ui/input";
+import { useAuth } from "@/lib/auth";
+import { loginSchema } from "@/lib/validators";
+import type { z } from "zod";
+
+type FormValues = z.infer<typeof loginSchema>;
+
+function LoginForm() {
+  const { login, completeMfa } = useAuth();
+  const router = useRouter();
+  const params = useSearchParams();
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
+  const [totp, setTotp] = useState("");
+  const form = useForm<FormValues>({ resolver: zodResolver(loginSchema) });
+
+  async function onSubmit(values: FormValues) {
+    try {
+      const result = await login(values.email, values.password);
+      if ("mfa_required" in result && result.mfa_required) {
+        setMfaToken(result.mfa_token);
+        toast.message("Enter your MFA code to continue");
+        return;
+      }
+      toast.success("Welcome back");
+      router.replace(params.get("next") || "/app");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Login failed");
+    }
+  }
+
+  async function onMfa() {
+    if (!mfaToken) return;
+    try {
+      await completeMfa(mfaToken, totp);
+      toast.success("MFA verified");
+      router.replace(params.get("next") || "/app");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Invalid MFA code");
+    }
+  }
+
+  return (
+    <AuthShell title="Sign in" subtitle="Access your AI workspace">
+      {!mfaToken ? (
+        <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+          <div>
+            <Label htmlFor="email">Email</Label>
+            <Input id="email" type="email" {...form.register("email")} />
+          </div>
+          <div>
+            <Label htmlFor="password">Password</Label>
+            <Input id="password" type="password" {...form.register("password")} />
+          </div>
+          <Button className="w-full" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? "Signing in…" : "Sign in"}
+          </Button>
+        </form>
+      ) : (
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="totp">MFA / recovery code</Label>
+            <Input id="totp" value={totp} onChange={(e) => setTotp(e.target.value)} placeholder="123456" />
+          </div>
+          <Button className="w-full" onClick={onMfa}>Verify MFA</Button>
+        </div>
+      )}
+      <div className="mt-5 space-y-2 text-center text-sm text-muted">
+        <p>
+          <Link className="text-brand" href="/forgot-password">Forgot password?</Link>
+        </p>
+        <p>
+          Need an account? <Link className="text-brand" href="/signup">Sign up</Link>
+        </p>
+        <p>
+          Have an OTP? <Link className="text-brand" href="/otp">Verify OTP</Link>
+        </p>
+      </div>
+    </AuthShell>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="grid min-h-screen place-items-center text-sm text-muted">Loading…</div>}>
+      <LoginForm />
+    </Suspense>
+  );
+}

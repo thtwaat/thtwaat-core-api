@@ -46,6 +46,10 @@ class Permission(str, enum.Enum):
     # Domains
     DOMAINS_READ   = "domains:read"
     DOMAINS_MANAGE = "domains:manage"
+
+    # Templates / Marketplace
+    TEMPLATES_READ   = "templates:read"
+    TEMPLATES_MANAGE = "templates:manage"
     
     # Platform (Super Admin only)
     PLATFORM_ADMIN = "platform:admin"

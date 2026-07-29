@@ -20,6 +20,8 @@ from app.agent_platform.publish.router import router as agent_publish_router
 from app.usage.router import router as usage_router
 from app.domains.router import router as domains_router
 from app.deploy.router import router as deploy_router
+from app.marketplace.router import router as marketplace_router
+from app.product_generator.router import router as product_generator_router
 
 # Central versioned router — all module routers are registered here
 api_router = APIRouter(prefix="/api/v1")
@@ -46,6 +48,8 @@ api_router.include_router(agent_publish_router)
 api_router.include_router(usage_router)
 api_router.include_router(domains_router)
 api_router.include_router(deploy_router)
+api_router.include_router(marketplace_router)
+api_router.include_router(product_generator_router)
 
 # ── System Endpoints ──────────────────────────────────────────────────────────
 

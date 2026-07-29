@@ -23,6 +23,8 @@ import app.agent_platform.knowledge.models  # noqa — registers all KB tables f
 import app.features.ai_platform.database.models  # noqa — registers ai_providers, ai_models, ai_agents, etc.
 import app.usage.models  # noqa — usage_events, company_usage_meters, usage_daily_aggregates
 import app.domains.models  # noqa — company_domains
+import app.marketplace.models  # noqa — marketplace_templates, versions, installations
+import app.product_generator.models  # noqa — product_generations
 import app.payments.plans.model  # noqa
 import app.payments.subscriptions.model  # noqa
 import app.payments.invoices.model  # noqa

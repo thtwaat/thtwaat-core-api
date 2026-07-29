@@ -1,0 +1,34 @@
+---
+title: Flutter SDK
+description: Native Flutter / Dart client — coming soon.
+order: 7
+section: SDKs
+---
+
+## Status
+
+<Callout type="warn">
+Flutter SDK is **Coming Soon** (Module 42). Use REST endpoints or the JavaScript SDK from Flutter Web today.
+</Callout>
+
+## Planned surface
+
+- `ThtwaatClient` with API key / JWT auth
+- Chat + streaming
+- Knowledge search
+- Widget bridge for Flutter WebView embeds
+
+## Temporary workaround
+
+```dart
+final res = await http.post(
+  Uri.parse('$apiUrl/public/v1/chat'),
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': 'Bearer $apiKey',
+  },
+  body: jsonEncode({'message': 'Hello'}),
+);
+```
+
+Watch [Release Notes](/docs/release-notes) for Flutter SDK GA.

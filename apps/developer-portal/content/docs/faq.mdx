@@ -1,0 +1,32 @@
+---
+title: FAQ
+description: Common questions from integrating developers.
+order: 13
+section: Guides
+---
+
+## Do I need to change the backend to use templates?
+
+No. Website, Landing, and SaaS starters consume existing APIs with env vars only.
+
+## API key vs JWT?
+
+Use **API keys** for public chat/widget. Use **JWT** for dashboard CRUD (agents, domains, billing).
+
+## Where is OpenAPI?
+
+- Live (non-prod): `{API}/openapi.json`
+- Portal: [/openapi.json](/openapi.json)
+- Explorer: [/api-explorer](/api-explorer)
+
+## Can I self-host?
+
+Yes — Docker Compose / production compose ships with Core API, Nginx, Postgres, Redis, MinIO.
+
+## Flutter SDK?
+
+Coming soon. Use REST from Dart until Module 42 ships.
+
+## How do I get support?
+
+See [Support](/support). Include status codes, endpoint paths, and redacted payloads.

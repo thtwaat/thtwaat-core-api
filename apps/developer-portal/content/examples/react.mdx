@@ -1,0 +1,22 @@
+---
+title: React
+description: Embed chat in a React 19 SPA.
+order: 4
+---
+
+```tsx
+import { useEffect } from "react";
+
+export function ThtwaatChat({ apiKey }: { apiKey: string }) {
+  useEffect(() => {
+    const s = document.createElement("script");
+    s.src = "https://api.thtwaat.com/widget.js";
+    s.async = true;
+    s.dataset.apiKey = apiKey;
+    s.dataset.theme = "light";
+    document.body.appendChild(s);
+    return () => { s.remove(); };
+  }, [apiKey]);
+  return null;
+}
+```

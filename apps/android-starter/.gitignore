@@ -1,0 +1,28 @@
+# Android / Gradle
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+output.json
+
+# Kotlin
+.kotlin/
+
+# Keystore
+*.jks
+*.keystore
+
+# Android Studio
+.navigation/
+*.hprof
+
+# Room schema (optional exports)
+/schemas/

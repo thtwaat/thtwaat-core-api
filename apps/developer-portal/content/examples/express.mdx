@@ -1,0 +1,26 @@
+---
+title: Express
+description: Express middleware proxy for public chat.
+order: 7
+---
+
+```ts
+import express from "express";
+import { RestClient } from "@thtwaat/rest";
+
+const app = express();
+app.use(express.json());
+const api = new RestClient({
+  apiUrl: process.env.THTWAAT_API_URL!,
+  apiKey: process.env.THTWAAT_API_KEY!,
+});
+
+app.post("/chat", async (req, res) => {
+  try {
+    const out = await api.agents.chat({ message: req.body.message });
+    res.json(out);
+  } catch (e: any) {
+    res.status(e.status || 500).json({ error: e.message });
+  }
+});
+```

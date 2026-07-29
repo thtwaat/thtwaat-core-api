@@ -1,0 +1,68 @@
+---
+title: Authentication
+description: API keys, JWT bearer tokens, OTP, and refresh flows.
+order: 2
+section: Getting started
+---
+
+## Auth modes
+
+THTWAAT supports two primary credentials:
+
+| Mode | Header | Use for |
+|------|--------|---------|
+| Agent API key | `Authorization: Bearer tht_live_...` or `X-API-Key` | Public chat, widget, streaming |
+| User JWT | `Authorization: Bearer <access_token>` | Dashboard / admin routes |
+
+## Login (JWT)
+
+```http
+POST /api/v1/auth/login
+Content-Type: application/json
+
+{"email":"owner@acme.com","password":"••••••••"}
+```
+
+Response includes `access_token` and `refresh_token`.
+
+## Refresh
+
+```http
+POST /api/v1/auth/refresh
+{"refresh_token":"..."}
+```
+
+## OTP
+
+```http
+POST /api/v1/auth/send-otp
+{"purpose":"login","email":"owner@acme.com"}
+
+POST /api/v1/auth/verify-otp
+{"purpose":"login","email":"owner@acme.com","code":"123456"}
+```
+
+## JavaScript SDK
+
+```ts
+import { THTWAAT } from "@thtwaat/sdk";
+
+new THTWAAT({ apiKey: "tht_live_xxx" });
+new THTWAAT({ bearerToken: "<jwt>" });
+```
+
+## REST SDK
+
+```ts
+import { RestClient } from "@thtwaat/rest";
+
+const api = new RestClient({ apiUrl: process.env.THTWAAT_API_URL! });
+const tokens = await api.auth.login({ email, password }) as any;
+api.setBearerToken(tokens.access_token);
+```
+
+## Security notes
+
+- Never embed owner JWTs in public websites.
+- Rotate published agent keys from the dashboard.
+- Prefer HTTPS everywhere in production.

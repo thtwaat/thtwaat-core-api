@@ -1,0 +1,52 @@
+---
+title: REST SDK
+description: Typed OpenAPI-backed REST client (@thtwaat/rest).
+order: 5
+section: SDKs
+---
+
+## Install
+
+```bash
+cd sdk/rest
+npm install
+npm run build
+```
+
+## Create client
+
+```ts
+import { RestClient } from "@thtwaat/rest";
+
+const api = new RestClient({
+  apiUrl: "https://api.thtwaat.com",
+  apiKey: "tht_live_xxx",
+});
+```
+
+## Modules
+
+```ts
+await api.auth.login({ email, password });
+await api.agents.list();
+await api.agents.publish(agentId);
+await api.agents.chat({ message: "Hi" });
+await api.knowledge.upload(file, { filename: "faq.pdf", kbId });
+await api.domains.list();
+await api.payments.list();
+```
+
+## Streaming
+
+```ts
+for await (const ev of api.agents.streamChat({ message: "Hello", api_key: "tht_live_xxx" })) {
+  if (ev.event === "token") process.stdout.write((ev.data as any).text || "");
+}
+```
+
+## Regenerate types
+
+```bash
+curl -o openapi.json http://localhost:8000/openapi.json
+npm run generate
+```

@@ -1,0 +1,50 @@
+---
+title: JavaScript SDK
+description: Official browser and Node.js SDK (@thtwaat/sdk).
+order: 4
+section: SDKs
+---
+
+## Install
+
+```bash
+npm install @thtwaat/sdk
+```
+
+## Quick chat
+
+```ts
+import { THTWAAT } from "@thtwaat/sdk";
+
+const client = new THTWAAT({
+  apiKey: process.env.THTWAAT_API_KEY!,
+  apiUrl: process.env.THTWAAT_API_URL || "https://api.thtwaat.com",
+});
+
+const { reply, conversationId } = await client.chat("Hello");
+console.log(reply, conversationId);
+```
+
+## Streaming
+
+```ts
+for await (const event of client.streamChat("Hello")) {
+  if (event.type === "token") process.stdout.write(event.text);
+  if (event.type === "done") console.log("\n", event.result);
+}
+```
+
+## Knowledge / Agent / Widget
+
+```ts
+await client.search({ query: "refund policy", topK: 5 });
+client.setAgentId("agent-uuid");
+await client.agent.info();
+client.widget.open(); // browser + widget.js
+```
+
+## Events
+
+`ready | message | typing | stream | error | disconnect | reconnect`
+
+Source: `sdk/javascript` in the monorepo.

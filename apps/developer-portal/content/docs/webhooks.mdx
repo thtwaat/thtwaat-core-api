@@ -1,0 +1,43 @@
+---
+title: Webhooks
+description: Receive platform events in your backend.
+order: 8
+section: API
+---
+
+## Overview
+
+Register webhook endpoints to receive signed JSON payloads for billing, domain, agent, and notification events.
+
+## Create a webhook
+
+```http
+POST /api/v1/webhooks
+Authorization: Bearer <jwt>
+Content-Type: application/json
+
+{
+  "url": "https://hooks.acme.com/thtwaat",
+  "events": ["payment.succeeded", "domain.verified", "agent.published"],
+  "secret": "whsec_..."
+}
+```
+
+## Payload shape
+
+```json
+{
+  "id": "evt_...",
+  "type": "agent.published",
+  "created_at": "2026-07-29T10:00:00Z",
+  "data": { "agent_id": "..." }
+}
+```
+
+## Verification
+
+Validate the signature header with your webhook secret before processing. Respond with `2xx` quickly; handlers should be idempotent on `id`.
+
+## Delivery retries
+
+Failed deliveries retry with exponential backoff for retryable statuses (5xx / timeouts).

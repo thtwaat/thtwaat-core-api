@@ -1,0 +1,177 @@
+"""Repository for marketplace templates, versions, and installations."""
+from __future__ import annotations
+
+from typing import List, Optional
+from uuid import UUID
+
+from sqlalchemy import or_, func
+from sqlalchemy.orm import Session
+
+from app.marketplace.models import (
+    InstallStatus,
+    MarketplaceTemplate,
+    TemplateInstallation,
+    TemplateStatus,
+    TemplateVersion,
+)
+
+
+class MarketplaceRepository:
+    def __init__(self, db: Session):
+        self.db = db
+
+    # ── Templates ─────────────────────────────────────────────────────────────
+
+    def get_template(self, template_id: UUID) -> Optional[MarketplaceTemplate]:
+        return self.db.query(MarketplaceTemplate).filter(MarketplaceTemplate.id == template_id).first()
+
+    def get_by_slug(self, slug: str) -> Optional[MarketplaceTemplate]:
+        return self.db.query(MarketplaceTemplate).filter(MarketplaceTemplate.slug == slug).first()
+
+    def list_templates(
+        self,
+        *,
+        q: Optional[str] = None,
+        category: Optional[str] = None,
+        featured: Optional[bool] = None,
+        status: Optional[str] = TemplateStatus.PUBLISHED.value,
+        is_public: Optional[bool] = True,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> List[MarketplaceTemplate]:
+        query = self.db.query(MarketplaceTemplate)
+        if status:
+            query = query.filter(MarketplaceTemplate.status == status)
+        if is_public is not None:
+            query = query.filter(MarketplaceTemplate.is_public == is_public)
+        if category:
+            query = query.filter(MarketplaceTemplate.category == category)
+        if featured is not None:
+            query = query.filter(MarketplaceTemplate.is_featured == featured)
+        if q:
+            like = f"%{q.strip()}%"
+            query = query.filter(
+                or_(
+                    MarketplaceTemplate.name.ilike(like),
+                    MarketplaceTemplate.description.ilike(like),
+                    MarketplaceTemplate.slug.ilike(like),
+                    MarketplaceTemplate.industry.ilike(like),
+                )
+            )
+        return (
+            query.order_by(MarketplaceTemplate.is_featured.desc(), MarketplaceTemplate.created_at.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+
+    def category_counts(self) -> List[tuple[str, int]]:
+        rows = (
+            self.db.query(MarketplaceTemplate.category, func.count(MarketplaceTemplate.id))
+            .filter(
+                MarketplaceTemplate.status == TemplateStatus.PUBLISHED.value,
+                MarketplaceTemplate.is_public.is_(True),
+            )
+            .group_by(MarketplaceTemplate.category)
+            .all()
+        )
+        return [(str(cat.value if hasattr(cat, "value") else cat), int(count)) for cat, count in rows]
+
+    def save_template(self, template: MarketplaceTemplate) -> MarketplaceTemplate:
+        self.db.add(template)
+        self.db.flush()
+        return template
+
+    # ── Versions ──────────────────────────────────────────────────────────────
+
+    def get_version(self, version_id: UUID) -> Optional[TemplateVersion]:
+        return self.db.query(TemplateVersion).filter(TemplateVersion.id == version_id).first()
+
+    def get_version_by_number(self, template_id: UUID, version: str) -> Optional[TemplateVersion]:
+        return (
+            self.db.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == template_id, TemplateVersion.version == version)
+            .first()
+        )
+
+    def get_latest_version(self, template_id: UUID) -> Optional[TemplateVersion]:
+        return (
+            self.db.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == template_id, TemplateVersion.is_latest.is_(True))
+            .first()
+        )
+
+    def list_versions(self, template_id: UUID) -> List[TemplateVersion]:
+        return (
+            self.db.query(TemplateVersion)
+            .filter(TemplateVersion.template_id == template_id)
+            .order_by(TemplateVersion.created_at.desc())
+            .all()
+        )
+
+    def clear_latest_flags(self, template_id: UUID) -> None:
+        self.db.query(TemplateVersion).filter(TemplateVersion.template_id == template_id).update(
+            {"is_latest": False},
+            synchronize_session=False,
+        )
+
+    def save_version(self, version: TemplateVersion) -> TemplateVersion:
+        self.db.add(version)
+        self.db.flush()
+        return version
+
+    # ── Installations ─────────────────────────────────────────────────────────
+
+    def get_install(self, install_id: UUID, company_id: UUID) -> Optional[TemplateInstallation]:
+        return (
+            self.db.query(TemplateInstallation)
+            .filter(
+                TemplateInstallation.id == install_id,
+                TemplateInstallation.company_id == company_id,
+            )
+            .first()
+        )
+
+    def get_install_for_template(
+        self, company_id: UUID, template_id: UUID
+    ) -> Optional[TemplateInstallation]:
+        return (
+            self.db.query(TemplateInstallation)
+            .filter(
+                TemplateInstallation.company_id == company_id,
+                TemplateInstallation.template_id == template_id,
+                TemplateInstallation.status != InstallStatus.UNINSTALLED.value,
+            )
+            .first()
+        )
+
+    def list_installs(self, company_id: UUID) -> List[TemplateInstallation]:
+        return (
+            self.db.query(TemplateInstallation)
+            .filter(
+                TemplateInstallation.company_id == company_id,
+                TemplateInstallation.status != InstallStatus.UNINSTALLED.value,
+            )
+            .order_by(TemplateInstallation.created_at.desc())
+            .all()
+        )
+
+    def list_updates(self, company_id: UUID) -> List[TemplateInstallation]:
+        return (
+            self.db.query(TemplateInstallation)
+            .filter(
+                TemplateInstallation.company_id == company_id,
+                TemplateInstallation.update_available.is_(True),
+                TemplateInstallation.status != InstallStatus.UNINSTALLED.value,
+            )
+            .order_by(TemplateInstallation.updated_at.desc())
+            .all()
+        )
+
+    def save_install(self, install: TemplateInstallation) -> TemplateInstallation:
+        self.db.add(install)
+        self.db.flush()
+        return install
+
+    def commit(self) -> None:
+        self.db.commit()

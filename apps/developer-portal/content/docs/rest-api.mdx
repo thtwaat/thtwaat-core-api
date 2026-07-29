@@ -1,0 +1,40 @@
+---
+title: REST API
+description: Versioned HTTP API surface for the THTWAAT Core platform.
+order: 3
+section: API
+---
+
+## Base URLs
+
+| Prefix | Purpose |
+|--------|---------|
+| `/api/v1` | Core platform (auth, companies, billing, marketplace, domains) |
+| `/v2` | Agent platform (agents, knowledge, conversations) |
+| `/public/v1` | Public chat & widget endpoints |
+
+Base: `https://api.thtwaat.com` (or your self-hosted origin).
+
+## Core resources
+
+- Auth — login, refresh, OTP, MFA
+- Companies / Users / Apps
+- Agents — create, publish, embed, API keys
+- Knowledge — bases, upload, search
+- Domains — verify, SSL
+- Marketplace — templates, install, versions
+- Product Generator — analyze, generate, publish
+- Usage & Billing — meters, plans, invoices
+
+## OpenAPI
+
+- Interactive explorer: [/api-explorer](/api-explorer)
+- Download JSON: [/openapi.json](/openapi.json)
+- Download YAML: [/api/downloads/openapi.yaml](/api/downloads/openapi.yaml)
+
+## Conventions
+
+- JSON request/response bodies
+- UUID path params
+- ISO-8601 timestamps
+- Standard HTTP status codes (see [Errors](/docs/errors))

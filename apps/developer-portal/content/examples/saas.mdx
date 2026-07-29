@@ -1,0 +1,20 @@
+---
+title: SaaS Integration
+description: Full dashboard starter with JWT auth and marketplace.
+order: 3
+---
+
+## Env
+
+```bash
+NEXT_PUBLIC_API_URL=https://api.thtwaat.com
+NEXT_PUBLIC_AGENT_API_KEY=tht_live_xxx
+```
+
+## Auth flow
+
+Login → optional MFA/OTP → session cookie `tht_session` → protected `/app/*` routes.
+
+## Modules
+
+Agents, Knowledge, Marketplace, Domains, Billing, Analytics, Product Generator (`/app/create`).
