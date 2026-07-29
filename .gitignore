@@ -28,6 +28,13 @@ env/
 .env.*
 !.env.example
 
+# Node
+node_modules/
+npm-debug.log*
+.npm
+.next/
+out/
+
 # IDE
 .vscode/
 .idea/
@@ -45,6 +52,21 @@ htmlcov/
 # Logs
 *.log
 logs/
+
+# Runtime / local data (do not publish uploads or generated knowledge)
+data/uploads/*
+!data/uploads/.gitkeep
+data/knowledge/
+data/ssl/
+
+# TLS private keys and issued certs (keep directory placeholders only)
+*.pem
+*.key
+!**/*.example
+nginx/ssl/domains/**
+!nginx/ssl/domains/.keep
+nginx/ssl/*.crt
+nginx/ssl/*.key
 
 # OS
 .DS_Store

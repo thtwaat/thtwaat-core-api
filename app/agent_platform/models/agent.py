@@ -1,7 +1,6 @@
 import uuid
-from sqlalchemy import Column, String, Float, ForeignKey, Text, Integer, Boolean
+from sqlalchemy import Column, String, Float, ForeignKey, Text, Integer, Boolean, DateTime
 from sqlalchemy.dialects.postgresql import UUID, JSONB
-from sqlalchemy.orm import relationship
 
 from app.models.base import Base, TimestampMixin
 
@@ -21,3 +20,7 @@ class AgentConfig(Base, TimestampMixin):
     version = Column(Integer, default=1, nullable=False)
     is_template = Column(Boolean, default=False, nullable=False)
     web_config = Column(JSONB, default=dict, nullable=False)
+
+    # Publish / embed
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    widget_id = Column(String(64), unique=True, index=True, nullable=True)

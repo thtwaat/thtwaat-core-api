@@ -43,6 +43,40 @@ class Settings(BaseSettings):
     
     MFA_ISSUER_NAME: str = "THTWAAT Enterprise"
 
+    # Public publish / embed base URL (used in embed scripts & iframe URLs)
+    PUBLIC_API_BASE_URL: str = "http://localhost:8000"
+
+    # Domain Manager / custom domains
+    DOMAIN_CNAME_TARGET: str = "cname.thtwaat.com"
+    DOMAIN_A_RECORDS: list[str] = []
+    DOMAIN_AAAA_RECORDS: list[str] = []
+
+    # SSL Manager
+    SSL_MODE: str = "simulate"  # simulate | certbot
+    SSL_ACME_EMAIL: Optional[str] = "ops@thtwaat.com"
+    SSL_ACME_STAGING: bool = True
+    SSL_CERTS_DIR: str = "nginx/ssl/domains"
+    SSL_WEBROOT_DIR: str = "nginx/acme-webroot"
+    NGINX_GENERATED_DIR: str = "nginx/conf.d/domains"
+    NGINX_CERT_CONTAINER_PREFIX: Optional[str] = "/etc/nginx/ssl"
+
+    # Backups / scheduler
+    BACKUP_DIR: str = "data/backups"
+    BACKUP_RETENTION_DAYS: int = 14
+    BACKUP_HOUR_UTC: int = 3
+    SCHEDULER_INTERVAL_SECONDS: int = 300
+
+    # Security
+    TRUSTED_PROXIES: list[str] = ["nginx", "127.0.0.1"]
+    CSP_POLICY: str = "default-src 'self'; frame-ancestors 'self'; object-src 'none'"
+
+    # Payment Gateways
+    STRIPE_SECRET_KEY: Optional[str] = None
+    STRIPE_WEBHOOK_SECRET: Optional[str] = None
+    STRIPE_CURRENCY: str = "usd"
+    RAZORPAY_KEY_ID: Optional[str] = None
+    RAZORPAY_KEY_SECRET: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env", 
         env_file_encoding="utf-8",

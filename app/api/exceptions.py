@@ -21,9 +21,12 @@ async def http_exception_handler(request: Request, exc: StarletteHTTPException):
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = [{"loc": err["loc"], "msg": err["msg"], "type": err["type"]} for err in exc.errors()]
+    msg = errors[0]["msg"] if errors else "Validation Error"
+    if msg.startswith("value is not a valid email address"):
+        msg = "Invalid email address"
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-        content={"error": "Validation Error", "details": errors, "code": 422}
+        content={"error": msg, "details": errors, "code": 422}
     )
 
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):

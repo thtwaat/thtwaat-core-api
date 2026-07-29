@@ -31,6 +31,24 @@ import app.products.model  # noqa
 import app.api_keys.model
 import app.webhooks.model
 import app.features.ai_platform.database.models
+import app.agent_platform.models  # noqa — registers agent_configs, agent_api_keys, agent_company_quotas, etc.
+import app.agent_platform.knowledge.models  # noqa — registers knowledge_bases, documents, chunks, embeddings_meta
+import app.usage.models  # noqa — registers usage_events, company_usage_meters, usage_daily_aggregates
+import app.domains.models  # noqa — company_domains
+import app.payments.plans.model  # noqa — plans + usage limit columns
+import app.payments.subscriptions.model  # noqa
+import app.payments.invoices.model  # noqa
+# Payment billing models
+import app.payments.plans.model      # noqa — registers plans table
+import app.payments.invoices.model   # noqa — registers invoices table (must come before subscriptions)
+import app.payments.subscriptions.model  # noqa — registers subscriptions table
+
+# Import all LLM provider modules to trigger ProviderRegistry self-registration
+import app.agent_platform.providers.gemini      # noqa
+import app.agent_platform.providers.openai      # noqa
+import app.agent_platform.providers.anthropic   # noqa
+import app.agent_platform.providers.ollama      # noqa
+import app.agent_platform.providers.openrouter  # noqa
 # Use lifespan events for startup and shutdown instead of deprecated @app.on_event
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -69,20 +87,39 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = settings.CSP_POLICY
+        response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response
 
 app.add_middleware(SecurityHeadersMiddleware)
 
+from app.deploy.middleware import RequestContextMiddleware
+app.add_middleware(RequestContextMiddleware)
+
 # Instrument Prometheus metrics
 Instrumentator().instrument(app).expose(app)
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Static CORS (when CORS_ORIGINS includes "*") + dynamic verified domain origins
+from app.domains.cors import DynamicCORSMiddleware
+
+if "*" in (settings.CORS_ORIGINS or []):
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+else:
+    app.add_middleware(DynamicCORSMiddleware)
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.CORS_ORIGINS,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
 configure_logging()
 
@@ -97,7 +134,48 @@ app.include_router(api_router)
 
 # Include the Agent Platform v2 routers (used by platform web)
 from app.agent_platform.routers.agent_router import router as agent_router
+from app.agent_platform.routers.public_router import router as public_router
+from app.agent_platform.knowledge.routers import router as knowledge_router
+from app.agent_platform.routers.conversation_router import router as conversation_router
+
 app.include_router(agent_router)
+app.include_router(public_router)
+app.include_router(knowledge_router)
+app.include_router(conversation_router)
+
+from pathlib import Path
+from fastapi.responses import FileResponse, PlainTextResponse
+
+_WIDGET_DIST = Path(__file__).resolve().parent / "app" / "agent_platform" / "static" / "widget"
+_WIDGET_JS_FILE = _WIDGET_DIST / "widget.js"
+_WIDGET_CSS_FILE = _WIDGET_DIST / "widget.css"
+
+# Legacy inline fallback if SDK dist not built yet
+_WIDGET_JS_FALLBACK = """\
+(function(){console.error("THTWAAT widget: dist not built. Run: cd sdk/widget && npm i && npm run build");})();
+"""
+
+
+@app.get("/widget.js", include_in_schema=False)
+async def widget_js():
+    if _WIDGET_JS_FILE.exists():
+        return FileResponse(
+            _WIDGET_JS_FILE,
+            media_type="application/javascript",
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+    return PlainTextResponse(_WIDGET_JS_FALLBACK, media_type="application/javascript")
+
+
+@app.get("/widget.css", include_in_schema=False)
+async def widget_css():
+    if _WIDGET_CSS_FILE.exists():
+        return FileResponse(
+            _WIDGET_CSS_FILE,
+            media_type="text/css",
+            headers={"Cache-Control": "public, max-age=300"},
+        )
+    return PlainTextResponse("/* widget.css missing — rebuild sdk/widget */", media_type="text/css")
 
 @app.get("/", summary="Root Endpoint", tags=["General"])
 async def root():
@@ -109,32 +187,43 @@ async def root():
 @app.get("/health", summary="Health Check", tags=["General"])
 async def health_check():
     """
-    Health check endpoint for load balancers and container orchestration.
+    Comprehensive health for load balancers and orchestration.
     """
-    return JSONResponse(
-        content={
-            "status": "healthy",
-            "environment": settings.app_env,
-            "version": app.version
-        },
-        status_code=200
-    )
+    from app.database.database import SessionLocal
+    from app.deploy.health import full_health
 
-@app.get("/liveness", summary="Liveness Probe", tags=["General"])
+    db = SessionLocal()
+    try:
+        payload = await full_health(db)
+        code = 200 if payload.get("status") == "healthy" else 503
+        return JSONResponse(content=payload, status_code=code)
+    finally:
+        db.close()
+
+
+@app.get("/live", summary="Liveness Probe", tags=["General"])
+@app.get("/liveness", summary="Liveness Probe (alias)", tags=["General"], include_in_schema=False)
 async def liveness_probe():
     return {"status": "alive"}
 
-@app.get("/readiness", summary="Readiness Probe", tags=["General"])
+
+@app.get("/ready", summary="Readiness Probe", tags=["General"])
+@app.get("/readiness", summary="Readiness Probe (alias)", tags=["General"], include_in_schema=False)
 async def readiness_probe():
-    from sqlalchemy import text
-    import redis.asyncio as redis
+    from app.database.database import SessionLocal
+    from app.deploy.health import check_database, check_redis, check_storage
+
+    db = SessionLocal()
     try:
-        # Check Database
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        # Check Redis
-        r = redis.from_url(f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", encoding="utf-8", decode_responses=True)
-        await r.ping()
-        return {"status": "ready"}
-    except Exception as e:
-        return JSONResponse(status_code=503, content={"status": "not ready", "details": str(e)})
+        checks = {
+            "database": check_database(db),
+            "redis": await check_redis(),
+            "storage": check_storage(),
+        }
+        ok = all(c.get("ok") for c in checks.values())
+        return JSONResponse(
+            status_code=200 if ok else 503,
+            content={"status": "ready" if ok else "not ready", "checks": checks},
+        )
+    finally:
+        db.close()

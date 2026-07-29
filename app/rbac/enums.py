@@ -35,6 +35,17 @@ class Permission(str, enum.Enum):
     # Companies
     COMPANY_READ   = "company:read"
     COMPANY_UPDATE = "company:update"
+
+    # Agents / Publish
+    AGENTS_READ         = "agents:read"
+    AGENTS_CREATE       = "agents:create"
+    AGENTS_UPDATE       = "agents:update"
+    AGENTS_PUBLISH      = "agents:publish"
+    AGENTS_MANAGE_KEYS  = "agents:manage_keys"
+
+    # Domains
+    DOMAINS_READ   = "domains:read"
+    DOMAINS_MANAGE = "domains:manage"
     
     # Platform (Super Admin only)
     PLATFORM_ADMIN = "platform:admin"

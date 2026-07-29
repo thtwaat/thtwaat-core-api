@@ -42,7 +42,7 @@ class APIKeyService:
         })
         
         # Return dict matching APIKeyGenerateResponse
-        return {
+        result = {
             "id": db_obj.id,
             "name": db_obj.name,
             "app_label": db_obj.app_label,
@@ -53,6 +53,22 @@ class APIKeyService:
             "masked_key": self._mask_key(raw_key),
             "raw_key": raw_key
         }
+
+        # ── Dispatch in-app notification event ───────────────────────────────
+        try:
+            import uuid as _uuid
+            from app.notifications.events import NotificationEventBus
+            NotificationEventBus.dispatch(
+                event_type="api_key.created",
+                db=self.db,
+                company_id=_uuid.UUID(str(company_id)),
+                user_id=None,
+                data={"key_name": data.name},
+            )
+        except Exception:
+            pass
+
+        return result
 
     def list_api_keys(self, company_id: str) -> list:
         keys = self.repo.get_by_company(company_id)

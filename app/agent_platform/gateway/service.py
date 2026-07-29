@@ -11,7 +11,7 @@ class AIGatewayService:
     """
     
     @staticmethod
-    async def process_request(request: UnifiedChatRequest) -> UnifiedChatResponse:
+    async def process_request(request: UnifiedChatRequest, db=None, **usage_ctx) -> UnifiedChatResponse:
         start_time = time.time()
         
         # 1. Resolve Company Config (Validate tenant)
@@ -42,7 +42,7 @@ class AIGatewayService:
         )
         response.estimated_cost = estimated_cost
 
-        # 7. Log Usage Async
+        # 7. Log Usage (Usage Meter when db provided)
         Tracker.log_usage(
             company_id=request.company_id,
             agent_id=request.agent_id,
@@ -50,7 +50,9 @@ class AIGatewayService:
             model=request.model,
             input_tokens=response.input_tokens,
             output_tokens=response.output_tokens,
-            total_cost=estimated_cost
+            total_cost=estimated_cost,
+            db=db,
+            **usage_ctx,
         )
 
         return response

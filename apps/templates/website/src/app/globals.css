@@ -1,0 +1,51 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --brand: #0f766e;
+  --brand-foreground: #ecfdf5;
+  --brand-muted: #ccfbf1;
+  --surface: #f8faf9;
+  --surface-elevated: #ffffff;
+  --ink: #0f172a;
+  --ink-muted: #64748b;
+  --radius: 1rem;
+}
+
+.dark {
+  --brand: #2dd4bf;
+  --brand-foreground: #042f2e;
+  --brand-muted: #134e4a;
+  --surface: #0b1220;
+  --surface-elevated: #111827;
+  --ink: #f8fafc;
+  --ink-muted: #94a3b8;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-surface text-ink antialiased font-sans;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 10% -10%, color-mix(in srgb, var(--brand) 18%, transparent), transparent),
+    radial-gradient(ellipse 60% 40% at 90% 0%, color-mix(in srgb, var(--brand) 10%, transparent), transparent);
+  min-height: 100vh;
+}
+
+@layer utilities {
+  .container-page {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6 lg:px-8;
+  }
+  .section {
+    @apply py-16 sm:py-24;
+  }
+  .gradient-text {
+    background: linear-gradient(120deg, var(--brand), color-mix(in srgb, var(--brand) 40%, #0ea5e9));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+}

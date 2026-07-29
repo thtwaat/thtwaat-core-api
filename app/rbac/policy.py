@@ -15,34 +15,49 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.APPS_CREATE, Permission.APPS_READ, Permission.APPS_UPDATE, Permission.APPS_DELETE,
         Permission.USERS_CREATE, Permission.USERS_READ, Permission.USERS_UPDATE, Permission.USERS_DELETE,
         Permission.COMPANY_READ, Permission.COMPANY_UPDATE,
+        Permission.AGENTS_READ, Permission.AGENTS_CREATE, Permission.AGENTS_UPDATE,
+        Permission.AGENTS_PUBLISH, Permission.AGENTS_MANAGE_KEYS,
+        Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
     },
     
     EnterpriseRole.ADMIN: {
         Permission.APPS_CREATE, Permission.APPS_READ, Permission.APPS_UPDATE, Permission.APPS_DELETE,
         Permission.USERS_CREATE, Permission.USERS_READ, Permission.USERS_UPDATE, Permission.USERS_DELETE,
         Permission.COMPANY_READ,
+        Permission.AGENTS_READ, Permission.AGENTS_CREATE, Permission.AGENTS_UPDATE,
+        Permission.AGENTS_PUBLISH, Permission.AGENTS_MANAGE_KEYS,
+        Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
     },
     
     EnterpriseRole.MANAGER: {
         Permission.APPS_READ, Permission.APPS_UPDATE,
         Permission.USERS_READ,
         Permission.COMPANY_READ,
+        Permission.AGENTS_READ, Permission.AGENTS_CREATE, Permission.AGENTS_UPDATE,
+        Permission.DOMAINS_READ,
     },
     
     EnterpriseRole.DEVELOPER: {
         Permission.APPS_CREATE, Permission.APPS_READ, Permission.APPS_UPDATE,
         Permission.COMPANY_READ,
+        Permission.AGENTS_READ, Permission.AGENTS_CREATE, Permission.AGENTS_UPDATE,
+        Permission.AGENTS_MANAGE_KEYS,
+        Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
     },
     
     EnterpriseRole.EMPLOYEE: {
         Permission.APPS_READ,
         Permission.USERS_READ,
         Permission.COMPANY_READ,
+        Permission.AGENTS_READ,
+        Permission.DOMAINS_READ,
     },
     
     EnterpriseRole.VIEWER: {
         Permission.APPS_READ,
         Permission.USERS_READ,
         Permission.COMPANY_READ,
+        Permission.AGENTS_READ,
+        Permission.DOMAINS_READ,
     }
 }

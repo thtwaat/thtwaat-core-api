@@ -48,11 +48,10 @@ class UserService:
             )
 
     def _hash_password(self, password: str) -> str:
-        """
-        Dummy password hashing since authentication is not implemented yet.
-        DO NOT use this in production. Wait for JWT/Auth implementation.
-        """
-        return f"dummy_hash_{password[::-1]}"
+        """Hash a password using bcrypt."""
+        import bcrypt
+        salt = bcrypt.gensalt()
+        return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
     # ── Core Operations ───────────────────────────────────────────────────────
 
@@ -90,6 +89,20 @@ class UserService:
         user_data["hashed_password"] = self._hash_password(raw_password)
 
         user = self.repo.create_from_dict(user_data)
+
+        # ── Dispatch in-app notification event ───────────────────────────────
+        try:
+            from app.notifications.events import NotificationEventBus
+            NotificationEventBus.dispatch(
+                event_type="user.registered",
+                db=self.db,
+                company_id=user.company_id,
+                user_id=user.id,
+                data={},
+            )
+        except Exception:
+            pass  # Never break user creation due to notification failure
+
         return UserResponse.model_validate(user)
 
     def get_user(self, user_id: uuid.UUID) -> UserResponse:

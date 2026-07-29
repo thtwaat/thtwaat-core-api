@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f6f5ef"/>
+  <circle cx="1030" cy="70" r="280" fill="#dff4ea"/>
+  <circle cx="80" cy="610" r="240" fill="#f2a65a" opacity=".22"/>
+  <text x="90" y="250" fill="#136f63" font-family="Arial" font-size="28" letter-spacing="5">THTWAAT AI LANDING STARTER</text>
+  <text x="90" y="350" fill="#10231f" font-family="Georgia" font-size="66">Conversations that convert.</text>
+  <text x="90" y="425" fill="#63766f" font-family="Arial" font-size="30">Connect a published agent with two environment variables.</text>
+</svg>

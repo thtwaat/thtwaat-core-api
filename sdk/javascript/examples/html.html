@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>THTWAAT SDK — HTML</title>
+  </head>
+  <body>
+    <h1>HTML + UMD example</h1>
+    <button id="send">Send</button>
+    <pre id="out"></pre>
+    <script src="../../dist/index.umd.cjs"></script>
+    <script>
+      const client = new THTWAAT.THTWAAT({
+        apiKey: "tht_live_REPLACE",
+        apiUrl: "http://localhost:8000",
+      });
+      document.getElementById("send").onclick = async () => {
+        const res = await client.chat("Hello from HTML");
+        document.getElementById("out").textContent = res.reply;
+      };
+    </script>
+  </body>
+</html>

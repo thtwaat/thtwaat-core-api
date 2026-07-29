@@ -13,6 +13,7 @@ from app.payments.schema import PaymentCreate, PaymentUpdateStatus
 from app.payments.model import Payment, PaymentStatus, Gateway
 from app.payments.repository import PaymentRepository
 from app.payments.providers.factory import get_payment_provider
+from app.notifications.events import NotificationEventBus
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +123,14 @@ class PaymentService:
                     status=PaymentStatus.REFUNDED,
                     payment_metadata=merged_metadata
                 )
+                
+                NotificationEventBus.dispatch(
+                    event_type="payment.refunded",
+                    db=self.repo.db,
+                    company_id=db_payment.company_id,
+                    user_id=db_payment.user_id,
+                    data={"amount": db_payment.amount, "currency": db_payment.currency, "payment_id": str(db_payment.id)}
+                )
             else:
                 raise HTTPException(status_code=400, detail=f"Refund failed: {result.error_message}")
                 
@@ -142,6 +151,24 @@ class PaymentService:
             payment_metadata=payload.payment_metadata
         )
         self.repo.db.refresh(db_payment)
+        
+        if payload.status == PaymentStatus.SUCCESS:
+            NotificationEventBus.dispatch(
+                event_type="payment.success",
+                db=self.repo.db,
+                company_id=db_payment.company_id,
+                user_id=db_payment.user_id,
+                data={"amount": db_payment.amount, "currency": db_payment.currency, "payment_id": str(db_payment.id)}
+            )
+        elif payload.status == PaymentStatus.FAILED:
+            NotificationEventBus.dispatch(
+                event_type="payment.failed",
+                db=self.repo.db,
+                company_id=db_payment.company_id,
+                user_id=db_payment.user_id,
+                data={"amount": db_payment.amount, "currency": db_payment.currency}
+            )
+            
         return db_payment
 
     def soft_delete_payment(self, payment_id: uuid.UUID, company_id: uuid.UUID) -> None:

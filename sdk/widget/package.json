@@ -1,0 +1,42 @@
+{
+  "name": "@thtwaat/widget",
+  "version": "1.0.0",
+  "description": "THTWAAT production embeddable AI chat widget",
+  "type": "module",
+  "main": "./dist/widget.umd.cjs",
+  "module": "./dist/widget.js",
+  "types": "./dist/index.d.ts",
+  "unpkg": "./dist/widget.iife.js",
+  "jsdelivr": "./dist/widget.iife.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/widget.js",
+      "require": "./dist/widget.umd.cjs"
+    },
+    "./style.css": "./dist/widget.css"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "EMBED.md"
+  ],
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build && tsc --emitDeclarationOnly --declaration --outDir dist",
+    "build:js": "vite build",
+    "preview": "vite preview"
+  },
+  "keywords": [
+    "thtwaat",
+    "chat",
+    "widget",
+    "ai",
+    "embed"
+  ],
+  "license": "UNLICENSED",
+  "devDependencies": {
+    "typescript": "^5.8.2",
+    "vite": "^6.2.0"
+  }
+}

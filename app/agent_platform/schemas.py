@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict, Any, Optional
 from uuid import UUID
 from datetime import datetime
@@ -49,14 +49,17 @@ class AgentResponse(BaseModel):
     version: int
     is_template: bool
     web_config: Dict[str, Any]
+    published_at: Optional[datetime] = None
+    widget_id: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        orm_mode = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ApiKeyResponse(BaseModel):
     id: UUID
     key_hash: str
     name: Optional[str]
     is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)

@@ -38,9 +38,10 @@ class AuthRepository:
         Mark a refresh token as revoked. 
         Returns True if revoked successfully, False if token wasn't found.
         """
+        from datetime import datetime, timezone
         rt = self.get_refresh_token(token)
         if rt and rt.revoked_at is None:
-            rt.revoked_at = func.now()
+            rt.revoked_at = datetime.now(timezone.utc)
             self.db.commit()
             return True
         return False

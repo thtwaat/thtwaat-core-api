@@ -93,7 +93,10 @@ class Company(Base, TimestampMixin):
 
     # ── Credits ─────────────────────────────────────────────────────────────
     from sqlalchemy import Numeric
-    credits_balance = Column(Numeric(precision=10, scale=4), default=0.0, nullable=False)
+    credits_balance = Column(Numeric(precision=10, scale=4), default=100.0, nullable=False)
+
+    # ── Payment Gateway Links ────────────────────────────────────────────────
+    stripe_customer_id   = Column(String(255), nullable=True, unique=True, index=True)
 
     users = relationship("User", back_populates="company", cascade="all, delete-orphan")
     apps = relationship("App", back_populates="company", cascade="all, delete-orphan")

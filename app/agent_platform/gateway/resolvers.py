@@ -1,34 +1,56 @@
-import uuid
-from typing import Optional
+from app.config.settings import settings
+
 
 class Resolvers:
     """
-    Mock resolvers that fetch configuration from the database.
-    Since we are not fully wiring the DB connection here, these act as stubs
-    that would normally query `ProviderConfig`, `ModelConfig`, and `AgentConfig`.
+    Fetches configuration needed by the AI Gateway.
+    Provider-specific API keys are read from application settings.
     """
-    
+
     @staticmethod
     def get_company_config(company_id: str) -> dict:
         """Validates tenant existence and limits."""
+        # Company validation is enforced at the JWT authentication layer.
+        # Future: query Company model from DB here.
         return {"company_id": company_id, "is_active": True}
 
     @staticmethod
     def get_provider_config(company_id: str, provider_name: str) -> dict:
-        """Fetches API keys and base URLs for a provider."""
-        # Mock logic
+        """Returns the API key and base URL for the requested provider."""
+        provider_key_map = {
+            "gemini": settings.GEMINI_API_KEY,
+            "openai": settings.OPENAI_API_KEY,
+            "anthropic": settings.ANTHROPIC_API_KEY,
+            "openrouter": settings.OPENROUTER_API_KEY,
+            "ollama": None,  # Ollama is local, no key needed
+        }
+
+        api_key = provider_key_map.get(provider_name)
+
+        base_url_map = {
+            "ollama": settings.OLLAMA_URL,
+        }
+        base_url = base_url_map.get(provider_name)
+
         return {
             "provider_name": provider_name,
-            "api_key_secret": f"mock_{provider_name}_key",
-            "base_url": None
+            "api_key_secret": api_key,
+            "base_url": base_url,
         }
-        
+
     @staticmethod
     def get_model_config(company_id: str, provider_name: str, model_name: str) -> dict:
-        """Fetches model pricing and context windows."""
-        # Mock logic
+        """Returns pricing info for cost tracking. Defaults to 0 if unknown."""
+        # Gemini Flash pricing as of 2025 (per 1k tokens)
+        pricing = {
+            "gemini": {"cost_per_1k_prompt": 0.00015, "cost_per_1k_completion": 0.0006},
+            "openai": {"cost_per_1k_prompt": 0.005, "cost_per_1k_completion": 0.015},
+            "anthropic": {"cost_per_1k_prompt": 0.008, "cost_per_1k_completion": 0.024},
+            "openrouter": {"cost_per_1k_prompt": 0.001, "cost_per_1k_completion": 0.001},
+            "ollama": {"cost_per_1k_prompt": 0.0, "cost_per_1k_completion": 0.0},
+        }
+        provider_pricing = pricing.get(provider_name, {"cost_per_1k_prompt": 0.0, "cost_per_1k_completion": 0.0})
         return {
             "model_name": model_name,
-            "cost_per_1k_prompt": 0.01,
-            "cost_per_1k_completion": 0.03
+            **provider_pricing,
         }

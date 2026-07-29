@@ -8,11 +8,18 @@ services:
       - api
     volumes:
       - ./nginx/ssl:/etc/nginx/ssl:ro
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
 
   api:
     build: .
     volumes:
       - .:/app
+    ports:
+      - "8000:8000"
     env_file:
       - .env
     command: bash -c "uvicorn main:app --host 0.0.0.0 --port 8000"
@@ -30,9 +37,7 @@ services:
       retries: 5
 
   db:
-    image: postgres:15-alpine
-    env_file:
-      - .env
+    image: pgvector/pgvector:pg15
     environment:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
@@ -58,20 +63,27 @@ services:
   minio:
     image: minio/minio:latest
     command: server /data --console-address ":9001"
-    env_file:
-      - .env
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - miniodata:/data
     healthcheck:
-      test: ["CMD", "mc", "ready", "local"]
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   pgadmin:
     image: dpage/pgadmin4
-    env_file:
-      - .env
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD}
     volumes:
       - pgadmindata:/var/lib/pgadmin
     depends_on:

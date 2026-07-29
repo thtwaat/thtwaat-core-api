@@ -111,6 +111,20 @@ class CompanyService:
         company_data.setdefault("max_apps", limits["max_apps"])
 
         company = self.repo.create_from_dict(company_data)
+
+        # ── Dispatch in-app notification event ───────────────────────────────
+        try:
+            from app.notifications.events import NotificationEventBus
+            NotificationEventBus.dispatch(
+                event_type="company.created",
+                db=self.repo.db,
+                company_id=company.id,
+                user_id=None,
+                data={"company_name": company.name},
+            )
+        except Exception:
+            pass  # Never break company creation due to notification failure
+
         return CompanyResponse.model_validate(company)
 
     def get_company(self, company_id: uuid.UUID) -> CompanyResponse:

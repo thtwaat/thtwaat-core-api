@@ -1,0 +1,160 @@
+# Production compose — one-click stack
+# Usage:
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#
+# Services: nginx, api, postgres, redis, worker, scheduler, backup (+ optional minio)
+
+services:
+  nginx:
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/ssl:/etc/nginx/ssl
+      - ./nginx/conf.d/domains:/etc/nginx/conf.d/domains:ro
+      - ./nginx/acme-webroot:/var/www/acme:ro
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+
+  api:
+    build: .
+    env_file:
+      - .env
+    environment:
+      APP_ENV: production
+      SSL_MODE: ${SSL_MODE:-simulate}
+      REDIS_HOST: redis
+      DB_HOST: db
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/knowledge:/app/data/knowledge
+      - ./data/backups:/app/data/backups
+      - ./nginx/ssl:/app/nginx/ssl
+      - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
+      - ./nginx/acme-webroot:/app/nginx/acme-webroot
+    command: >
+      bash -c "alembic upgrade head &&
+               uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      DB_HOST: db
+      SSL_MODE: ${SSL_MODE:-simulate}
+    volumes:
+      - ./data/uploads:/app/data/uploads
+      - ./data/knowledge:/app/data/knowledge
+      - ./data/backups:/app/data/backups
+      - ./nginx/ssl:/app/nginx/ssl
+      - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
+    command: python scripts/worker.py
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import redis,os; r=redis.from_url(f\"redis://{os.getenv('REDIS_HOST','redis')}:6379\"); assert r.get('thtwaat:worker:heartbeat')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  scheduler:
+    build: .
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      DB_HOST: db
+      SCHEDULER_INTERVAL_SECONDS: ${SCHEDULER_INTERVAL_SECONDS:-300}
+      BACKUP_HOUR_UTC: ${BACKUP_HOUR_UTC:-3}
+    volumes:
+      - ./data/backups:/app/data/backups
+      - ./data/uploads:/app/data/uploads
+      - ./data/knowledge:/app/data/knowledge
+      - ./nginx/ssl:/app/nginx/ssl
+      - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
+    command: python scripts/scheduler.py
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      worker:
+        condition: service_started
+    restart: unless-stopped
+
+  backup:
+    build: .
+    env_file:
+      - .env
+    environment:
+      REDIS_HOST: redis
+      DB_HOST: db
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./data/backups:/app/data/backups
+      - ./data/uploads:/app/data/uploads
+      - ./data/knowledge:/app/data/knowledge
+      - pgdata:/var/lib/postgresql/data:ro
+    profiles: ["manual-backup"]
+    command: python scripts/backup.py
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

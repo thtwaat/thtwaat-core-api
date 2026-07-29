@@ -4,10 +4,14 @@ Google Gemini Provider Implementation
 """
 import uuid
 import logging
+import warnings
 from typing import List, Dict, Any
-import google.generativeai as genai
+with warnings.catch_warnings():
+    warnings.simplefilter("ignore", FutureWarning)
+    import google.generativeai as genai
 from google.api_core import exceptions
 from app.ai.providers.base import AIProvider, AIProviderResponse
+
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)

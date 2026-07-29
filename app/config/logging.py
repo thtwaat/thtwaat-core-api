@@ -31,3 +31,18 @@ def configure_logging():
     
     # Set levels for noisy libraries if needed
     logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
+
+    # Rotating file handler for production audit/access trail
+    if settings.app_env == "production":
+        from logging.handlers import RotatingFileHandler
+        from pathlib import Path
+
+        log_dir = Path("data/logs")
+        log_dir.mkdir(parents=True, exist_ok=True)
+        file_handler = RotatingFileHandler(
+            log_dir / "app.log",
+            maxBytes=10 * 1024 * 1024,
+            backupCount=10,
+        )
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)

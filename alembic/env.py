@@ -19,6 +19,13 @@ import app.products.model
 import app.api_keys.model
 import app.webhooks.model
 import app.agent_platform.models
+import app.agent_platform.knowledge.models  # noqa — registers all KB tables for autogenerate
+import app.features.ai_platform.database.models  # noqa — registers ai_providers, ai_models, ai_agents, etc.
+import app.usage.models  # noqa — usage_events, company_usage_meters, usage_daily_aggregates
+import app.domains.models  # noqa — company_domains
+import app.payments.plans.model  # noqa
+import app.payments.subscriptions.model  # noqa
+import app.payments.invoices.model  # noqa
 from app.models.base import Base
 
 # this is the Alembic Config object, which provides
