@@ -1,0 +1,81 @@
+name: ThtwaatStarter
+options:
+  bundleIdPrefix: com.thtwaat
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+  groupSortPosition: top
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    TARGETED_DEVICE_FAMILY: "1,2"
+    MARKETING_VERSION: "1.0.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: YES
+    INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+    INFOPLIST_KEY_UILaunchScreen_Generation: YES
+    INFOPLIST_KEY_CFBundleDisplayName: THTWAAT
+    INFOPLIST_KEY_NSAppTransportSecurity_AllowsArbitraryLoads: YES
+packages:
+  MarkdownUI:
+    url: https://github.com/gonzalezreal/swift-markdown-ui
+    from: 2.4.1
+targets:
+  ThtwaatStarter:
+    type: application
+    platform: iOS
+    sources:
+      - path: ThtwaatStarter
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.thtwaat.starter
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_STRICT_CONCURRENCY: complete
+        ENABLE_TESTABILITY: YES
+      configs:
+        Debug:
+          API_BASE_URL: "http://127.0.0.1:8000"
+        Release:
+          API_BASE_URL: "https://api.thtwaat.com"
+    configFiles:
+      Debug: Config/Debug.xcconfig
+      Release: Config/Release.xcconfig
+    dependencies:
+      - package: MarkdownUI
+    info:
+      path: ThtwaatStarter/Info.plist
+      properties:
+        CFBundleDisplayName: THTWAAT
+        API_BASE_URL: $(API_BASE_URL)
+        UILaunchScreen: {}
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+  ThtwaatStarterTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ThtwaatStarterTests
+    dependencies:
+      - target: ThtwaatStarter
+  ThtwaatStarterUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: ThtwaatStarterUITests
+    dependencies:
+      - target: ThtwaatStarter
+schemes:
+  ThtwaatStarter:
+    build:
+      targets:
+        ThtwaatStarter: all
+        ThtwaatStarterTests: [test]
+        ThtwaatStarterUITests: [test]
+    test:
+      targets:
+        - ThtwaatStarterTests
+        - ThtwaatStarterUITests
+    run:
+      config: Debug
+    archive:
+      config: Release

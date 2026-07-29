@@ -25,6 +25,7 @@ import app.usage.models  # noqa — usage_events, company_usage_meters, usage_da
 import app.domains.models  # noqa — company_domains
 import app.marketplace.models  # noqa — marketplace_templates, versions, installations
 import app.product_generator.models  # noqa — product_generations
+import app.branding.models  # noqa — company_branding, branding_assets
 import app.payments.plans.model  # noqa
 import app.payments.subscriptions.model  # noqa
 import app.payments.invoices.model  # noqa

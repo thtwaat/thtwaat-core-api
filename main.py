@@ -35,6 +35,9 @@ import app.agent_platform.models  # noqa — registers agent_configs, agent_api_
 import app.agent_platform.knowledge.models  # noqa — registers knowledge_bases, documents, chunks, embeddings_meta
 import app.usage.models  # noqa — registers usage_events, company_usage_meters, usage_daily_aggregates
 import app.domains.models  # noqa — company_domains
+import app.marketplace.models  # noqa
+import app.product_generator.models  # noqa
+import app.branding.models  # noqa — company_branding, branding_assets
 import app.payments.plans.model  # noqa — plans + usage limit columns
 import app.payments.subscriptions.model  # noqa
 import app.payments.invoices.model  # noqa
@@ -142,6 +145,9 @@ app.include_router(agent_router)
 app.include_router(public_router)
 app.include_router(knowledge_router)
 app.include_router(conversation_router)
+
+from app.branding.public_router import router as branding_public_router
+app.include_router(branding_public_router)
 
 from pathlib import Path
 from fastapi.responses import FileResponse, PlainTextResponse

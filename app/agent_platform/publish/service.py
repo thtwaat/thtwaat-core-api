@@ -125,7 +125,28 @@ class PublishService:
 
     def widget_config_from_agent(self, agent: AgentConfig) -> WidgetConfig:
         raw = (agent.web_config or {}).get("widget") or {}
-        return WidgetConfig(**{**DEFAULT_WIDGET.model_dump(), **raw})
+        merged = {**DEFAULT_WIDGET.model_dump(), **raw}
+        # Cascade published company white-label defaults under agent overrides
+        try:
+            from app.branding.service import BrandingService
+
+            company_widget = BrandingService(self.db).widget_defaults_for_company(agent.company_id)
+            if company_widget:
+                cascade = {
+                    "theme": company_widget.get("chat_theme"),
+                    "primary_color": company_widget.get("primary_color")
+                    or company_widget.get("bubble_color"),
+                    "logo": company_widget.get("header_logo_url"),
+                    "avatar": company_widget.get("launcher_icon_url"),
+                    "font_family": company_widget.get("font_family"),
+                    "suggested_prompts": company_widget.get("suggested_prompts"),
+                }
+                for key, value in cascade.items():
+                    if value and key not in raw:
+                        merged[key] = value
+        except Exception:
+            pass
+        return WidgetConfig(**merged)
 
     # ── Publish / Unpublish ───────────────────────────────────────────────────
 

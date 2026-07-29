@@ -19,6 +19,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.AGENTS_PUBLISH, Permission.AGENTS_MANAGE_KEYS,
         Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
         Permission.TEMPLATES_READ, Permission.TEMPLATES_MANAGE,
+        Permission.BRANDING_READ, Permission.BRANDING_MANAGE,
     },
     
     EnterpriseRole.ADMIN: {
@@ -29,6 +30,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.AGENTS_PUBLISH, Permission.AGENTS_MANAGE_KEYS,
         Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
         Permission.TEMPLATES_READ, Permission.TEMPLATES_MANAGE,
+        Permission.BRANDING_READ, Permission.BRANDING_MANAGE,
     },
     
     EnterpriseRole.MANAGER: {
@@ -38,6 +40,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.AGENTS_READ, Permission.AGENTS_CREATE, Permission.AGENTS_UPDATE,
         Permission.DOMAINS_READ,
         Permission.TEMPLATES_READ,
+        Permission.BRANDING_READ,
     },
     
     EnterpriseRole.DEVELOPER: {
@@ -47,6 +50,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.AGENTS_MANAGE_KEYS,
         Permission.DOMAINS_READ, Permission.DOMAINS_MANAGE,
         Permission.TEMPLATES_READ, Permission.TEMPLATES_MANAGE,
+        Permission.BRANDING_READ,
     },
     
     EnterpriseRole.EMPLOYEE: {
@@ -56,6 +60,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.AGENTS_READ,
         Permission.DOMAINS_READ,
         Permission.TEMPLATES_READ,
+        Permission.BRANDING_READ,
     },
     
     EnterpriseRole.VIEWER: {
@@ -65,5 +70,6 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.AGENTS_READ,
         Permission.DOMAINS_READ,
         Permission.TEMPLATES_READ,
+        Permission.BRANDING_READ,
     }
 }

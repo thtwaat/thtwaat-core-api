@@ -50,6 +50,10 @@ class Permission(str, enum.Enum):
     # Templates / Marketplace
     TEMPLATES_READ   = "templates:read"
     TEMPLATES_MANAGE = "templates:manage"
+
+    # White-label branding
+    BRANDING_READ   = "branding:read"
+    BRANDING_MANAGE = "branding:manage"
     
     # Platform (Super Admin only)
     PLATFORM_ADMIN = "platform:admin"

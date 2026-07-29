@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # Placeholders are filled from the `data` dict passed to dispatch()
 EVENT_TEMPLATES: dict[str, tuple[str, str]] = {
     "user.registered": (
-        "Welcome to THTWAAT!",
+        "Welcome to {company_name}!",
         "Your account has been created successfully. Start exploring the platform."
     ),
     "company.created": (
@@ -123,6 +123,16 @@ class NotificationEventBus:
         else:
             import decimal
             data = {k: (float(v) if isinstance(v, decimal.Decimal) else v) for k, v in data.items()}
+
+        # Enrich with published white-label company name (reuse BrandingService — no template fork)
+        if "company_name" not in data:
+            try:
+                from app.branding.service import BrandingService
+
+                ctx = BrandingService(db).resolve_email_context(company_id)
+                data = {**data, "company_name": ctx.get("company_name") or "THTWAAT"}
+            except Exception:
+                data = {**data, "company_name": data.get("company_name", "THTWAAT")}
 
         template = EVENT_TEMPLATES.get(event_type)
         if not template:
