@@ -1,14 +1,17 @@
-# THTWAAT Core API (Version 1.0)
+# THTWAAT Core API (Version 1.0.0)
 
-Welcome to the **THTWAAT Core API** repository. This project is a robust, multi-tenant enterprise backend built with modern Python technologies, intended to serve as the foundation for the THTWAAT SaaS ecosystem.
+Welcome to the **THTWAAT Core API** repository. This project is a multi-tenant enterprise AI platform backend for the THTWAAT SaaS ecosystem.
+
+> **v1.0.0 production readiness:** [`docs/release/v1.0.0/`](docs/release/v1.0.0/README.md) · **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
 
 ## 🚀 Technologies
 
 - **Framework**: FastAPI (Python 3.10+)
 - **Database**: PostgreSQL (SQLAlchemy 2.0, Alembic)
 - **Validation**: Pydantic v2
-- **Authentication**: JWT (JSON Web Tokens) with Argon2 hashing
-- **Security**: Granular Role-Based Access Control (RBAC)
+- **Authentication**: JWT access + refresh (bcrypt password hashing)
+- **Security**: Enterprise RBAC permissions, security headers, rate limiting
+- **Observability**: Prometheus Instrumentator (`/metrics`)
 
 ## 🏗️ Architecture
 
@@ -21,22 +24,17 @@ The project strictly adheres to an Enterprise Layered Architecture:
 - `Model Layer`: SQLAlchemy declarative models.
 
 ### Core Modules
-1. **Companies**: Multi-tenant isolation.
-2. **Users**: User management within companies.
-3. **Auth**: JWT Login, registration.
-4. **RBAC**: Static role-based policies (`admin`, `manager`, `user`).
-5. **Apps**: Resource management demonstrating RBAC integration.
-6. **Storage**: Asynchronous file uploads (Local stub, extensible to S3/MinIO).
-7. **Notifications**: Pluggable provider strategy (Email, SMS, WhatsApp, Push).
-8. **Payments**: Pluggable provider strategy (Stripe, Razorpay, PayPal, Manual).
-9. **AI Gateway**: Unified enterprise gateway for AI models (OpenAI, Gemini, Anthropic, Ollama, OpenRouter).
-10. **Products**: Central registry for all generated products (Websites, Apps, Agents, etc) with feature flags.
+1. **Companies / Users / Auth / RBAC** — multi-tenant identity and permissions.
+2. **Apps, Products, Storage, Notifications, Payments, AI Gateway**
+3. **Agents, Knowledge, Publish, Domains, Marketplace, Product Generator, Branding**
+4. **Enterprise, Onboarding, Monitoring/Ops, AI Copilot** — orchestration facades over existing services.
 
 ## 💻 Local Development Setup
 
 ### Prerequisites
 - Python 3.10+
 - PostgreSQL server running locally or via Docker.
+- Redis (required for rate limiting and full TestClient)
 
 ### 1. Environment Setup
 
@@ -58,18 +56,22 @@ Create a `.env` file in the root directory:
 ```ini
 APP_NAME="THTWAAT Core API"
 APP_ENV="development"
-SECRET_KEY="your-super-secret-jwt-key"
+JWT_SECRET_KEY="your-super-secret-jwt-key"
+JWT_REFRESH_SECRET_KEY="your-super-secret-refresh-key"
 
 # Database
 DATABASE_URL="postgresql+psycopg2://postgres:postgres@localhost:5432/thtwaat_db"
+
+# Redis
+REDIS_HOST="localhost"
+REDIS_PORT=6379
 
 # Storage
 STORAGE_PROVIDER="local"
 LOCAL_STORAGE_DIR="data/uploads"
 
-# Notifications & Payments (Currently Stubs)
-EMAIL_PROVIDER="stub"
-SMS_PROVIDER="stub"
+# Production: set explicit origins (never *)
+# CORS_ORIGINS=["https://app.example.com"]
 ```
 
 ### 3. Database Migrations
@@ -79,6 +81,8 @@ We use Alembic for schema migrations. Make sure your database exists, then run:
 alembic upgrade head
 ```
 
+Current head (v1.0.0): `a7b8c9d0e1f2`
+
 ### 4. Run the Server
 ```bash
 uvicorn main:app --reload
@@ -87,9 +91,11 @@ The API will be available at `http://localhost:8000`.
 
 ## 📖 API Documentation (Swagger/OpenAPI)
 
-Once the server is running, FastAPI automatically generates interactive documentation:
+In **development**, FastAPI generates interactive documentation:
 - **Swagger UI**: [http://localhost:8000/docs](http://localhost:8000/docs)
 - **ReDoc**: [http://localhost:8000/redoc](http://localhost:8000/redoc)
+
+In **production** (`APP_ENV=production`), docs and OpenAPI are disabled.
 
 ### Testing in Postman
 You can directly import the OpenAPI specification into Postman to automatically generate a collection:
