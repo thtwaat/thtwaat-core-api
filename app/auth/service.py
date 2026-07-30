@@ -113,8 +113,9 @@ class AuthService:
                     self.db.commit()
         except Exception:
             # Token issuance remains available if the optional enterprise
-            # module has not been migrated yet.
-            pass
+            # module has not been migrated yet. Rollback so a missing table
+            # does not abort the rest of the login transaction.
+            self.db.rollback()
         expire = datetime.now(timezone.utc) + expires_delta
         
         to_encode = {"exp": expire, "sub": str(subject), "type": "refresh", "jti": str(uuid.uuid4())}
@@ -204,7 +205,7 @@ class AuthService:
             raise
         except Exception:
             # Login remains available before enterprise migrations are applied.
-            pass
+            self.db.rollback()
             
         if not user.is_active or user.status != UserStatus.ACTIVE:
             raise HTTPException(

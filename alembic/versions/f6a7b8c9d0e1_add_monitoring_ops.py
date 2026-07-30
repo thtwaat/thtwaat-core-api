@@ -15,15 +15,17 @@ down_revision: Union[str, Sequence[str], None] = "e5f6a7b8c9d0"
 branch_labels = None
 depends_on = None
 
-alert_severity = sa.Enum(
+alert_severity = postgresql.ENUM(
     "critical", "warning", "info",
     name="ops_alert_severity_enum",
+    create_type=False,
 )
-alert_status = sa.Enum(
+alert_status = postgresql.ENUM(
     "open", "acknowledged", "resolved",
     name="ops_alert_status_enum",
+    create_type=False,
 )
-deployment_action = sa.Enum(
+deployment_action = postgresql.ENUM(
     "backup",
     "nginx_reload",
     "container_restart",
@@ -34,6 +36,7 @@ deployment_action = sa.Enum(
     "publish",
     "other",
     name="ops_deployment_action_enum",
+    create_type=False,
 )
 
 

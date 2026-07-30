@@ -15,7 +15,7 @@ down_revision: Union[str, Sequence[str], None] = "b2c3d4e5f6a7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-branding_asset_type_enum = sa.Enum(
+branding_asset_type_enum = postgresql.ENUM(
     "logo",
     "dark_logo",
     "favicon",

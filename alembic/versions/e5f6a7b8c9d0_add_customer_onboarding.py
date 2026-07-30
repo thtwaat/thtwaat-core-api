@@ -15,11 +15,12 @@ down_revision: Union[str, Sequence[str], None] = "d4e5f6a7b8c9"
 branch_labels = None
 depends_on = None
 
-onboarding_status = sa.Enum(
+onboarding_status = postgresql.ENUM(
     "in_progress", "paused", "completed", "abandoned",
     name="onboarding_status_enum",
+    create_type=False,
 )
-onboarding_step = sa.Enum(
+onboarding_step = postgresql.ENUM(
     "create_account",
     "verify_email",
     "create_company",
@@ -33,10 +34,12 @@ onboarding_step = sa.Enum(
     "connect_domain",
     "go_live",
     name="onboarding_step_enum",
+    create_type=False,
 )
-onboarding_event_type = sa.Enum(
+onboarding_event_type = postgresql.ENUM(
     "entered", "autosaved", "completed", "skipped", "failed", "paused", "resumed",
     name="onboarding_step_event_type_enum",
+    create_type=False,
 )
 
 

@@ -15,25 +15,30 @@ down_revision: Union[str, Sequence[str], None] = "a7b8c9d0e1f2"
 branch_labels = None
 depends_on = None
 
-publisher_status = sa.Enum(
+publisher_status = postgresql.ENUM(
     "active", "suspended", "pending",
     name="agent_store_publisher_status_enum",
+    create_type=False,
 )
-listing_status = sa.Enum(
+listing_status = postgresql.ENUM(
     "draft", "pending_review", "published", "suspended", "rejected",
     name="agent_store_listing_status_enum",
+    create_type=False,
 )
-pricing_model = sa.Enum(
+pricing_model = postgresql.ENUM(
     "free", "one_time", "subscription",
     name="agent_store_pricing_model_enum",
+    create_type=False,
 )
-purchase_status = sa.Enum(
+purchase_status = postgresql.ENUM(
     "pending", "completed", "refunded", "failed",
     name="agent_store_purchase_status_enum",
+    create_type=False,
 )
-abuse_status = sa.Enum(
+abuse_status = postgresql.ENUM(
     "open", "reviewing", "resolved", "dismissed",
     name="agent_store_abuse_status_enum",
+    create_type=False,
 )
 
 

@@ -15,7 +15,7 @@ down_revision: Union[str, Sequence[str], None] = "a1b2c3d4e5f6"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-generation_status_enum = sa.Enum(
+generation_status_enum = postgresql.ENUM(
     "draft",
     "analyzing",
     "template_selected",

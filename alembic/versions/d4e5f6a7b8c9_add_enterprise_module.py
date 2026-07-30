@@ -15,23 +15,23 @@ down_revision: Union[str, Sequence[str], None] = "c3d4e5f6a7b8"
 branch_labels = None
 depends_on = None
 
-unit_type = sa.Enum(
+unit_type = postgresql.ENUM(
     "organization", "business_unit", "department", "team",
     name="enterprise_unit_type_enum", create_type=False,
 )
-invitation_status = sa.Enum(
+invitation_status = postgresql.ENUM(
     "pending", "accepted", "expired", "revoked",
     name="enterprise_invitation_status_enum", create_type=False,
 )
-sso_provider = sa.Enum(
+sso_provider = postgresql.ENUM(
     "oidc", "saml", "google_workspace", "microsoft_entra",
     name="enterprise_sso_provider_enum", create_type=False,
 )
-audit_severity = sa.Enum(
+audit_severity = postgresql.ENUM(
     "info", "warning", "critical",
     name="enterprise_audit_severity_enum", create_type=False,
 )
-export_status = sa.Enum(
+export_status = postgresql.ENUM(
     "pending", "processing", "completed", "failed",
     name="enterprise_export_status_enum", create_type=False,
 )

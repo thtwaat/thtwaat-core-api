@@ -15,11 +15,12 @@ down_revision: Union[str, Sequence[str], None] = "f6a7b8c9d0e1"
 branch_labels = None
 depends_on = None
 
-message_role = sa.Enum(
+message_role = postgresql.ENUM(
     "user", "assistant", "system", "tool",
     name="copilot_message_role_enum",
+    create_type=False,
 )
-task_status = sa.Enum(
+task_status = postgresql.ENUM(
     "planned",
     "awaiting_confirmation",
     "running",
@@ -27,8 +28,9 @@ task_status = sa.Enum(
     "failed",
     "cancelled",
     name="copilot_task_status_enum",
+    create_type=False,
 )
-step_status = sa.Enum(
+step_status = postgresql.ENUM(
     "pending",
     "running",
     "completed",
@@ -36,6 +38,7 @@ step_status = sa.Enum(
     "skipped",
     "awaiting_confirmation",
     name="copilot_step_status_enum",
+    create_type=False,
 )
 
 

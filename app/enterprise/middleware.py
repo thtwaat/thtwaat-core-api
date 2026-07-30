@@ -51,11 +51,15 @@ class EnterpriseSecurityMiddleware(BaseHTTPMiddleware):
             user = db.get(User, uuid.UUID(str(user_id)))
             if not user:
                 return await call_next(request)
-            policy = db.scalar(
-                select(EnterpriseSecurityPolicy).where(
-                    EnterpriseSecurityPolicy.company_id == user.company_id
+            try:
+                policy = db.scalar(
+                    select(EnterpriseSecurityPolicy).where(
+                        EnterpriseSecurityPolicy.company_id == user.company_id
+                    )
                 )
-            )
+            except Exception:
+                db.rollback()
+                return await call_next(request)
             if not policy:
                 return await call_next(request)
 

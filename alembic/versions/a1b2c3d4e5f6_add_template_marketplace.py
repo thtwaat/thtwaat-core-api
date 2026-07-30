@@ -15,7 +15,7 @@ down_revision: Union[str, Sequence[str], None] = "f3c4d5e6f7a8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-template_category_enum = sa.Enum(
+template_category_enum = postgresql.ENUM(
     "website",
     "landing",
     "saas",
@@ -31,14 +31,14 @@ template_category_enum = sa.Enum(
     name="template_category_enum",
     create_type=False,
 )
-template_status_enum = sa.Enum(
+template_status_enum = postgresql.ENUM(
     "draft",
     "published",
     "archived",
     name="template_status_enum",
     create_type=False,
 )
-install_status_enum = sa.Enum(
+install_status_enum = postgresql.ENUM(
     "pending",
     "connecting",
     "ready",
