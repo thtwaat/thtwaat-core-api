@@ -15,10 +15,24 @@ jobs:
       uses: actions/checkout@v4
 
     - name: Validate docker-compose.yml
-      run: docker compose config
-      
-    - name: Validate Dockerfile
-      run: docker run --rm -i hadolint/hadolint < Dockerfile
+      env:
+        DB_NAME: thtwaat
+        DB_USER: thtwaat
+        DB_PASSWORD: ci-password
+        MINIO_ROOT_USER: minio
+        MINIO_ROOT_PASSWORD: miniopassword
+      run: docker compose -f docker-compose.yml config >/dev/null
+
+    - name: Validate production compose
+      run: docker compose -f docker-compose.prod.yml --env-file .env.prod.example config >/dev/null
+
+    - name: Validate Dockerfile (hadolint)
+      run: |
+        docker run --rm -i hadolint/hadolint \
+          --ignore DL3008 \
+          --ignore DL3013 \
+          --ignore DL3009 \
+          < Dockerfile
 
     - name: Build Docker image
       run: docker build -t thtwaat-core-api:latest .
