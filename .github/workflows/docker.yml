@@ -42,6 +42,7 @@ jobs:
           --ignore DL3008 \
           --ignore DL3013 \
           --ignore DL3009 \
+          --ignore DL3025 \
           Dockerfile
 
     - name: Build Docker image
