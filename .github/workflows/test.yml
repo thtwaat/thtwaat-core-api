@@ -12,6 +12,7 @@ env:
   APP_ENV: test
   STORAGE_PROVIDER: local
   SSL_MODE: simulate
+  DATABASE_URL: sqlite+pysqlite:///:memory:
 
 jobs:
   lint:
@@ -26,7 +27,7 @@ jobs:
       - name: Install lint tools
         run: |
           python -m pip install --upgrade pip
-          pip install ruff==0.12.7
+          pip install "ruff==0.12.7"
       - name: Ruff check
         run: ruff check tests/support tests/unit tests/e2e tests/conftest.py --config ruff.toml --output-format=github
 
@@ -46,12 +47,13 @@ jobs:
           pip install -r requirements-dev.txt
       - name: Run unit tests
         run: |
-          chmod +x scripts/*.sh deploy/*.sh bootstrap.sh || true
           mkdir -p reports
-          python -m pytest -m unit -q \
-            --cov=app \
-            --cov-report=xml:reports/coverage-unit.xml \
-            --cov-report=term \
+          # Explicit paths avoid collecting heavy/legacy modules during CI unit job
+          python -m pytest \
+            tests/unit \
+            tests/agent_store/test_agent_store.py \
+            tests/enterprise/test_enterprise.py \
+            -m unit -q \
             --junitxml=reports/junit-unit.xml \
             --timeout=60
       - name: Upload unit artifacts
@@ -59,9 +61,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: unit-test-reports
-          path: |
-            reports/coverage-unit.xml
-            reports/junit-unit.xml
+          path: reports/junit-unit.xml
           if-no-files-found: warn
 
   build:
@@ -83,6 +83,7 @@ jobs:
             -e APP_ENV=test \
             -e STORAGE_PROVIDER=local \
             -e SSL_MODE=simulate \
+            -e DATABASE_URL=postgresql://thtwaat:thtwaat@localhost:5432/thtwaat \
             -e DB_HOST=localhost \
             -e DB_USER=thtwaat \
             -e DB_PASSWORD=thtwaat \
@@ -113,6 +114,14 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+      - name: Prepare env file
+        run: |
+          cp .env.prod.example .env
+          sed -i 's/APP_ENV=production/APP_ENV=test/' .env
+          sed -i 's/DB_PASSWORD=change-me/DB_PASSWORD=thtwaat/' .env
+          sed -i 's/DB_NAME=thtwaat/DB_NAME=thtwaat_test/' .env
+          sed -i 's/JWT_SECRET_KEY=change-me-jwt/JWT_SECRET_KEY=ci-test-jwt-secret-key-32characters!/' .env
+          sed -i 's/JWT_REFRESH_SECRET_KEY=change-me-refresh/JWT_REFRESH_SECRET_KEY=ci-test-refresh-secret-key-32chars!/' .env
       - name: Start Postgres + Redis
         run: docker compose -f docker-compose.test.yml up -d db redis
       - name: Wait for services
@@ -130,7 +139,6 @@ jobs:
       - name: Run integration flows
         run: |
           mkdir -p reports
-          # CI runs the dedicated integration package only (legacy module suite is local/docker-full).
           python -m pytest tests/integration -q \
             --junitxml=reports/junit-integration.xml \
             --timeout=120

@@ -14,6 +14,12 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
+    - name: Prepare env files for compose
+      run: |
+        # Services declare env_file: .env — must exist for `compose config`
+        cp .env.prod.example .env
+        cp .env.prod.example .env.prod
+
     - name: Validate docker-compose.yml
       env:
         DB_NAME: thtwaat
@@ -24,15 +30,19 @@ jobs:
       run: docker compose -f docker-compose.yml config >/dev/null
 
     - name: Validate production compose
-      run: docker compose -f docker-compose.prod.yml --env-file .env.prod.example config >/dev/null
+      run: docker compose -f docker-compose.prod.yml --env-file .env.prod config >/dev/null
+
+    - name: Validate test compose
+      run: docker compose -f docker-compose.test.yml config >/dev/null
 
     - name: Validate Dockerfile (hadolint)
       run: |
-        docker run --rm -i hadolint/hadolint \
+        docker run --rm -v "$PWD:/repo:ro" -w /repo hadolint/hadolint \
+          hadolint \
           --ignore DL3008 \
           --ignore DL3013 \
           --ignore DL3009 \
-          < Dockerfile
+          Dockerfile
 
     - name: Build Docker image
       run: docker build -t thtwaat-core-api:latest .
