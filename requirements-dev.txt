@@ -1,0 +1,13 @@
+"""Dev/test-only dependencies (not required for runtime)."""
+-r requirements.txt
+
+# Lint
+ruff==0.12.7
+
+# Pytest reporting
+pytest-html==4.1.1
+pytest-metadata==3.1.1
+pytest-timeout==2.4.0
+
+# Redis without a real server (unit tests)
+fakeredis==2.30.1

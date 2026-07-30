@@ -20,6 +20,7 @@ from app.enterprise.service import EnterpriseService
 from app.rbac.enums import Permission
 
 
+@pytest.mark.unit
 def test_role_templates_only_contain_registered_permissions():
     valid = {permission.value for permission in Permission}
     templates = EnterpriseService.role_templates()
@@ -27,6 +28,7 @@ def test_role_templates_only_contain_registered_permissions():
     assert all(set(permissions) <= valid for permissions in templates.values())
 
 
+@pytest.mark.unit
 def test_permission_validation_rejects_unknown_values():
     with pytest.raises(HTTPException) as exc:
         EnterpriseService._validate_permissions(["enterprise:read", "unknown:power"])
@@ -34,6 +36,7 @@ def test_permission_validation_rejects_unknown_values():
     assert exc.value.detail["unknown_permissions"] == ["unknown:power"]
 
 
+@pytest.mark.unit
 def test_permission_validation_deduplicates():
     result = EnterpriseService._validate_permissions(
         [Permission.ENTERPRISE_READ.value, Permission.ENTERPRISE_READ.value]
@@ -41,6 +44,7 @@ def test_permission_validation_deduplicates():
     assert result == [Permission.ENTERPRISE_READ.value]
 
 
+@pytest.mark.unit
 def test_unit_schema_and_security_policy_bounds():
     unit = UnitCreate(
         name="Platform",
@@ -53,6 +57,7 @@ def test_unit_schema_and_security_policy_bounds():
         SecurityPolicyUpdate(session_ttl_minutes=1)
 
 
+@pytest.mark.unit
 def test_bulk_invite_is_bounded():
     member = InviteMember(
         email="person@example.com",
@@ -64,6 +69,7 @@ def test_bulk_invite_is_bounded():
         BulkInviteRequest(members=[])
 
 
+@pytest.mark.unit
 def test_oidc_requires_secure_configuration_shape():
     body = SSOConnectionCreate(
         name="Workspace",
@@ -77,6 +83,7 @@ def test_oidc_requires_secure_configuration_shape():
     assert body.allowed_redirect_uris[0].startswith("https://")
 
 
+@pytest.mark.unit
 def test_ip_allow_list_supports_hosts_and_cidr():
     assert EnterpriseSecurityMiddleware._ip_allowed("10.0.0.5", ["10.0.0.0/24"])
     assert EnterpriseSecurityMiddleware._ip_allowed("203.0.113.10", ["203.0.113.10"])
@@ -84,6 +91,7 @@ def test_ip_allow_list_supports_hosts_and_cidr():
     assert not EnterpriseSecurityMiddleware._ip_allowed(None, ["10.0.0.0/24"])
 
 
+@pytest.mark.unit
 def test_export_encoders():
     rows = [{"id": "1", "action": "login"}]
     csv_data = EnterpriseService._encode_export(rows, "csv").decode()

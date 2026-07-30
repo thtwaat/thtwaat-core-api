@@ -2,7 +2,7 @@
 
 Welcome to the **THTWAAT Core API** repository. This project is a multi-tenant enterprise AI platform backend for the THTWAAT SaaS ecosystem.
 
-> **v1.0.0 production readiness:** [`docs/release/v1.0.0/`](docs/release/v1.0.0/README.md) · **Changelog:** [`CHANGELOG.md`](CHANGELOG.md)
+> **v1.0.0 production readiness:** [`docs/release/v1.0.0/`](docs/release/v1.0.0/README.md) · **Changelog:** [`CHANGELOG.md`](CHANGELOG.md) · **VPS bootstrap:** [`docs/ops/VPS_BOOTSTRAP.md`](docs/ops/VPS_BOOTSTRAP.md) · **VPS deploy:** [`docs/ops/DEPLOYMENT.md`](docs/ops/DEPLOYMENT.md)
 
 ## 🚀 Technologies
 
@@ -113,13 +113,33 @@ This script creates a dummy company, registers an admin user, logs in to obtain 
 ## CI/CD
 
 ### GitHub Actions
-This repository uses GitHub Actions for continuous integration and delivery. The workflows are defined in `.github/workflows/`. They include tests, docker validation, and security scans.
+This repository uses GitHub Actions for continuous integration and delivery. The workflows are defined in `.github/workflows/`. They include tests, docker validation, security scans, and **production VPS deploy** (`deploy-production.yml`).
+
+### Production VPS (one command)
+```bash
+# Fresh Ubuntu 24.04 host
+sudo THTWAAT_SSH_PUBKEY="$(cat ~/.ssh/id_ed25519.pub)" ./bootstrap.sh
+
+# Then configure secrets and deploy
+sudo -u thtwaat -H bash
+cd /opt/thtwaat/current
+nano /opt/thtwaat/shared/.env.prod
+ENV_FILE=/opt/thtwaat/shared/.env.prod ./deploy/validate-env.sh
+./deploy.sh
+```
+See [docs/ops/VPS_BOOTSTRAP.md](docs/ops/VPS_BOOTSTRAP.md), [DEPLOYMENT.md](docs/ops/DEPLOYMENT.md), [OPERATIONS_RUNBOOK.md](docs/ops/OPERATIONS_RUNBOOK.md), [RECOVERY_GUIDE.md](docs/ops/RECOVERY_GUIDE.md).
 
 ### Running tests
-To run tests locally:
+Install test tooling once: `pip install -r requirements-dev.txt`
+
 ```bash
-pytest
+./scripts/test-unit.sh            # no Docker
+./scripts/test-integration.sh     # Docker Postgres + Redis
+./scripts/test-e2e.sh             # deployed API (E2E_BASE_URL)
+./scripts/test-all.sh             # unit + integration
 ```
+
+See [docs/testing/TESTING.md](docs/testing/TESTING.md), [CI.md](docs/testing/CI.md), and [DEVELOPER_WORKFLOW.md](docs/testing/DEVELOPER_WORKFLOW.md).
 
 ### Docker Build
 To validate the docker compose configuration:
@@ -127,6 +147,10 @@ To validate the docker compose configuration:
 docker compose config
 ```
 
+Test stack only:
+```bash
+docker compose -f docker-compose.test.yml up -d db redis
+```
 ## Monitoring
 
 ### Prometheus & Grafana

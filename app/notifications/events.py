@@ -105,6 +105,18 @@ EVENT_TEMPLATES: dict[str, tuple[str, str]] = {
         "Copilot task failed",
         "Your Copilot task ({intent}) failed. Open diagnostics for task {task_id}.",
     ),
+    "agent_store.listing_submitted": (
+        "Agent listing submitted",
+        "Your listing '{listing_title}' was submitted for review.",
+    ),
+    "agent_store.listing_approved": (
+        "Agent listing approved",
+        "Your listing '{listing_title}' is now live in the Agent Store.",
+    ),
+    "agent_store.installed": (
+        "Agent installed",
+        "Agent '{listing_title}' was installed successfully.",
+    ),
 }
 
 

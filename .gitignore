@@ -27,6 +27,7 @@ env/
 .env
 .env.*
 !.env.example
+!.env.test.example
 
 # Node
 node_modules/
@@ -47,7 +48,14 @@ alembic/versions/*.pyc
 # Testing
 .pytest_cache/
 .coverage
+.coverage.*
 htmlcov/
+reports/**
+!reports/.gitkeep
+coverage.xml
+junit.xml
+*.junit.xml
+.ruff_cache/
 
 # Logs
 *.log
@@ -58,6 +66,10 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/knowledge/
 data/ssl/
+data/backups/*
+!data/backups/.gitkeep
+data/deploy-state/
+data/deploy-logs/
 
 # TLS private keys and issued certs (keep directory placeholders only)
 *.pem

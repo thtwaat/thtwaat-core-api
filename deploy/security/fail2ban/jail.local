@@ -1,0 +1,22 @@
+[DEFAULT]
+ignoreip = 127.0.0.1/8 ::1
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+backend  = systemd
+
+[sshd]
+enabled = true
+port    = ssh
+maxretry = 4
+bantime  = 2h
+
+[thtwaat-nginx-limit]
+enabled  = true
+filter   = thtwaat-nginx-limit
+# Docker nginx logs via journald/json-file — also watch host path if mounted
+logpath  = /var/log/nginx/*error.log
+          /var/lib/docker/containers/*/*-json.log
+maxretry = 20
+findtime = 5m
+bantime  = 30m

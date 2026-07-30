@@ -1,0 +1,72 @@
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    environment:
+      POSTGRES_DB: thtwaat_test
+      POSTGRES_USER: thtwaat
+      POSTGRES_PASSWORD: thtwaat
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U thtwaat -d thtwaat_test"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - thtwaat_test_pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9002:9000"
+      - "9003:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - full
+
+  api:
+    build: .
+    profiles:
+      - e2e
+    ports:
+      - "8000:8000"
+    environment:
+      DATABASE_URL: postgresql://thtwaat:thtwaat@db:5432/thtwaat_test
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      JWT_SECRET_KEY: e2e-test-jwt-secret-key-32chars!!!
+      JWT_REFRESH_SECRET_KEY: e2e-test-refresh-secret-key-32!!
+      STORAGE_PROVIDER: local
+      SSL_MODE: simulate
+      APP_ENV: test
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/liveness"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  thtwaat_test_pgdata:

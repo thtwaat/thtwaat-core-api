@@ -30,6 +30,7 @@ import app.enterprise.models  # noqa — enterprise administration and governanc
 import app.onboarding.models  # noqa — customer onboarding wizard
 import app.monitoring.models  # noqa — monitoring & admin operations
 import app.copilot.models  # noqa — AI Copilot orchestration
+import app.agent_store.models  # noqa — AI Agent Marketplace & Store
 import app.payments.plans.model  # noqa
 import app.payments.subscriptions.model  # noqa
 import app.payments.invoices.model  # noqa

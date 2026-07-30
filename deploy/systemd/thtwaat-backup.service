@@ -1,0 +1,16 @@
+[Unit]
+Description=THTWAAT automated backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/thtwaat
+Environment=ENV_FILE=/opt/thtwaat/.env.prod
+Environment=ALLOW_BACKUP_FAILURE=0
+ExecStart=/opt/thtwaat/deploy/backup.sh
+User=root
+Nice=10
+
+[Install]
+WantedBy=multi-user.target

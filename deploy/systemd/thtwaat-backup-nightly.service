@@ -1,0 +1,14 @@
+[Unit]
+Description=THTWAAT nightly PostgreSQL backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=thtwaat
+Group=docker
+WorkingDirectory=/opt/thtwaat/current
+Environment=ENV_FILE=/opt/thtwaat/shared/.env.prod
+Environment=BACKUP_KIND=postgres
+ExecStart=/opt/thtwaat/current/deploy/scripts/backup-nightly.sh
+Nice=10

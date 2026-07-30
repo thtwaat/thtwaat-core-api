@@ -1,0 +1,10 @@
+[Unit]
+Description=THTWAAT daily backup timer
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+Persistent=true
+Unit=thtwaat-backup.service
+
+[Install]
+WantedBy=timers.target

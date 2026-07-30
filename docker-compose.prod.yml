@@ -23,6 +23,8 @@ services:
       timeout: 5s
       retries: 3
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
   api:
     build: .
@@ -55,6 +57,9 @@ services:
       retries: 5
       start_period: 20s
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: false
 
   worker:
     build: .
@@ -77,6 +82,8 @@ services:
       redis:
         condition: service_healthy
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       test: ["CMD", "python", "-c", "import redis,os; r=redis.from_url(f\"redis://{os.getenv('REDIS_HOST','redis')}:6379\"); assert r.get('thtwaat:worker:heartbeat')"]
       interval: 30s
@@ -108,6 +115,8 @@ services:
       worker:
         condition: service_started
     restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
 
   backup:
     build: .

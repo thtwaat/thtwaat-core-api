@@ -1,0 +1,10 @@
+[Unit]
+Description=THTWAAT weekly storage backup timer (Sundays 04:00 UTC)
+
+[Timer]
+OnCalendar=Sun *-*-* 04:00:00
+Persistent=true
+Unit=thtwaat-backup-weekly.service
+
+[Install]
+WantedBy=timers.target

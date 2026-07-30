@@ -1,0 +1,13 @@
+[Unit]
+Description=THTWAAT weekly storage backup
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+User=thtwaat
+Group=docker
+WorkingDirectory=/opt/thtwaat/current
+Environment=ENV_FILE=/opt/thtwaat/shared/.env.prod
+ExecStart=/opt/thtwaat/current/deploy/scripts/backup-weekly-storage.sh
+Nice=10

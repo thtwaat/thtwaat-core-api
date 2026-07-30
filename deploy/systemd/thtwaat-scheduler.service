@@ -1,0 +1,18 @@
+[Unit]
+Description=THTWAAT scheduler (docker compose)
+Requires=docker.service thtwaat-worker.service
+After=docker.service thtwaat-worker.service network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+User=thtwaat
+Group=docker
+WorkingDirectory=/opt/thtwaat/current
+Environment=ENV_FILE=/opt/thtwaat/shared/.env.prod
+ExecStart=/usr/bin/docker compose -f docker-compose.prod.yml --env-file /opt/thtwaat/shared/.env.prod up -d scheduler
+ExecStop=/usr/bin/docker compose -f docker-compose.prod.yml --env-file /opt/thtwaat/shared/.env.prod stop scheduler
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target

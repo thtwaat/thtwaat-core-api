@@ -1,0 +1,9 @@
+# Force LF for shell/deploy tooling (VPS/Ubuntu)
+*.sh text eol=lf
+deploy/**/*.sh text eol=lf
+deploy/bootstrap/** text eol=lf
+deploy/systemd/* text eol=lf
+deploy/security/fail2ban/* text eol=lf
+deploy/scripts/* text eol=lf
+scripts/*.sh text eol=lf
+bootstrap.sh text eol=lf
