@@ -95,11 +95,25 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """Construct the PostgreSQL database URL from individual components."""
+        """Construct the PostgreSQL database URL from individual components.
+
+        Uses SQLAlchemy URL.create() so passwords with ``@``, ``#``, ``:``,
+        ``/``, etc. are percent-encoded and never break host parsing.
+        """
         import os
+
+        from sqlalchemy.engine.url import URL
+
         if os.getenv("DATABASE_URL"):
             return os.getenv("DATABASE_URL")
-        return f"postgresql://{self.db_user}:{self.db_password}@{self.db_host}:{self.db_port}/{self.db_name}"
+        return URL.create(
+            drivername="postgresql",
+            username=self.db_user,
+            password=self.db_password,
+            host=self.db_host,
+            port=self.db_port,
+            database=self.db_name,
+        ).render_as_string(hide_password=False)
 
     # Storage
     STORAGE_PROVIDER: str = "local"

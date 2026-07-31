@@ -2,6 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
+ENV PYTHONPATH=/app \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 # hadolint ignore=DL3008
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \

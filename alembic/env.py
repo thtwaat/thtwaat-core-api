@@ -1,6 +1,5 @@
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
 from alembic import context
@@ -40,8 +39,10 @@ from app.models.base import Base
 # access to the values within the .ini file in use.
 config = context.config
 
-# Overwrite the ini-file sqlalchemy.url with the one from our environment
-config.set_main_option("sqlalchemy.url", str(settings.database_url))
+# Prefer the settings URL directly. When writing into alembic.ini via
+# ConfigParser, percent-encoded passwords must escape "%" as "%%".
+_db_url = str(settings.database_url)
+config.set_main_option("sqlalchemy.url", _db_url.replace("%", "%%"))
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
@@ -70,7 +71,7 @@ def run_migrations_offline() -> None:
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    url = _db_url
     context.configure(
         url=url,
         target_metadata=target_metadata,
@@ -89,11 +90,10 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
-    connectable = engine_from_config(
-        config.get_section(config.config_ini_section, {}),
-        prefix="sqlalchemy.",
-        poolclass=pool.NullPool,
-    )
+    # Bypass ConfigParser interpolation for encoded passwords (@, #, %, …).
+    from sqlalchemy import create_engine
+
+    connectable = create_engine(_db_url, poolclass=pool.NullPool)
 
     with connectable.connect() as connection:
         context.configure(
