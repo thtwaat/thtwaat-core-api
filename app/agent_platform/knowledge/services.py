@@ -374,13 +374,23 @@ class KnowledgeService:
         Returns an empty list if no chunks are indexed yet.
         """
         import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
         from app.agent_platform.knowledge.embeddings import EmbeddingService
 
-        # Embed the query (sync wrapper around async)
+        # Embed the query. When called from an async route (RAG), a running
+        # event loop already exists — asyncio.run / new_event_loop would fail,
+        # so fall back to a dedicated thread with its own loop.
         try:
-            loop = asyncio.new_event_loop()
-            query_vector = loop.run_until_complete(EmbeddingService.embed_text(query))
-            loop.close()
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                query_vector = asyncio.run(EmbeddingService.embed_text(query))
+            else:
+                with ThreadPoolExecutor(max_workers=1) as pool:
+                    query_vector = pool.submit(
+                        asyncio.run, EmbeddingService.embed_text(query)
+                    ).result()
         except Exception as e:
             logger.error(f"[KB] Query embedding failed: {e}")
             return []

@@ -4,3 +4,37 @@ __pycache__
 *.pyc
 .pytest_cache
 .env
+.env.*
+!.env.prod.example
+!.env.production.example
+!.env.test.example
+
+# Local runtime / build artifacts — never send into the image context
+data/
+tmp/
+*.sql
+*.sql.gz
+*.tar.gz
+build-out*.txt
+test-out*.txt
+
+# Frontend / SDK trees (separate apps; not needed by the API image)
+apps/
+packages/
+sdk/
+node_modules/
+**/.next/
+**/dist/
+**/.dart_tool/
+
+# Docs, IDE, agent scratch
+.cursor/
+.vscode/
+agent-transcripts/
+*.md
+!README.md
+
+# Monitoring / local compose extras
+docker-compose.monitoring.yml
+nginx/ssl/
+nginx/acme-webroot/

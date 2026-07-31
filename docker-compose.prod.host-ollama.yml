@@ -1,0 +1,36 @@
+# Validation override: use already-installed host Ollama models.
+# Avoids pulling ollama/ollama and never runs `ollama pull`.
+services:
+  # Satisfy depends_on without downloading the Ollama image.
+  ollama:
+    image: redis:7-alpine
+    command: ["sleep", "infinity"]
+    healthcheck:
+      test: ["CMD", "true"]
+      interval: 30s
+      timeout: 5s
+      retries: 1
+    volumes: !reset []
+    expose: !reset []
+
+  api:
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      PYTHONPATH: /app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  worker:
+    environment:
+      OLLAMA_URL: http://host.docker.internal:11434
+      PYTHONPATH: /app
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  scheduler:
+    environment:
+      PYTHONPATH: /app
+
+  backup:
+    environment:
+      PYTHONPATH: /app

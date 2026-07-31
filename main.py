@@ -109,8 +109,13 @@ from app.enterprise.middleware import EnterpriseAuditMiddleware, EnterpriseSecur
 app.add_middleware(EnterpriseSecurityMiddleware)
 app.add_middleware(EnterpriseAuditMiddleware)
 
-# Instrument Prometheus metrics
-Instrumentator().instrument(app).expose(app)
+# Instrument Prometheus metrics. The /metrics route itself is gated by
+# MetricsAccessMiddleware, which restricts it to internal scrapers or callers
+# presenting METRICS_TOKEN whenever APP_ENV is production/staging.
+from app.deploy.metrics_guard import MetricsAccessMiddleware
+
+Instrumentator().instrument(app).expose(app, include_in_schema=False)
+app.add_middleware(MetricsAccessMiddleware)
 
 # Static CORS (when CORS_ORIGINS includes "*") + dynamic verified domain origins
 from app.domains.cors import DynamicCORSMiddleware

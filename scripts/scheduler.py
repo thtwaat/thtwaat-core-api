@@ -77,6 +77,35 @@ def main():
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
 
+    # Register ORM relationships before any Session/query (same set as main.py).
+    import app.companies.model  # noqa: F401
+    import app.users.model  # noqa: F401
+    import app.auth.model  # noqa: F401
+    import app.apps.model  # noqa: F401
+    import app.storage.model  # noqa: F401
+    import app.notifications.model  # noqa: F401
+    import app.payments.model  # noqa: F401
+    import app.ai.model  # noqa: F401
+    import app.products.model  # noqa: F401
+    import app.api_keys.model  # noqa: F401
+    import app.webhooks.model  # noqa: F401
+    import app.features.ai_platform.database.models  # noqa: F401
+    import app.agent_platform.models  # noqa: F401
+    import app.agent_platform.knowledge.models  # noqa: F401
+    import app.usage.models  # noqa: F401
+    import app.domains.models  # noqa: F401
+    import app.marketplace.models  # noqa: F401
+    import app.product_generator.models  # noqa: F401
+    import app.branding.models  # noqa: F401
+    import app.enterprise.models  # noqa: F401
+    import app.onboarding.models  # noqa: F401
+    import app.monitoring.models  # noqa: F401
+    import app.copilot.models  # noqa: F401
+    import app.agent_store.models  # noqa: F401
+    import app.payments.plans.model  # noqa: F401
+    import app.payments.invoices.model  # noqa: F401
+    import app.payments.subscriptions.model  # noqa: F401
+
     from app.config.settings import settings
     import redis
 

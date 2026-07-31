@@ -35,6 +35,8 @@ services:
       SSL_MODE: ${SSL_MODE:-simulate}
       REDIS_HOST: redis
       DB_HOST: db
+      # In-stack Ollama daemon (do not inherit host.docker.internal from .env).
+      OLLAMA_URL: http://ollama:11434
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/knowledge:/app/data/knowledge
@@ -50,6 +52,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/live"]
       interval: 10s
@@ -61,6 +65,21 @@ services:
       - no-new-privileges:true
     read_only: false
 
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ollamadata:/root/.ollama
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    restart: unless-stopped
+    # Keep the daemon internal; scrapers / apps talk to it via the docker network.
+    expose:
+      - "11434"
+
   worker:
     build: .
     env_file:
@@ -69,6 +88,7 @@ services:
       REDIS_HOST: redis
       DB_HOST: db
       SSL_MODE: ${SSL_MODE:-simulate}
+      OLLAMA_URL: http://ollama:11434
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/knowledge:/app/data/knowledge
@@ -81,6 +101,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
@@ -167,3 +189,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  ollamadata:

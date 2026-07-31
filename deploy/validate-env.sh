@@ -37,6 +37,23 @@ if [[ ${#jwt} -lt 32 ]]; then
 else
   pass "JWT_SECRET_KEY length ok"
 fi
+if [[ ${#rjwt} -lt 32 ]]; then
+  fail "JWT_REFRESH_SECRET_KEY too short (<32)"
+else
+  pass "JWT_REFRESH_SECRET_KEY length ok"
+fi
+
+# Mirrors WEAK_SECRET_MARKERS in app/config/settings.py — the API refuses to
+# boot in production when either secret matches one of these.
+weak_markers="devsecret|changeme|change-me|change_me|placeholder|example|insecure|notsecret|supersecret|your-secret|your_secret|yoursecret|secret123|password|testsecret|dummy|sample|todo|xxxx"
+for key in JWT_SECRET_KEY JWT_REFRESH_SECRET_KEY; do
+  val="$(env_get "$key")"
+  if echo "$val" | tr '[:upper:]' '[:lower:]' | grep -Eq "$weak_markers"; then
+    fail "$key looks like a development placeholder"
+  else
+    pass "$key not a known placeholder"
+  fi
+done
 
 # ── App env ───────────────────────────────────────────────────────────────────
 app_env="$(env_get APP_ENV production)"
@@ -51,6 +68,14 @@ if [[ -z "$cors" ]] || echo "$cors" | grep -Fq '*'; then
   fail "CORS_ORIGINS must be an explicit list (no *)"
 else
   pass "CORS_ORIGINS restricted"
+fi
+
+# ── Metrics exposure ──────────────────────────────────────────────────────────
+metrics_token="$(env_get METRICS_TOKEN)"
+if is_placeholder "$metrics_token"; then
+  note "METRICS_TOKEN unset — /metrics limited to internal networks only"
+else
+  pass "METRICS_TOKEN set"
 fi
 
 pub="$(env_get PUBLIC_API_BASE_URL)"

@@ -8,13 +8,17 @@ class OllamaProvider(LLMProvider):
     async def generate_response(self, request: UnifiedChatRequest) -> UnifiedChatResponse:
         # Default to a lightweight model if not provided
         model_name = request.model or "qwen2.5-coder:3b"
-        
-        # Ollama usually runs on the host machine. From docker, use host.docker.internal
-        # If running outside docker, it's localhost. Let's try host.docker.internal first.
-        # But wait, we can just use an environment variable or default to host.docker.internal
+
+        from app.config.settings import settings
+
+        # Prefer OLLAMA_URL (shared with embeddings); OLLAMA_BASE_URL kept as alias.
         import os
-        ollama_url = os.getenv("OLLAMA_BASE_URL", "http://host.docker.internal:11434")
-        
+        ollama_url = (
+            os.getenv("OLLAMA_BASE_URL")
+            or settings.OLLAMA_URL
+            or "http://host.docker.internal:11434"
+        ).rstrip("/")
+
         payload = {
             "model": model_name,
             "messages": request.messages,
@@ -30,7 +34,7 @@ class OllamaProvider(LLMProvider):
         finish_reason = "stop"
         
         try:
-            async with httpx.AsyncClient(timeout=60.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(f"{ollama_url}/api/chat", json=payload)
                 response.raise_for_status()
                 data = response.json()
@@ -42,7 +46,7 @@ class OllamaProvider(LLMProvider):
                     finish_reason = data["done_reason"]
                     
         except Exception as e:
-            content = f"Ollama Provider Error: {str(e)}"
+            content = f"Ollama Provider Error: {type(e).__name__}: {e}"
             finish_reason = "error"
 
         return UnifiedChatResponse(

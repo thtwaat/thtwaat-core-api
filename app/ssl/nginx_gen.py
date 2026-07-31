@@ -49,6 +49,11 @@ server {{
 
     client_max_body_size 50m;
 
+    # Prometheus series are internal-only; never serve them from a tenant vhost.
+    location = /metrics {{
+        deny all;
+    }}
+
     location / {{
         limit_req zone=api_limit burst=40 nodelay;
         proxy_pass http://api_backend;
