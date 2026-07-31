@@ -33,8 +33,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
-    PORT=3300 \
-    HOSTNAME=0.0.0.0
+    PORT=3300
 
 RUN addgroup -S nodejs && adduser -S nextjs -G nodejs
 
@@ -44,4 +43,5 @@ COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
 USER nextjs
 EXPOSE 3300
-CMD ["node", "server.js"]
+# Docker overwrites HOSTNAME with the container id; force 0.0.0.0 so nginx can reach the app.
+CMD ["sh", "-c", "export HOSTNAME=0.0.0.0; export PORT=${PORT:-3300}; exec node server.js"]

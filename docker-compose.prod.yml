@@ -18,7 +18,7 @@ services:
       api:
         condition: service_healthy
       web_app:
-        condition: service_started
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "nginx", "-t"]
       interval: 30s
@@ -45,6 +45,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3300"
+      # Must be forced again in Dockerfile CMD — Docker overwrites HOSTNAME with container id.
       HOSTNAME: "0.0.0.0"
     healthcheck:
       test:
@@ -54,10 +55,10 @@ services:
           "-e",
           "require('http').get('http://127.0.0.1:3300/',(r)=>{r.resume();process.exit(r.statusCode<500?0:1)}).on('error',()=>process.exit(1))",
         ]
-      interval: 30s
+      interval: 15s
       timeout: 5s
-      retries: 3
-      start_period: 25s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
     security_opt:
       - no-new-privileges:true
