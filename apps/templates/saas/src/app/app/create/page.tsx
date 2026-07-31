@@ -199,36 +199,43 @@ function ProductCard({ gen, onPublish, publishing }: {
       </div>
 
       {/* Widget snippet */}
-      {gen.widget_snippet && (
+      {typeof gen.widget_snippet === "string" && gen.widget_snippet.length > 0 ? (
         <Card>
           <CardHeader title="Embed Snippet" description="Paste this into your site's <head> or before </body>." />
           <pre className="overflow-x-auto rounded-lg bg-slate-900 p-4 text-xs text-emerald-300">
             {gen.widget_snippet}
           </pre>
         </Card>
-      )}
+      ) : null}
 
       {/* Config preview */}
-      {gen.product_config.name && (
+      {typeof gen.product_config.name === "string" && gen.product_config.name.length > 0 ? (
         <Card>
           <CardHeader title="Product Configuration" />
           <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
-            {[
-              ["Name", gen.product_config.name],
-              ["Industry", (gen.product_config.industry as string)?.replace("_", " ")],
-              ["Theme", gen.product_config.theme],
-              ["Brand tone", gen.product_config.brand_tone],
-              ["Language", gen.product_config.language],
-              ["Primary color", gen.product_config.colors ? (gen.product_config.colors as Record<string, string>).primary : "—"],
-            ].map(([label, value]) => (
-              <div key={String(label)}>
+            {(
+              [
+                ["Name", gen.product_config.name],
+                ["Industry", (gen.product_config.industry as string)?.replace("_", " ")],
+                ["Theme", gen.product_config.theme],
+                ["Brand tone", gen.product_config.brand_tone],
+                ["Language", gen.product_config.language],
+                [
+                  "Primary color",
+                  gen.product_config.colors
+                    ? (gen.product_config.colors as Record<string, string>).primary
+                    : "—"
+                ]
+              ] as Array<[string, unknown]>
+            ).map(([label, value]) => (
+              <div key={label}>
                 <p className="text-xs text-muted capitalize">{label}</p>
-                <p className="font-medium capitalize">{String(value || "—")}</p>
+                <p className="font-medium capitalize">{String(value ?? "—")}</p>
               </div>
             ))}
           </div>
         </Card>
-      )}
+      ) : null}
 
       {/* Publish CTA */}
       {gen.status === "preview_ready" && (
