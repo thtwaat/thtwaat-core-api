@@ -1,5 +1,5 @@
 FROM nginx:alpine
-RUN apk add --no-cache openssl \
+RUN apk add --no-cache openssl curl \
     && mkdir -p /etc/nginx/ssl /etc/nginx/conf.d/domains /var/www/acme/.well-known/acme-challenge \
     && openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
     -keyout /etc/nginx/ssl/server.key \

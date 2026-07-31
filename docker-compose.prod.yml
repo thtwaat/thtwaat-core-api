@@ -1,11 +1,22 @@
 # Production compose — one-click stack
 # Usage:
-#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#   docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 #
 # Services: nginx, web_app, api, postgres, redis, worker, scheduler, backup (+ optional minio)
+#
+# Stable names (do not rely on project_*_1):
+#   docker logs thtwaat-nginx
+#   docker logs thtwaat-web-app
+# Shared network (project-name independent): thtwaat_net
+
+networks:
+  thtwaat_net:
+    name: thtwaat_net
+    driver: bridge
 
 services:
   nginx:
+    container_name: thtwaat-nginx
     build: ./nginx
     ports:
       - "80:80"
@@ -14,6 +25,8 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl
       - ./nginx/conf.d/domains:/etc/nginx/conf.d/domains:ro
       - ./nginx/acme-webroot:/var/www/acme:ro
+    networks:
+      - thtwaat_net
     depends_on:
       api:
         condition: service_healthy
@@ -30,6 +43,7 @@ services:
 
   # SaaS frontend — https://app.thtwaat.com (internal only; TLS at nginx)
   web_app:
+    container_name: thtwaat-web-app
     build:
       context: ./apps/templates/saas
       dockerfile: Dockerfile
@@ -42,6 +56,8 @@ services:
         NEXT_PUBLIC_RAZORPAY_KEY_ID: ${NEXT_PUBLIC_RAZORPAY_KEY_ID:-}
     expose:
       - "3300"
+    networks:
+      - thtwaat_net
     environment:
       NODE_ENV: production
       PORT: "3300"
@@ -64,6 +80,7 @@ services:
       - no-new-privileges:true
 
   api:
+    container_name: thtwaat-api
     build: .
     env_file:
       - .env
@@ -82,6 +99,8 @@ services:
       - ./nginx/ssl:/app/nginx/ssl
       - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
       - ./nginx/acme-webroot:/app/nginx/acme-webroot
+    networks:
+      - thtwaat_net
     command: >
       bash -c "alembic upgrade head &&
                uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='*'"
@@ -104,9 +123,12 @@ services:
     read_only: false
 
   ollama:
+    container_name: thtwaat-ollama
     image: ollama/ollama:latest
     volumes:
       - ollamadata:/root/.ollama
+    networks:
+      - thtwaat_net
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 30s
@@ -119,6 +141,7 @@ services:
       - "11434"
 
   worker:
+    container_name: thtwaat-worker
     build: .
     env_file:
       - .env
@@ -134,6 +157,8 @@ services:
       - ./data/backups:/app/data/backups
       - ./nginx/ssl:/app/nginx/ssl
       - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
+    networks:
+      - thtwaat_net
     command: python scripts/worker.py
     depends_on:
       db:
@@ -153,6 +178,7 @@ services:
       start_period: 15s
 
   scheduler:
+    container_name: thtwaat-scheduler
     build: .
     env_file:
       - .env
@@ -168,6 +194,8 @@ services:
       - ./data/knowledge:/app/data/knowledge
       - ./nginx/ssl:/app/nginx/ssl
       - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
+    networks:
+      - thtwaat_net
     command: python scripts/scheduler.py
     depends_on:
       db:
@@ -181,6 +209,7 @@ services:
       - no-new-privileges:true
 
   backup:
+    container_name: thtwaat-backup
     build: .
     env_file:
       - .env
@@ -194,6 +223,8 @@ services:
       - ./data/uploads:/app/data/uploads
       - ./data/knowledge:/app/data/knowledge
       - pgdata:/var/lib/postgresql/data:ro
+    networks:
+      - thtwaat_net
     profiles: ["manual-backup"]
     command: python scripts/backup.py
     depends_on:
@@ -201,6 +232,7 @@ services:
         condition: service_healthy
 
   db:
+    container_name: thtwaat-db
     image: pgvector/pgvector:pg15
     environment:
       POSTGRES_DB: ${DB_NAME}
@@ -208,6 +240,8 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - thtwaat_net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -216,10 +250,13 @@ services:
     restart: unless-stopped
 
   redis:
+    container_name: thtwaat-redis
     image: redis:7-alpine
     command: redis-server --appendonly yes
     volumes:
       - redisdata:/data
+    networks:
+      - thtwaat_net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
