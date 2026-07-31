@@ -16,6 +16,9 @@ develop-eggs/
 .installed.cfg
 lib/
 lib64/
+# Keep Next.js / frontend source libs (Python rule above was too broad)
+!**/src/lib/
+!**/src/lib/**
 
 # Virtual Environments
 .venv/
