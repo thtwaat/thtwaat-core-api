@@ -82,8 +82,11 @@ services:
   api:
     container_name: thtwaat-api
     build: .
+    # Container env must match the production env file used at deploy
+    # (`docker compose ... --env-file .env.prod`). `--env-file` only
+    # substitutes ${VAR} in this YAML; it does NOT inject into the container.
     env_file:
-      - .env
+      - .env.prod
     environment:
       APP_ENV: production
       SSL_MODE: ${SSL_MODE:-simulate}
@@ -144,7 +147,7 @@ services:
     container_name: thtwaat-worker
     build: .
     env_file:
-      - .env
+      - .env.prod
     environment:
       REDIS_HOST: redis
       DB_HOST: db
@@ -181,7 +184,7 @@ services:
     container_name: thtwaat-scheduler
     build: .
     env_file:
-      - .env
+      - .env.prod
     environment:
       REDIS_HOST: redis
       DB_HOST: db
@@ -212,7 +215,7 @@ services:
     container_name: thtwaat-backup
     build: .
     env_file:
-      - .env
+      - .env.prod
     environment:
       REDIS_HOST: redis
       DB_HOST: db
