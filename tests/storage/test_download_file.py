@@ -43,7 +43,18 @@ def test_download_file(client):
     finally:
         os.remove(tmp_path)
 
-def test_download_missing_file(client):
+def test_download_requires_auth(client):
     fake_id = str(uuid.uuid4())
     download_resp = client.get(f"/api/v1/storage/{fake_id}/download", follow_redirects=False)
+    assert download_resp.status_code in (401, 403)
+
+
+def test_download_missing_file(client):
+    headers, _company_id = get_auth(client)
+    fake_id = str(uuid.uuid4())
+    download_resp = client.get(
+        f"/api/v1/storage/{fake_id}/download",
+        headers=headers,
+        follow_redirects=False,
+    )
     assert download_resp.status_code == 404

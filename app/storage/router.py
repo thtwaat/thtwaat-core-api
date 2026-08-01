@@ -104,17 +104,18 @@ def get_file_metadata(
 )
 def download_file(
     file_id: uuid.UUID,
-    service: StorageService = Depends(get_storage_service)
+    current_user: UserProfileResponse = Depends(get_current_user),
+    service: StorageService = Depends(get_storage_service),
 ):
     """
-    Get the download URL for the file. 
+    Get the download URL for the file (authenticated, company-scoped).
     Redirects to the S3/MinIO URL or returns the relative local path for clients to handle.
     """
+    db_file = service.get_file_metadata(file_id)
+    if db_file.company_id != current_user.company_id:
+        raise HTTPException(status_code=403, detail="Not authorized to access this file")
+
     url = service.get_download_url(file_id)
-    # Simple redirect to the actual asset. 
-    # For local storage, a static file route needs to serve it (e.g. from /data/uploads).
-    # Since we are asked to fully functionalize local storage, we'll return the url directly for now, 
-    # or implement a fast static stream. Redirect is best for S3/MinIO.
     return RedirectResponse(url=url)
 
 
