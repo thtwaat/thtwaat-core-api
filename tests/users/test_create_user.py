@@ -1,5 +1,4 @@
 import uuid
-import pytest
 from main import app
 from app.auth.router import get_current_user
 
@@ -22,7 +21,7 @@ def test_create_user(client):
         "company_id": company_id,
         "first_name": "Test",
         "last_name": "User",
-        "role": "admin"
+        "role": "employee"
     })
     assert resp.status_code == 201
     assert resp.json()["email"] == email
@@ -36,7 +35,7 @@ def test_create_user_duplicate_email_same_company(client):
         "company_id": company_id,
         "first_name": "Test",
         "last_name": "User",
-        "role": "admin"
+        "role": "employee"
     }
     res1 = client.post("/api/v1/users/", json=payload)
     assert res1.status_code == 201
@@ -55,7 +54,7 @@ def test_create_user_same_email_different_companies(client):
         "company_id": c1,
         "first_name": "Test1",
         "last_name": "User1",
-        "role": "admin"
+        "role": "employee"
     }
     res1 = client.post("/api/v1/users/", json=payload1)
     assert res1.status_code == 201
@@ -66,7 +65,7 @@ def test_create_user_same_email_different_companies(client):
         "company_id": c2,
         "first_name": "Test2",
         "last_name": "User2",
-        "role": "admin"
+        "role": "employee"
     }
     res2 = client.post("/api/v1/users/", json=payload2)
     assert res2.status_code in [201, 400, 409, 500]

@@ -14,7 +14,11 @@ from sqlalchemy.orm import Session
 from app.users.model import User, UserStatus
 from app.users.schema import UserCreate, UserUpdate, UserResponse, UserListResponse
 from app.users.repository import UserRepository
+from app.users.signup_roles import assert_create_role_allowed
 from app.companies.repository import CompanyRepository
+from app.auth.schema import UserProfileResponse
+from app.rbac.dependencies import RequirePermission
+from app.rbac.enums import Permission
 
 
 class UserService:
@@ -53,15 +57,36 @@ class UserService:
         salt = bcrypt.gensalt()
         return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
 
+    @staticmethod
+    def _actor_is_platform_admin(actor: Optional[UserProfileResponse]) -> bool:
+        if actor is None:
+            return False
+        try:
+            RequirePermission(Permission.PLATFORM_ADMIN)(str(actor.role))
+            return True
+        except HTTPException:
+            return False
+
     # ── Core Operations ───────────────────────────────────────────────────────
 
-    def create_user(self, data: UserCreate) -> UserResponse:
+    def create_user(
+        self,
+        data: UserCreate,
+        actor: Optional[UserProfileResponse] = None,
+    ) -> UserResponse:
         """
         Register a new user in a specific company.
         - Validates company exists
         - Validates email is unique within the company
         - Hashes password
+        - Public signup: only company_owner / employee roles
+        - Platform admin (authenticated): any role
         """
+        assert_create_role_allowed(
+            data.role,
+            allow_privileged=self._actor_is_platform_admin(actor),
+        )
+
         # Validate company exists
         company = self.company_repo.get_by_id(data.company_id)
         if not company:

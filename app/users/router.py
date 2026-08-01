@@ -8,11 +8,13 @@ Delegates all business logic to UserService.
 import uuid
 from typing import Optional
 from fastapi import APIRouter, Depends, status, Query
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
+from app.auth.service import AuthService
 from app.users.model import UserStatus
 from app.users.schema import (
     UserCreate,
@@ -27,6 +29,10 @@ router = APIRouter(
     prefix="/users",
     tags=["Users"],
 )
+
+# Optional bearer — public signup stays unauthenticated; platform admins may
+# pass Authorization to create privileged roles.
+_optional_bearer = HTTPBearer(auto_error=False)
 
 
 def get_user_service(db: Session = Depends(get_db)) -> UserService:
@@ -45,11 +51,19 @@ def get_user_service(db: Session = Depends(get_db)) -> UserService:
 def create_user(
     payload: UserCreate,
     service: UserService = Depends(get_user_service),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_bearer),
+    db: Session = Depends(get_db),
 ):
     """
     Create a new user account within a specific company.
+
+    Public signup allows only ``company_owner`` / ``employee``.
+    Authenticated platform admins may assign any role.
     """
-    return service.create_user(payload)
+    actor: Optional[UserProfileResponse] = None
+    if credentials is not None:
+        actor = AuthService(db).get_current_user_profile(credentials.credentials)
+    return service.create_user(payload, actor=actor)
 
 
 @router.get(
