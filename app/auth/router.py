@@ -31,7 +31,7 @@ from app.auth.schema import (
     MFARequiredResponse
 )
 from app.auth.service import AuthService
-from fastapi_limiter.depends import RateLimiter
+from app.auth.rate_limit import auth_rate_limit
 
 
 router = APIRouter(
@@ -42,10 +42,10 @@ router = APIRouter(
 security = HTTPBearer()
 
 # Auth-sensitive routes: keep limits tight to blunt credential stuffing / OTP spray.
-_LOGIN_LIMIT = [Depends(RateLimiter(times=10, seconds=60))]
-_REFRESH_LIMIT = [Depends(RateLimiter(times=30, seconds=60))]
-_OTP_LIMIT = [Depends(RateLimiter(times=5, seconds=60))]
-_PASSWORD_RESET_LIMIT = [Depends(RateLimiter(times=5, seconds=60))]
+_LOGIN_LIMIT = auth_rate_limit(times=10, seconds=60)
+_REFRESH_LIMIT = auth_rate_limit(times=30, seconds=60)
+_OTP_LIMIT = auth_rate_limit(times=5, seconds=60)
+_PASSWORD_RESET_LIMIT = auth_rate_limit(times=5, seconds=60)
 
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
