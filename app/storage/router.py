@@ -5,7 +5,6 @@ FastAPI router for Storage module operations.
 """
 
 import uuid
-from typing import Optional
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
 from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
