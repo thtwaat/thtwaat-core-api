@@ -109,13 +109,14 @@ export const companiesApi = {
   get: (id: string) => api.v1<Company>(`/companies/${id}`),
   update: (id: string, body: Record<string, unknown>) =>
     api.v1<Company>(`/companies/${id}`, { method: "PATCH", body }),
+  // Trailing slash matches FastAPI route; avoids slash-redirect dropping POST body.
   create: (body: Record<string, unknown>) =>
-    api.v1<Company>("/companies", { method: "POST", auth: false, body })
+    api.v1<Company>("/companies/", { method: "POST", auth: false, body })
 };
 
 export const usersApi = {
   create: (body: Record<string, unknown>) =>
-    api.v1("/users", { method: "POST", auth: false, body }),
+    api.v1("/users/", { method: "POST", auth: false, body }),
   list: () => api.v1<Array<Record<string, unknown>>>("/users"),
   update: (id: string, body: Record<string, unknown>) => api.v1(`/users/${id}`, { method: "PATCH", body })
 };
