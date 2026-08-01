@@ -11,7 +11,7 @@ const steps = [
   {
     icon: Link2,
     title: "Connect",
-    body: "Set NEXT_PUBLIC_API_URL and NEXT_PUBLIC_AGENT_API_KEY, then sign in against the THTWAAT Core API.",
+    body: "Set NEXT_PUBLIC_API_URL, then sign in against the THTWAAT Core API. Create agent API keys in Settings after login — never bake live keys into the frontend.",
     href: "/login",
     cta: "Open login"
   },
@@ -79,7 +79,7 @@ export default function PublishPage() {
           <p className="font-medium text-ink">Current connection</p>
           <p className="mt-1 text-muted">API: {site.apiUrl}</p>
           <p className="text-muted">
-            Agent key: {site.agentApiKey ? `${site.agentApiKey.slice(0, 12)}…` : "not set"}
+            Agent keys: create and rotate them in Settings after sign-in (never ship live keys in the browser bundle).
           </p>
         </div>
       </Card>

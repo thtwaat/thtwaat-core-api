@@ -13,7 +13,6 @@ Add to `.env` / `.env.prod` (see also `.env.frontends.example`):
 NEXT_PUBLIC_API_URL=https://api.thtwaat.com
 NEXT_PUBLIC_SITE_URL=https://app.thtwaat.com
 NEXT_PUBLIC_SITE_NAME=THTWAAT
-NEXT_PUBLIC_AGENT_API_KEY=tht_live_xxxxxxxxx
 CORS_ORIGINS=["https://app.thtwaat.com","https://admin.thtwaat.com","https://thtwaat.com"]
 PUBLIC_API_BASE_URL=https://api.thtwaat.com
 ```
@@ -58,7 +57,6 @@ Point `app.thtwaat.com` `proxy_pass` back to `http://api_backend;` and reload ng
 
 ```env
 NEXT_PUBLIC_API_URL=https://api.thtwaat.com
-NEXT_PUBLIC_AGENT_API_KEY=tht_live_xxxxxxxxx
 NEXT_PUBLIC_SITE_URL=http://localhost:3300
 NEXT_PUBLIC_SITE_NAME=THTWAAT
 NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_live_xxx
@@ -92,7 +90,6 @@ npx vercel
 ```bash
 docker build \
   --build-arg NEXT_PUBLIC_API_URL=https://api.thtwaat.com \
-  --build-arg NEXT_PUBLIC_AGENT_API_KEY=tht_live_xxx \
   --build-arg NEXT_PUBLIC_SITE_URL=https://app.thtwaat.com \
   --build-arg NEXT_PUBLIC_SITE_NAME=THTWAAT \
   -t thtwaat-saas .
