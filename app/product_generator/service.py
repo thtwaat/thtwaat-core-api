@@ -235,7 +235,7 @@ class ProductGeneratorService:
                 "widget": {
                     "widget_id": job.widget_id,
                     "snippet": job.widget_snippet,
-                    "iframe_url": self.publish.build_iframe_url(job.widget_id) if job.widget_id else None,
+                    "iframe_url": self.publish.build_iframe_url() if job.widget_id else None,
                 },
                 "api_key_prefix": job.api_key_prefix,
             }

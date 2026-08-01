@@ -93,10 +93,19 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["X-Frame-Options"] = "DENY"
+        path = request.url.path
+        # Official iframe embed page (sdk/widget/EMBED.md) must be frameable.
+        if path.startswith("/public/v1/widget/embed"):
+            response.headers.pop("X-Frame-Options", None)
+            response.headers["Content-Security-Policy"] = (
+                "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
+                "frame-ancestors *; object-src 'none'"
+            )
+        else:
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Content-Security-Policy"] = settings.CSP_POLICY
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-        response.headers["Content-Security-Policy"] = settings.CSP_POLICY
         response.headers["Permissions-Policy"] = "geolocation=(), microphone=(), camera=()"
         return response
 
@@ -118,7 +127,7 @@ Instrumentator().instrument(app).expose(app, include_in_schema=False)
 app.add_middleware(MetricsAccessMiddleware)
 
 # Static CORS (when CORS_ORIGINS includes "*") + dynamic verified domain origins
-from app.domains.cors import DynamicCORSMiddleware
+from app.domains.cors import DynamicCORSMiddleware, PublicWidgetCORSMiddleware
 
 if "*" in (settings.CORS_ORIGINS or []):
     app.add_middleware(
@@ -137,6 +146,10 @@ else:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+# Outermost: paste-anywhere for /public/v1/* + widget assets only (API-key auth).
+# Must run outside strict CORSMiddleware so customer-site preflights are not 400'd.
+app.add_middleware(PublicWidgetCORSMiddleware)
 
 configure_logging()
 

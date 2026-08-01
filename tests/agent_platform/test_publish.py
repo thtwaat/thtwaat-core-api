@@ -64,7 +64,8 @@ def test_publish_agent_returns_embed_payload(client):
     assert data["widget_id"].startswith("wgt_")
     assert "/public/v1/chat" in data["public_chat_url"]
     assert "widget.js" in data["embed_script"]
-    assert data["widget_id"] in data["iframe_url"]
+    assert "/public/v1/widget/embed" in data["iframe_url"]
+    assert "api_key=" in data["iframe_url"]
 
 
 def test_publish_forbidden_for_viewer(client):

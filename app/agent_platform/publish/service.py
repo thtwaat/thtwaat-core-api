@@ -61,8 +61,12 @@ class PublishService:
     def build_public_chat_url(self) -> str:
         return f"{self._base_url()}/public/v1/chat"
 
-    def build_iframe_url(self, widget_id: str) -> str:
-        return f"{self._base_url()}/public/v1/widget/{widget_id}"
+    def build_iframe_url(self, api_key_or_placeholder: str = "tht_live_<YOUR_KEY>") -> str:
+        # Official HTML shell (see sdk/widget/EMBED.md) — not /widget/{id} JSON config.
+        from urllib.parse import quote
+
+        key = quote(api_key_or_placeholder, safe="")
+        return f"{self._base_url()}/public/v1/widget/embed?api_key={key}"
 
     def build_embed_script(
         self,
@@ -86,8 +90,8 @@ class PublishService:
             attrs.append(f'data-prompts="{prompts}"')
         return "<script\n  " + "\n  ".join(attrs) + ">\n</script>"
 
-    def build_iframe_tag(self, widget_id: str) -> str:
-        url = self.build_iframe_url(widget_id)
+    def build_iframe_tag(self, api_key_or_placeholder: str = "tht_live_<YOUR_KEY>") -> str:
+        url = self.build_iframe_url(api_key_or_placeholder)
         return (
             f'<iframe src="{url}" title="THTWAAT Chat" '
             f'width="380" height="600" style="border:0;border-radius:16px;" '
@@ -118,7 +122,7 @@ class PublishService:
             widget_id=agent.widget_id,
             status=agent.status,
             script=self.build_embed_script(api_key_placeholder, config),
-            iframe=self.build_iframe_tag(agent.widget_id),
+            iframe=self.build_iframe_tag(api_key_placeholder),
             preview_url=f"{self._base_url()}/public/v1/widget/embed",
             config=config,
         )
@@ -199,7 +203,7 @@ class PublishService:
             widget_id=agent.widget_id,
             public_chat_url=self.build_public_chat_url(),
             embed_script=self.build_embed_script(embed_key, widget_cfg),
-            iframe_url=self.build_iframe_url(agent.widget_id),
+            iframe_url=self.build_iframe_url(embed_key),
             published_at=agent.published_at,
         )
 
@@ -358,7 +362,7 @@ class PublishService:
             config=config,
             public_chat_url=self.build_public_chat_url(),
             embed_script=self.build_embed_script(f"{KEY_PREFIX}<YOUR_KEY>", config),
-            iframe_url=self.build_iframe_url(agent.widget_id),
+            iframe_url=self.build_iframe_url(f"{KEY_PREFIX}<YOUR_KEY>"),
         )
 
     def update_widget_config(

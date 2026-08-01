@@ -59,6 +59,7 @@ export default function AgentDetailPage() {
 
   const a = agent.data;
   const embedScript =
+    embed.data?.script ||
     embed.data?.embed_script ||
     `<script src="${site.apiUrl}/widget.js" data-api-key="YOUR_KEY" async></script>`;
 
