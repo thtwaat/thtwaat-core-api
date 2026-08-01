@@ -14,7 +14,7 @@ Fully automated Ubuntu 24.04 LTS deployment for THTWAAT Core API.
 | `deploy/backup.sh` / `restore.sh` | DB + storage backup/restore + retention |
 | `deploy/verify-health.sh` | `/live` `/ready` `/health` |
 | `deploy/verify-monitoring.sh` | Prometheus + Grafana |
-| `docker-compose.prod.yml` | Production stack |
+| `docker-compose.prod.yml` | Production stack (**Compose v2 only**) |
 
 ## First-time VPS setup
 

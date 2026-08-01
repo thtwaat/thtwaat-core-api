@@ -1,13 +1,14 @@
-# Production compose — one-click stack
+# Production stack — Docker Compose v2 ONLY (Docker Engine 29+)
+# Do NOT use legacy docker-compose 1.x (KeyError: ContainerConfig on Engine 29).
+#
 # Usage:
-#   docker-compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build
 #
-# Services: nginx, web_app, api, postgres, redis, worker, scheduler, backup (+ optional minio)
-#
-# Stable names (do not rely on project_*_1):
-#   docker logs thtwaat-nginx
-#   docker logs thtwaat-web-app
-# Shared network (project-name independent): thtwaat_net
+# Services: nginx, web_app, api, postgres, redis, worker, scheduler, backup
+# Network: thtwaat_net (shared; service DNS: web_app, api, nginx, …)
+# Containers: thtwaat-nginx, thtwaat-web-app, thtwaat-api, …
+
+name: thtwaat
 
 networks:
   thtwaat_net:

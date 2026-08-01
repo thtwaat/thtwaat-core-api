@@ -20,14 +20,15 @@ PUBLIC_API_BASE_URL=https://api.thtwaat.com
 
 ### 2. Build & start `web_app`
 
+Requires **Docker Compose v2** (`docker compose`, not `docker-compose`).
+
 ```bash
 cd ~/thtwaat-core-api
-docker-compose -f docker-compose.prod.yml build web_app
-docker-compose -f docker-compose.prod.yml up -d web_app
-# rebuild nginx image if nginx.conf upstreams changed
-docker-compose -f docker-compose.prod.yml up -d --build nginx
-docker-compose -f docker-compose.prod.yml exec nginx nginx -t
-docker-compose -f docker-compose.prod.yml exec nginx nginx -s reload
+docker compose -f docker-compose.prod.yml build web_app
+docker compose -f docker-compose.prod.yml up -d web_app
+docker compose -f docker-compose.prod.yml up -d --build nginx
+docker compose -f docker-compose.prod.yml exec nginx nginx -t
+docker compose -f docker-compose.prod.yml exec nginx nginx -s reload
 ```
 
 Ensure `nginx/ssl/domains/app.thtwaat.com/{fullchain,privkey}.pem` exist (Let's Encrypt copy).
@@ -45,7 +46,7 @@ Browser: login / signup / dashboard; DevTools Network must show `https://api.tht
 
 ### Rollback
 
-Point `app.thtwaat.com` `proxy_pass` back to `http://api_backend;` and reload nginx, then `docker-compose -f docker-compose.prod.yml stop web_app`.
+Point `app.thtwaat.com` `proxy_pass` back to `http://api_backend;` and reload nginx, then `docker compose -f docker-compose.prod.yml stop web_app`.
 
 ---
 

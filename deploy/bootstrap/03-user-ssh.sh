@@ -21,7 +21,7 @@ fi
 SUDOERS="/etc/sudoers.d/thtwaat-${USER_NAME}"
 cat > "${SUDOERS}" <<EOF
 # THTWAAT deploy user — limited NOPASSWD for ops
-${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/systemctl, /usr/sbin/ufw, /usr/bin/docker, /usr/bin/docker-compose, /usr/libexec/docker/cli-plugins/docker-compose, /bin/journalctl
+${USER_NAME} ALL=(ALL) NOPASSWD: /usr/bin/systemctl, /usr/sbin/ufw, /usr/bin/docker, /usr/libexec/docker/cli-plugins/docker-compose, /usr/local/lib/docker/cli-plugins/docker-compose, /bin/journalctl
 EOF
 chmod 0440 "${SUDOERS}"
 visudo -cf "${SUDOERS}" >/dev/null
