@@ -81,13 +81,14 @@ def list_users(
 ):
     """
     Retrieve a paginated list of users.
-    Supports filtering by company_id and status.
+    Scoped to the caller's company unless platform admin.
     """
     return service.list_users(
         company_id=company_id,
         page=page,
         page_size=page_size,
         status_filter=status_filter,
+        actor=current_user,
     )
 
 
@@ -101,8 +102,8 @@ def get_user(
     current_user: UserProfileResponse = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
-    """Retrieve a single user by their UUID."""
-    return service.get_user(user_id)
+    """Retrieve a single user by their UUID (tenant-scoped)."""
+    return service.get_user(user_id, actor=current_user)
 
 
 @router.patch(
@@ -117,7 +118,7 @@ def update_user(
     service: UserService = Depends(get_user_service),
 ):
     """Partially update user information (name, email, role, etc.)."""
-    return service.update_user(user_id, payload)
+    return service.update_user(user_id, payload, actor=current_user)
 
 
 @router.delete(
@@ -133,4 +134,4 @@ def deactivate_user(
     """
     Soft-delete a user — marks them as inactive.
     """
-    return service.deactivate_user(user_id)
+    return service.deactivate_user(user_id, actor=current_user)

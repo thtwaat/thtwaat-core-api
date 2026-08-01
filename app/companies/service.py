@@ -29,6 +29,8 @@ from app.companies.schema import (
     CompanyListResponse,
     CompanyResponse,
 )
+from app.auth.schema import UserProfileResponse
+from app.auth.tenant import assert_same_company
 
 # Plan → resource limits map (single source of truth)
 PLAN_LIMITS: dict[CompanyPlan, dict] = {
@@ -127,18 +129,30 @@ class CompanyService:
 
         return CompanyResponse.model_validate(company)
 
-    def get_company(self, company_id: uuid.UUID) -> CompanyResponse:
+    def get_company(
+        self,
+        company_id: uuid.UUID,
+        actor: Optional[UserProfileResponse] = None,
+    ) -> CompanyResponse:
         company = self._get_or_404(company_id)
+        if actor is not None:
+            assert_same_company(actor, company.id, not_found_detail="Company not found.")
         self._assert_active(company)
         return CompanyResponse.model_validate(company)
 
-    def get_company_by_slug(self, slug: str) -> CompanyResponse:
+    def get_company_by_slug(
+        self,
+        slug: str,
+        actor: Optional[UserProfileResponse] = None,
+    ) -> CompanyResponse:
         company = self.repo.get_by_slug(slug)
         if not company:
             raise HTTPException(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Company with slug '{slug}' not found.",
             )
+        if actor is not None:
+            assert_same_company(actor, company.id, not_found_detail="Company not found.")
         self._assert_active(company)
         return CompanyResponse.model_validate(company)
 
@@ -171,9 +185,14 @@ class CompanyService:
         )
 
     def update_company(
-        self, company_id: uuid.UUID, data: CompanyUpdate
+        self,
+        company_id: uuid.UUID,
+        data: CompanyUpdate,
+        actor: Optional[UserProfileResponse] = None,
     ) -> CompanyResponse:
         company = self._get_or_404(company_id)
+        if actor is not None:
+            assert_same_company(actor, company.id, not_found_detail="Company not found.")
         self._assert_active(company)
         updated = self.repo.update(company, data)
         return CompanyResponse.model_validate(updated)
@@ -203,8 +222,14 @@ class CompanyService:
         updated = self.repo.update(company, data)
         return CompanyResponse.model_validate(updated)
 
-    def deactivate_company(self, company_id: uuid.UUID) -> dict:
+    def deactivate_company(
+        self,
+        company_id: uuid.UUID,
+        actor: Optional[UserProfileResponse] = None,
+    ) -> dict:
         """Soft-delete: mark company as inactive."""
         company = self._get_or_404(company_id)
+        if actor is not None:
+            assert_same_company(actor, company.id, not_found_detail="Company not found.")
         self.repo.delete(company)
         return {"message": f"Company '{company.slug}' has been deactivated."}

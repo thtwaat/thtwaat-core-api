@@ -57,9 +57,10 @@ def check_permission(permission: Permission):
 )
 def create_app(
     payload: AppCreate,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: AppService = Depends(get_app_service),
 ):
-    return service.create_app(payload)
+    return service.create_app(payload, actor=current_user)
 
 
 @router.get(
@@ -73,6 +74,7 @@ def list_apps(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
     status_filter: Optional[AppStatus] = Query(default=None, alias="status"),
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: AppService = Depends(get_app_service),
 ):
     return service.list_apps(
@@ -80,6 +82,7 @@ def list_apps(
         page=page,
         page_size=page_size,
         status_filter=status_filter,
+        actor=current_user,
     )
 
 
@@ -91,9 +94,10 @@ def list_apps(
 )
 def get_app(
     app_id: uuid.UUID,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: AppService = Depends(get_app_service),
 ):
-    return service.get_app(app_id)
+    return service.get_app(app_id, actor=current_user)
 
 
 @router.patch(
@@ -105,9 +109,10 @@ def get_app(
 def update_app(
     app_id: uuid.UUID,
     payload: AppUpdate,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: AppService = Depends(get_app_service),
 ):
-    return service.update_app(app_id, payload)
+    return service.update_app(app_id, payload, actor=current_user)
 
 
 @router.delete(
@@ -118,6 +123,7 @@ def update_app(
 )
 def delete_app(
     app_id: uuid.UUID,
+    current_user: UserProfileResponse = Depends(get_current_user),
     service: AppService = Depends(get_app_service),
 ):
-    return service.delete_app(app_id)
+    return service.delete_app(app_id, actor=current_user)

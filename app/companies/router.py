@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
+from app.auth.tenant import require_platform_admin
 from app.companies.model import CompanyPlan, CompanyStatus
 from app.companies.schema import (
     CompanyCreate,
@@ -53,8 +54,9 @@ def list_companies(
 ):
     """
     Retrieve a paginated list of active company tenants.
-    Supports filtering by status and subscription plan.
+    Platform admin only.
     """
+    require_platform_admin(current_user)
     return service.list_companies(
         page=page,
         page_size=page_size,
@@ -92,8 +94,8 @@ def get_company_by_slug(
     current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
-    """Retrieve a company by its URL-safe slug (e.g. acme-corp)."""
-    return service.get_company_by_slug(slug)
+    """Retrieve a company by its URL-safe slug (tenant-scoped)."""
+    return service.get_company_by_slug(slug, actor=current_user)
 
 
 @router.get(
@@ -106,8 +108,8 @@ def get_company(
     current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
-    """Retrieve a single company by its UUID."""
-    return service.get_company(company_id)
+    """Retrieve a single company by its UUID (own company or platform admin)."""
+    return service.get_company(company_id, actor=current_user)
 
 
 @router.patch(
@@ -122,7 +124,7 @@ def update_company(
     service: CompanyService = Depends(get_company_service),
 ):
     """Partially update company information (name, description, logo, etc.)."""
-    return service.update_company(company_id, payload)
+    return service.update_company(company_id, payload, actor=current_user)
 
 
 # ── Admin Endpoints ───────────────────────────────────────────────────────────
@@ -139,10 +141,10 @@ def admin_update_company(
     service: CompanyService = Depends(get_company_service),
 ):
     """
-    Admin-only endpoint to change subscription plan, company status,
+    Platform-admin endpoint to change subscription plan, company status,
     verification, and resource limits.
-    Enforces status transition rules (state machine).
     """
+    require_platform_admin(current_user)
     return service.admin_update_company(company_id, payload)
 
 
@@ -158,6 +160,6 @@ def deactivate_company(
 ):
     """
     Soft-delete a company — marks it as inactive.
-    Data is preserved for audit and compliance purposes.
+    Own company or platform admin only.
     """
-    return service.deactivate_company(company_id)
+    return service.deactivate_company(company_id, actor=current_user)
