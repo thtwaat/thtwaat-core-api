@@ -218,21 +218,34 @@ class Settings(BaseSettings):
                 "JWT_SECRET_KEY and JWT_REFRESH_SECRET_KEY must be different values"
             )
 
+        origins = [str(o).strip() for o in (self.CORS_ORIGINS or []) if str(o).strip()]
+        if self.is_hardened_env:
+            if not origins:
+                problems.append(
+                    "CORS_ORIGINS must list explicit frontend origins in production"
+                )
+            elif "*" in origins:
+                problems.append(
+                    "CORS_ORIGINS must not include '*' in production "
+                    '(use e.g. ["https://app.thtwaat.com"])'
+                )
+
         if not problems:
             return self
 
         if self.is_hardened_env:
             raise ValueError(
-                "Refusing to start with development-grade JWT configuration in "
+                "Refusing to start with unsafe configuration in "
                 f"APP_ENV={self.app_env}:\n  - "
                 + "\n  - ".join(problems)
-                + "\nGenerate strong secrets, e.g. "
-                "`python -c \"import secrets; print(secrets.token_urlsafe(48))\"`."
+                + "\nGenerate strong JWT secrets, e.g. "
+                "`python -c \"import secrets; print(secrets.token_urlsafe(48))\"`, "
+                "and set an explicit CORS_ORIGINS allowlist."
             )
 
         for problem in problems:
             logger.warning(
-                "[Settings] Weak JWT configuration (allowed in APP_ENV=%s only): %s",
+                "[Settings] Unsafe configuration (allowed in APP_ENV=%s only): %s",
                 self.app_env,
                 problem,
             )
