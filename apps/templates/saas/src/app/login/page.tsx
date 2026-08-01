@@ -15,6 +15,18 @@ import type { z } from "zod";
 
 type FormValues = z.infer<typeof loginSchema>;
 
+/** Only allow same-origin app paths; block open redirects (//evil, https://…). */
+function safeNextPath(raw: string | null): string {
+  if (!raw) return "/app";
+  if (!raw.startsWith("/") || raw.startsWith("//") || raw.includes("://")) {
+    return "/app";
+  }
+  if (!(raw === "/app" || raw.startsWith("/app/"))) {
+    return "/app";
+  }
+  return raw;
+}
+
 function LoginForm() {
   const { login, completeMfa } = useAuth();
   const router = useRouter();
@@ -32,7 +44,7 @@ function LoginForm() {
         return;
       }
       toast.success("Welcome back");
-      router.replace(params.get("next") || "/app");
+      router.replace(safeNextPath(params.get("next")));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Login failed");
     }
@@ -43,7 +55,7 @@ function LoginForm() {
     try {
       await completeMfa(mfaToken, totp);
       toast.success("MFA verified");
-      router.replace(params.get("next") || "/app");
+      router.replace(safeNextPath(params.get("next")));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Invalid MFA code");
     }
