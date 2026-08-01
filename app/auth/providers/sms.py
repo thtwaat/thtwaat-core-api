@@ -7,6 +7,6 @@ class SMSOTPProvider(BaseOTPProvider):
     """Stub implementation for SMS OTP delivery."""
     
     def send_otp(self, recipient: str, code: str) -> bool:
-        # In a real implementation, this would use Twilio, MSG91, AWS SNS, etc.
-        logger.info(f"[SMS Stub] Sending OTP {code} to {recipient}")
+        # Never log the OTP code — it is a one-time secret.
+        logger.info("[SMS Stub] OTP dispatched (code redacted) recipient=%s", recipient)
         return True
