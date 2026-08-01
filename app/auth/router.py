@@ -41,6 +41,12 @@ router = APIRouter(
 
 security = HTTPBearer()
 
+# Auth-sensitive routes: keep limits tight to blunt credential stuffing / OTP spray.
+_LOGIN_LIMIT = [Depends(RateLimiter(times=10, seconds=60))]
+_REFRESH_LIMIT = [Depends(RateLimiter(times=30, seconds=60))]
+_OTP_LIMIT = [Depends(RateLimiter(times=5, seconds=60))]
+_PASSWORD_RESET_LIMIT = [Depends(RateLimiter(times=5, seconds=60))]
+
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     """Dependency provider for AuthService."""
@@ -54,7 +60,8 @@ from typing import Union
 @router.post(
     "/login",
     response_model=Union[TokenResponse, MFARequiredResponse],
-    summary="Login and obtain tokens"
+    summary="Login and obtain tokens",
+    dependencies=_LOGIN_LIMIT,
 )
 def login(
     payload: LoginRequest,
@@ -71,6 +78,7 @@ def login(
     "/refresh",
     response_model=TokenResponse,
     summary="Refresh access token",
+    dependencies=_REFRESH_LIMIT,
 )
 def refresh_token(
     payload: RefreshRequest,
@@ -115,7 +123,7 @@ def get_current_user(
 
 # ── OTP Endpoints ─────────────────────────────────────────────────────────────
 
-@router.post("/send-otp", summary="Send an OTP code")
+@router.post("/send-otp", summary="Send an OTP code", dependencies=_OTP_LIMIT)
 def send_otp(
     payload: SendOTPRequest,
     request: Request,
@@ -133,7 +141,7 @@ def send_otp(
     )
 
 
-@router.post("/verify-otp", summary="Verify an OTP code")
+@router.post("/verify-otp", summary="Verify an OTP code", dependencies=_OTP_LIMIT)
 def verify_otp(
     payload: VerifyOTPRequest,
     request: Request,
@@ -152,7 +160,7 @@ def verify_otp(
     )
 
 
-@router.post("/resend-otp", summary="Resend an OTP code")
+@router.post("/resend-otp", summary="Resend an OTP code", dependencies=_OTP_LIMIT)
 def resend_otp(
     payload: ResendOTPRequest,
     request: Request,
@@ -229,7 +237,7 @@ def verify_phone(
         user_agent=user_agent
     )
 
-@router.post("/forgot-password", summary="Send a password reset code")
+@router.post("/forgot-password", summary="Send a password reset code", dependencies=_PASSWORD_RESET_LIMIT)
 def forgot_password(
     payload: ForgotPasswordRequest,
     request: Request,
@@ -243,7 +251,7 @@ def forgot_password(
         user_agent=user_agent
     )
 
-@router.post("/reset-password", summary="Reset password using OTP code")
+@router.post("/reset-password", summary="Reset password using OTP code", dependencies=_PASSWORD_RESET_LIMIT)
 def reset_password(
     payload: ResetPasswordRequest,
     request: Request,
