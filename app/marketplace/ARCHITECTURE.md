@@ -188,7 +188,15 @@ API:
 - Existing registry CRUD + agent-store `/admin/*` moderation endpoints
 - FE clients: `marketplaceApi.adminList|createTemplate|…`, `agentStoreApi.*`
 
-| 7 | Postgres FTS on name/description/tags |
+## Phase 7 (Postgres FTS) — done
+
+Full-text search on catalog `name`, `slug`, `industry`, `description`, `tags`:
+
+- Migration `e1f2a3b4c5d6`: generated `search_vector` + GIN index
+- Query: `websearch_to_tsquery` + `ts_rank_cd` (ILIKE safety net)
+- Default sort with `q` → `relevance`
+- Helpers: `app/marketplace/search.py`
+
 | 8 | Versioning UI + release notes |
 | 9 | Analytics |
 | 10 | Audit / docs / deploy |

@@ -72,7 +72,7 @@ def list_templates(
     newest: bool = Query(default=False),
     sort: Optional[str] = Query(
         default=None,
-        description="featured | newest | name | installs | updated",
+        description="featured | newest | name | installs | updated | relevance",
     ),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),

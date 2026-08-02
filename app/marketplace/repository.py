@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import List, Optional
 from uuid import UUID
 
-from sqlalchemy import or_, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.marketplace.models import (
@@ -15,6 +15,7 @@ from app.marketplace.models import (
     TemplateStatus,
     TemplateVersion,
 )
+from app.marketplace.search import apply_template_text_search
 
 
 class MarketplaceRepository:
@@ -56,19 +57,15 @@ class MarketplaceRepository:
             query = query.filter(MarketplaceTemplate.pricing_tier == pricing_tier)
         if featured is not None:
             query = query.filter(MarketplaceTemplate.is_featured == featured)
-        if q:
-            like = f"%{q.strip()}%"
-            query = query.filter(
-                or_(
-                    MarketplaceTemplate.name.ilike(like),
-                    MarketplaceTemplate.description.ilike(like),
-                    MarketplaceTemplate.slug.ilike(like),
-                    MarketplaceTemplate.industry.ilike(like),
-                )
-            )
+
+        dialect = self.db.get_bind().dialect.name
+        query, rank_expr = apply_template_text_search(query, q, dialect_name=dialect)
+
         total = query.count()
         sort_key = (sort or "featured").lower()
-        if sort_key in ("newest", "created", "created_at"):
+        if sort_key in ("relevance", "rank") and rank_expr is not None:
+            order = (rank_expr.desc(), MarketplaceTemplate.is_featured.desc(), MarketplaceTemplate.created_at.desc())
+        elif sort_key in ("newest", "created", "created_at"):
             order = (MarketplaceTemplate.created_at.desc(),)
         elif sort_key in ("name", "alpha"):
             order = (MarketplaceTemplate.name.asc(),)

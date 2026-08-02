@@ -37,6 +37,7 @@ from app.marketplace.schemas import (
     TemplateVersionResponse,
     UpdateNotification,
 )
+from app.marketplace.search import resolve_sort_key
 from app.usage.dimensions import UsageDimension
 from app.usage.service import UsageService
 
@@ -124,7 +125,7 @@ class MarketplaceService:
         status: Optional[str] = TemplateStatus.PUBLISHED.value,
         is_public: Optional[bool] = True,
     ) -> TemplateListPage:
-        sort_key = sort or ("newest" if newest else "featured")
+        sort_key = resolve_sort_key(sort=sort, newest=newest, q=q)
         status_filter: Optional[str]
         if status is None:
             status_filter = None

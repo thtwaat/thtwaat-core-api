@@ -26,4 +26,13 @@ def register_sqlite_pg_compat() -> None:
     def _array_sqlite(type_, compiler, **kw):  # noqa: ANN001
         return "TEXT"
 
+    try:
+        from sqlalchemy.dialects.postgresql import TSVECTOR
+
+        @compiles(TSVECTOR, "sqlite")
+        def _tsvector_sqlite(type_, compiler, **kw):  # noqa: ANN001
+            return "TEXT"
+    except ImportError:
+        pass
+
     _REGISTERED = True
