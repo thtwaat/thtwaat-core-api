@@ -269,6 +269,11 @@ export default function MarketplacePage() {
     enabled: Boolean(detail?.slug),
     queryFn: () => marketplaceApi.get(detail!.slug)
   });
+  const versionsQuery = useQuery({
+    queryKey: ["mkt-versions", detail?.slug],
+    enabled: Boolean(detail?.slug),
+    queryFn: () => marketplaceApi.versions(detail!.slug)
+  });
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["mkt-templates"] });
@@ -574,6 +579,31 @@ export default function MarketplacePage() {
                 ))}
               </div>
             )}
+            <div className="space-y-2">
+              <p className="text-sm font-semibold text-ink">Release notes</p>
+              {versionsQuery.isLoading ? (
+                <p className="text-sm text-muted">Loading history…</p>
+              ) : (versionsQuery.data || []).length === 0 ? (
+                <p className="text-sm text-muted">No version history yet.</p>
+              ) : (
+                <ul className="max-h-48 space-y-2 overflow-y-auto">
+                  {(versionsQuery.data || []).map((v) => (
+                    <li key={v.id} className="rounded-xl border border-line bg-canvas px-3 py-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold text-ink">v{v.version}</span>
+                        {v.is_latest && <Badge tone="brand">latest</Badge>}
+                        <span className="text-xs text-muted">
+                          {formatDate(v.published_at || v.created_at)}
+                        </span>
+                      </div>
+                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted">
+                        {v.release_notes || v.changelog || "No release notes."}
+                      </p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div className="flex flex-wrap gap-2 pt-2">
               <Button
                 variant="secondary"
@@ -628,6 +658,12 @@ export default function MarketplacePage() {
                 ? `Update ${updateTarget.template_name} from v${updateTarget.installed_version} to v${"latest_version" in updateTarget ? updateTarget.latest_version : updateTarget.latest_available_version}.`
                 : "Update this installation to the latest available version."}
             </p>
+            {"changelog" in updateTarget && updateTarget.changelog ? (
+              <div className="rounded-xl border border-line bg-canvas px-3 py-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Release notes</p>
+                <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{updateTarget.changelog}</p>
+              </div>
+            ) : null}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={() => setUpdateTarget(null)}>
                 Cancel

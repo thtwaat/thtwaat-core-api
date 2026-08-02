@@ -197,7 +197,15 @@ Full-text search on catalog `name`, `slug`, `industry`, `description`, `tags`:
 - Default sort with `q` → `relevance`
 - Helpers: `app/marketplace/search.py`
 
-| 8 | Versioning UI + release notes |
+## Phase 8 (Versioning UI + release notes) — done
+
+Release management for catalog templates:
+
+- API: list/get versions by id or slug; `release_notes` alias; `PATCH …/versions/{ref}`; `POST …/promote`
+- Admin `/app/admin` → Versions dialog (publish release, edit notes, promote)
+- Marketplace detail + update confirm show release history / notes
+- FE: `marketplaceApi.versions|updateVersion|promoteVersion|getVersion`
+
 | 9 | Analytics |
 | 10 | Audit / docs / deploy |
 

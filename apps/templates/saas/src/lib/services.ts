@@ -182,6 +182,19 @@ export type TemplateItem = {
   is_favorited?: boolean;
 };
 
+export type TemplateVersion = {
+  id: string;
+  template_id: string;
+  version: string;
+  changelog?: string | null;
+  release_notes?: string | null;
+  config?: Record<string, unknown>;
+  is_latest: boolean;
+  published_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type Installation = {
   id: string;
   template_id: string;
@@ -293,10 +306,42 @@ export const marketplaceApi = {
     api.v1<TemplateItem>(`/marketplace/templates/${id}`, { method: "DELETE" }),
   publishTemplate: (id: string) =>
     api.v1<TemplateItem>(`/marketplace/templates/${id}/publish`, { method: "POST" }),
-  addVersion: (id: string, body: { version: string; changelog?: string; config?: Record<string, unknown>; set_latest?: boolean }) =>
-    api.v1<Record<string, unknown>>(`/marketplace/templates/${id}/versions`, { method: "POST", body }),
+  addVersion: (
+    id: string,
+    body: {
+      version: string;
+      changelog?: string;
+      release_notes?: string;
+      config?: Record<string, unknown>;
+      set_latest?: boolean;
+    }
+  ) => api.v1<TemplateVersion>(`/marketplace/templates/${id}/versions`, { method: "POST", body }),
+  updateVersion: (
+    idOrSlug: string,
+    versionRef: string,
+    body: {
+      changelog?: string;
+      release_notes?: string;
+      config?: Record<string, unknown>;
+      set_latest?: boolean;
+    }
+  ) =>
+    api.v1<TemplateVersion>(
+      `/marketplace/templates/${encodeURIComponent(idOrSlug)}/versions/${encodeURIComponent(versionRef)}`,
+      { method: "PATCH", body }
+    ),
+  promoteVersion: (idOrSlug: string, versionRef: string) =>
+    api.v1<TemplateVersion>(
+      `/marketplace/templates/${encodeURIComponent(idOrSlug)}/versions/${encodeURIComponent(versionRef)}/promote`,
+      { method: "POST" }
+    ),
   get: (idOrSlug: string) => api.v1<TemplateItem>(`/marketplace/templates/${idOrSlug}`),
-  versions: (id: string) => api.v1<Array<Record<string, unknown>>>(`/marketplace/templates/${id}/versions`),
+  versions: (idOrSlug: string) =>
+    api.v1<TemplateVersion[]>(`/marketplace/templates/${encodeURIComponent(idOrSlug)}/versions`),
+  getVersion: (idOrSlug: string, versionRef: string) =>
+    api.v1<TemplateVersion>(
+      `/marketplace/templates/${encodeURIComponent(idOrSlug)}/versions/${encodeURIComponent(versionRef)}`
+    ),
   favorites: () => api.v1<TemplateItem[]>("/marketplace/favorites"),
   favorite: (idOrSlug: string) =>
     api.v1<TemplateItem>(`/marketplace/templates/${encodeURIComponent(idOrSlug)}/favorite`, {

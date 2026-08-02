@@ -61,8 +61,29 @@ class TemplateUpdate(BaseModel):
 class TemplateVersionCreate(BaseModel):
     version: str = Field(..., min_length=1, max_length=32)
     changelog: Optional[str] = None
+    release_notes: Optional[str] = Field(
+        default=None,
+        description="Preferred alias for changelog / release notes body",
+    )
     config: Dict[str, Any] = Field(default_factory=dict)
     set_latest: bool = True
+
+    def notes(self) -> Optional[str]:
+        return self.release_notes if self.release_notes is not None else self.changelog
+
+
+class TemplateVersionUpdate(BaseModel):
+    """Edit release notes / config; optionally promote to latest."""
+
+    changelog: Optional[str] = None
+    release_notes: Optional[str] = None
+    config: Optional[Dict[str, Any]] = None
+    set_latest: bool = False
+
+    def notes(self) -> Optional[str]:
+        if self.release_notes is not None:
+            return self.release_notes
+        return self.changelog
 
 
 class TemplateResponse(BaseModel):
@@ -104,6 +125,7 @@ class TemplateVersionResponse(BaseModel):
     template_id: UUID
     version: str
     changelog: Optional[str] = None
+    release_notes: Optional[str] = None
     config: Dict[str, Any] = Field(default_factory=dict)
     is_latest: bool
     published_at: Optional[datetime] = None
@@ -111,6 +133,11 @@ class TemplateVersionResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @classmethod
+    def from_orm_version(cls, version: Any) -> "TemplateVersionResponse":
+        base = cls.model_validate(version)
+        return base.model_copy(update={"release_notes": base.changelog})
 
 
 class InstallActionRequest(BaseModel):

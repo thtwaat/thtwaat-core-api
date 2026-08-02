@@ -35,6 +35,7 @@ from app.marketplace.schemas import (
     TemplateUpdate,
     TemplateVersionCreate,
     TemplateVersionResponse,
+    TemplateVersionUpdate,
     UpdateNotification,
 )
 from app.marketplace.search import resolve_sort_key
@@ -324,12 +325,13 @@ class MarketplaceService:
             raise HTTPException(status_code=404, detail="Template not found")
         if self.repo.get_version_by_number(template_id, payload.version):
             raise HTTPException(status_code=409, detail="Version already exists")
+        notes = payload.notes()
         if payload.set_latest:
             self.repo.clear_latest_flags(template_id)
         version = TemplateVersion(
             template_id=template_id,
             version=payload.version,
-            changelog=payload.changelog,
+            changelog=notes,
             config=copy.deepcopy(payload.config or template.default_config or {}),
             is_latest=payload.set_latest,
             published_at=_now() if payload.set_latest else None,
@@ -339,16 +341,73 @@ class MarketplaceService:
             template.version = payload.version
             if payload.config:
                 template.default_config = copy.deepcopy(payload.config)
-            self._mark_updates_available(template_id, payload.version, payload.changelog)
+            self._mark_updates_available(template_id, payload.version, notes)
         self.repo.commit()
         self.db.refresh(version)
-        return TemplateVersionResponse.model_validate(version)
+        return TemplateVersionResponse.from_orm_version(version)
 
-    def list_versions(self, template_id: UUID) -> List[TemplateVersionResponse]:
-        template = self.repo.get_template(template_id)
-        if not template:
-            raise HTTPException(status_code=404, detail="Template not found")
-        return [TemplateVersionResponse.model_validate(v) for v in self.repo.list_versions(template_id)]
+    def list_versions(self, template_id_or_slug: str) -> List[TemplateVersionResponse]:
+        template = self._resolve_template(template_id_or_slug)
+        return [
+            TemplateVersionResponse.from_orm_version(v)
+            for v in self.repo.list_versions(template.id)
+        ]
+
+    def get_version(
+        self, template_id_or_slug: str, version_ref: str
+    ) -> TemplateVersionResponse:
+        template = self._resolve_template(template_id_or_slug)
+        version = self._resolve_version(template.id, version_ref)
+        return TemplateVersionResponse.from_orm_version(version)
+
+    def update_version(
+        self,
+        template_id_or_slug: str,
+        version_ref: str,
+        payload: TemplateVersionUpdate,
+    ) -> TemplateVersionResponse:
+        template = self._resolve_template(template_id_or_slug)
+        version = self._resolve_version(template.id, version_ref)
+        data = payload.model_dump(exclude_unset=True)
+        notes = None
+        if "release_notes" in data or "changelog" in data:
+            notes = payload.notes()
+            version.changelog = notes
+        if "config" in data and payload.config is not None:
+            version.config = copy.deepcopy(payload.config)
+        promote = bool(data.get("set_latest"))
+        if promote and not version.is_latest:
+            self.repo.clear_latest_flags(template.id)
+            version.is_latest = True
+            version.published_at = version.published_at or _now()
+            template.version = version.version
+            template.default_config = copy.deepcopy(version.config or template.default_config or {})
+            self._mark_updates_available(template.id, version.version, version.changelog)
+        self.repo.commit()
+        self.db.refresh(version)
+        return TemplateVersionResponse.from_orm_version(version)
+
+    def promote_version(
+        self, template_id_or_slug: str, version_ref: str
+    ) -> TemplateVersionResponse:
+        return self.update_version(
+            template_id_or_slug,
+            version_ref,
+            TemplateVersionUpdate(set_latest=True),
+        )
+
+    def _resolve_version(self, template_id: UUID, version_ref: str) -> TemplateVersion:
+        version = None
+        try:
+            version = self.repo.get_version(UUID(str(version_ref)))
+        except (ValueError, TypeError):
+            version = None
+        if version and version.template_id == template_id:
+            return version
+        version = self.repo.get_version_by_number(template_id, version_ref)
+        if not version:
+            raise HTTPException(status_code=404, detail="Version not found")
+        return version
 
     # ── Install flow ──────────────────────────────────────────────────────────
 

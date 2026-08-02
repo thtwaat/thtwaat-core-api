@@ -11,8 +11,10 @@ import {
   marketplaceApi,
   type AgentListing,
   type AbuseReport,
-  type TemplateItem
+  type TemplateItem,
+  type TemplateVersion
 } from "@/lib/services";
+import { formatDate } from "@/lib/utils";
 import { EmptyState, PageHeader, Stat } from "@/components/ui/misc";
 import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -78,7 +80,7 @@ function DialogShell({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 shadow-xl sm:max-w-lg sm:rounded-2xl"
+        className="relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 shadow-xl sm:max-w-xl sm:rounded-2xl"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="text-lg font-semibold text-ink">{title}</h2>
@@ -110,7 +112,8 @@ function RegistryPanel() {
     publish: true,
     prompt: ""
   });
-  const [versionForm, setVersionForm] = useState({ version: "", changelog: "" });
+  const [versionForm, setVersionForm] = useState({ version: "", release_notes: "" });
+  const [editingNotes, setEditingNotes] = useState<Record<string, string>>({});
 
   const list = useQuery({
     queryKey: ["admin-registry", q, status, kind],
@@ -122,6 +125,12 @@ function RegistryPanel() {
         sort: "updated",
         limit: 50
       })
+  });
+
+  const versionsQuery = useQuery({
+    queryKey: ["admin-versions", versionFor?.id],
+    enabled: Boolean(versionFor?.id),
+    queryFn: () => marketplaceApi.versions(versionFor!.id)
   });
 
   const createMut = useMutation({
@@ -180,18 +189,40 @@ function RegistryPanel() {
     mutationFn: () =>
       marketplaceApi.addVersion(versionFor!.id, {
         version: versionForm.version.trim(),
-        changelog: versionForm.changelog || undefined,
+        release_notes: versionForm.release_notes || undefined,
         set_latest: true
       }),
     onSuccess: () => {
-      toast.success("Version added");
-      setVersionFor(null);
+      toast.success("Version published");
+      setVersionForm({ version: "", release_notes: "" });
       qc.invalidateQueries({ queryKey: ["admin-registry"] });
+      qc.invalidateQueries({ queryKey: ["admin-versions", versionFor?.id] });
+    },
+    onError: (e: Error) => toast.error(e.message)
+  });
+
+  const notesMut = useMutation({
+    mutationFn: ({ version, notes }: { version: string; notes: string }) =>
+      marketplaceApi.updateVersion(versionFor!.id, version, { release_notes: notes }),
+    onSuccess: () => {
+      toast.success("Release notes saved");
+      qc.invalidateQueries({ queryKey: ["admin-versions", versionFor?.id] });
+    },
+    onError: (e: Error) => toast.error(e.message)
+  });
+
+  const promoteMut = useMutation({
+    mutationFn: (version: string) => marketplaceApi.promoteVersion(versionFor!.id, version),
+    onSuccess: () => {
+      toast.success("Promoted to latest");
+      qc.invalidateQueries({ queryKey: ["admin-registry"] });
+      qc.invalidateQueries({ queryKey: ["admin-versions", versionFor?.id] });
     },
     onError: (e: Error) => toast.error(e.message)
   });
 
   const items = list.data?.items ?? [];
+  const history = (versionsQuery.data || []) as TemplateVersion[];
 
   return (
     <div className="space-y-4">
@@ -264,10 +295,11 @@ function RegistryPanel() {
                   variant="ghost"
                   onClick={() => {
                     setVersionFor(t);
-                    setVersionForm({ version: "", changelog: "" });
+                    setVersionForm({ version: "", release_notes: "" });
+                    setEditingNotes({});
                   }}
                 >
-                  Add version
+                  Versions
                 </Button>
                 {t.status !== "archived" && (
                   <Button size="sm" variant="ghost" onClick={() => archiveMut.mutate(t.id)}>
@@ -352,32 +384,87 @@ function RegistryPanel() {
 
       <DialogShell
         open={Boolean(versionFor)}
-        title={`Add version${versionFor ? ` — ${versionFor.name}` : ""}`}
+        title={`Versions${versionFor ? ` — ${versionFor.name}` : ""}`}
         onClose={() => setVersionFor(null)}
       >
-        <div className="space-y-3">
-          <div>
-            <Label>Version</Label>
-            <Input
-              placeholder="1.1.0"
-              value={versionForm.version}
-              onChange={(e) => setVersionForm({ ...versionForm, version: e.target.value })}
-            />
-          </div>
-          <div>
-            <Label>Changelog</Label>
-            <Input
-              value={versionForm.changelog}
-              onChange={(e) => setVersionForm({ ...versionForm, changelog: e.target.value })}
-            />
-          </div>
-          <Button
-            className="w-full"
-            disabled={!versionForm.version || versionMut.isPending}
-            onClick={() => versionMut.mutate()}
-          >
-            {versionMut.isPending ? "Saving…" : "Publish version"}
-          </Button>
+        <div className="space-y-5">
+          <section className="space-y-3 rounded-xl border border-line bg-canvas p-3">
+            <p className="text-sm font-semibold text-ink">Publish new release</p>
+            <div>
+              <Label>Version</Label>
+              <Input
+                placeholder="1.1.0"
+                value={versionForm.version}
+                onChange={(e) => setVersionForm({ ...versionForm, version: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label>Release notes</Label>
+              <textarea
+                className="mt-1 min-h-[80px] w-full rounded-xl border border-line bg-panel px-3 py-2 text-sm"
+                placeholder="- Fix …&#10;- Improve …"
+                value={versionForm.release_notes}
+                onChange={(e) => setVersionForm({ ...versionForm, release_notes: e.target.value })}
+              />
+            </div>
+            <Button
+              className="w-full"
+              disabled={!versionForm.version || versionMut.isPending}
+              onClick={() => versionMut.mutate()}
+            >
+              {versionMut.isPending ? "Publishing…" : "Publish as latest"}
+            </Button>
+          </section>
+
+          <section className="space-y-3">
+            <p className="text-sm font-semibold text-ink">Release history</p>
+            {versionsQuery.isLoading ? (
+              <p className="text-sm text-muted">Loading versions…</p>
+            ) : history.length === 0 ? (
+              <EmptyState title="No versions yet" />
+            ) : (
+              history.map((v) => {
+                const notes =
+                  editingNotes[v.id] ?? v.release_notes ?? v.changelog ?? "";
+                return (
+                  <div key={v.id} className="rounded-xl border border-line p-3">
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-ink">v{v.version}</span>
+                      {v.is_latest && <Badge tone="brand">latest</Badge>}
+                      <span className="text-xs text-muted">{formatDate(v.published_at || v.created_at)}</span>
+                    </div>
+                    <textarea
+                      className="min-h-[64px] w-full rounded-xl border border-line bg-panel px-3 py-2 text-sm"
+                      value={notes}
+                      onChange={(e) =>
+                        setEditingNotes((prev) => ({ ...prev, [v.id]: e.target.value }))
+                      }
+                    />
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={notesMut.isPending}
+                        onClick={() => notesMut.mutate({ version: v.version, notes })}
+                      >
+                        Save notes
+                      </Button>
+                      {!v.is_latest && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={promoteMut.isPending}
+                          onClick={() => promoteMut.mutate(v.version)}
+                        >
+                          Promote to latest
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </section>
         </div>
       </DialogShell>
     </div>

@@ -23,6 +23,7 @@ from app.marketplace.schemas import (
     TemplateUpdate,
     TemplateVersionCreate,
     TemplateVersionResponse,
+    TemplateVersionUpdate,
     UpdateNotification,
 )
 from app.marketplace.service import MarketplaceService
@@ -93,13 +94,26 @@ def list_templates(
     )
 
 
-@router.get("/templates/{template_id}/versions", response_model=List[TemplateVersionResponse])
+@router.get("/templates/{template_id_or_slug}/versions", response_model=List[TemplateVersionResponse])
 def list_versions(
-    template_id: UUID,
+    template_id_or_slug: str,
     user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
-    return service.list_versions(template_id)
+    return service.list_versions(template_id_or_slug)
+
+
+@router.get(
+    "/templates/{template_id_or_slug}/versions/{version_ref}",
+    response_model=TemplateVersionResponse,
+)
+def get_version(
+    template_id_or_slug: str,
+    version_ref: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.get_version(template_id_or_slug, version_ref)
 
 
 @router.get("/templates/{template_id_or_slug}", response_model=TemplateResponse)
@@ -348,3 +362,32 @@ def create_version(
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
     return service.add_version(template_id, payload)
+
+
+@router.patch(
+    "/templates/{template_id_or_slug}/versions/{version_ref}",
+    response_model=TemplateVersionResponse,
+)
+def update_version(
+    template_id_or_slug: str,
+    version_ref: str,
+    payload: TemplateVersionUpdate,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Edit release notes / config; pass set_latest=true to promote."""
+    return service.update_version(template_id_or_slug, version_ref, payload)
+
+
+@router.post(
+    "/templates/{template_id_or_slug}/versions/{version_ref}/promote",
+    response_model=TemplateVersionResponse,
+)
+def promote_version(
+    template_id_or_slug: str,
+    version_ref: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Mark an existing version as the latest catalog release."""
+    return service.promote_version(template_id_or_slug, version_ref)
