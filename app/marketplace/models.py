@@ -36,6 +36,28 @@ class TemplateCategory(str, enum.Enum):
     RESTAURANT = "restaurant"
     FINANCE = "finance"
     LEGAL = "legal"
+    # Phase 1 catalog expansion (prompt / vertical packs)
+    WRITING = "writing"
+    CODING = "coding"
+    MARKETING = "marketing"
+    HR = "hr"
+    RESEARCH = "research"
+    AI_AGENTS = "ai_agents"
+    BUSINESS = "business"
+    ANALYTICS = "analytics"
+
+
+class TemplateKind(str, enum.Enum):
+    PACKAGE = "package"
+    PROMPT = "prompt"
+    AGENT = "agent"
+
+
+class PricingTier(str, enum.Enum):
+    FREE = "free"
+    STARTER = "starter"
+    PRO = "pro"
+    ENTERPRISE = "enterprise"
 
 
 class TemplateStatus(str, enum.Enum):
@@ -62,6 +84,8 @@ class MarketplaceTemplate(Base, TimestampMixin):
         UniqueConstraint("slug", name="uq_marketplace_templates_slug"),
         Index("ix_marketplace_templates_category_status", "category", "status"),
         Index("ix_marketplace_templates_featured", "is_featured", "status"),
+        Index("ix_marketplace_templates_kind_status", "kind", "status"),
+        Index("ix_marketplace_templates_tags_gin", "tags", postgresql_using="gin"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
@@ -75,6 +99,28 @@ class MarketplaceTemplate(Base, TimestampMixin):
             values_callable=lambda x: [e.value for e in x],
         ),
         nullable=False,
+        index=True,
+    )
+    kind = Column(
+        SAEnum(
+            TemplateKind,
+            name="template_kind_enum",
+            create_constraint=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=TemplateKind.PACKAGE,
+        index=True,
+    )
+    pricing_tier = Column(
+        SAEnum(
+            PricingTier,
+            name="template_pricing_tier_enum",
+            create_constraint=False,
+            values_callable=lambda x: [e.value for e in x],
+        ),
+        nullable=False,
+        default=PricingTier.FREE,
         index=True,
     )
     industry = Column(String(120), nullable=True)
@@ -113,6 +159,7 @@ class MarketplaceTemplate(Base, TimestampMixin):
         order_by="TemplateVersion.created_at.desc()",
     )
     installations = relationship("TemplateInstallation", back_populates="template")
+    favorites = relationship("TemplateFavorite", back_populates="template", cascade="all, delete-orphan")
 
 
 class TemplateVersion(Base, TimestampMixin):
@@ -197,3 +244,40 @@ class TemplateInstallation(Base, TimestampMixin):
 
     template = relationship("MarketplaceTemplate", back_populates="installations")
     version = relationship("TemplateVersion")
+
+
+class TemplateFavorite(Base, TimestampMixin):
+    """Per-user favorite of a marketplace template (tenant-scoped)."""
+
+    __tablename__ = "marketplace_template_favorites"
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "user_id",
+            "template_id",
+            name="uq_marketplace_favorite_company_user_template",
+        ),
+        Index("ix_marketplace_favorites_user", "company_id", "user_id"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("marketplace_templates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    template = relationship("MarketplaceTemplate", back_populates="favorites")

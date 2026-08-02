@@ -156,6 +156,8 @@ export type TemplateItem = {
   slug: string;
   name: string;
   category: string;
+  kind?: string;
+  pricing_tier?: string;
   industry?: string | null;
   description: string;
   version: string;
@@ -173,9 +175,11 @@ export type TemplateItem = {
   supports_mobile: boolean;
   package_path?: string | null;
   install_count: number;
+  default_config?: Record<string, unknown>;
   created_at: string;
   installed: boolean;
   update_available: boolean;
+  is_favorited?: boolean;
 };
 
 export type Installation = {
@@ -216,19 +220,57 @@ export type MarketplaceDashboard = {
   categories: TemplateCategory[];
 };
 
-export const marketplaceApi = {  dashboard: () => api.v1<MarketplaceDashboard>("/marketplace/dashboard"),
+export const marketplaceApi = {
+  dashboard: () => api.v1<MarketplaceDashboard>("/marketplace/dashboard"),
   categories: () => api.v1<TemplateCategory[]>("/marketplace/categories"),
-  list: (params?: { q?: string; category?: string; featured?: boolean; newest?: boolean; limit?: number }) => {
+  list: async (params?: {
+    q?: string;
+    category?: string;
+    featured?: boolean;
+    newest?: boolean;
+    kind?: string;
+    pricing_tier?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const page = await marketplaceApi.listPage(params);
+    return page.items;
+  },
+  listPage: (params?: {
+    q?: string;
+    category?: string;
+    featured?: boolean;
+    newest?: boolean;
+    kind?: string;
+    pricing_tier?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
     const qs = new URLSearchParams();
     if (params?.q) qs.set("q", params.q);
     if (params?.category) qs.set("category", params.category);
     if (params?.featured != null) qs.set("featured", String(params.featured));
     if (params?.newest) qs.set("newest", "true");
+    if (params?.kind) qs.set("kind", params.kind);
+    if (params?.pricing_tier) qs.set("pricing_tier", params.pricing_tier);
+    if (params?.sort) qs.set("sort", params.sort);
     if (params?.limit) qs.set("limit", String(params.limit));
-    return api.v1<TemplateItem[]>(`/marketplace/templates${qs.size ? `?${qs}` : ""}`);
+    if (params?.offset != null) qs.set("offset", String(params.offset));
+    return api.v1<{ items: TemplateItem[]; total: number; limit: number; offset: number; sort: string }>(
+      `/marketplace/templates${qs.size ? `?${qs}` : ""}`
+    );
   },
   get: (idOrSlug: string) => api.v1<TemplateItem>(`/marketplace/templates/${idOrSlug}`),
   versions: (id: string) => api.v1<Array<Record<string, unknown>>>(`/marketplace/templates/${id}/versions`),
+  favorites: () => api.v1<TemplateItem[]>("/marketplace/favorites"),
+  favorite: (idOrSlug: string) =>
+    api.v1<TemplateItem>(`/marketplace/templates/${encodeURIComponent(idOrSlug)}/favorite`, {
+      method: "POST"
+    }),
+  unfavorite: (idOrSlug: string) =>
+    api.v1(`/marketplace/templates/${encodeURIComponent(idOrSlug)}/favorite`, { method: "DELETE" }),
   installed: () => api.v1<Installation[]>("/marketplace/installed"),
   updates: () => api.v1<UpdateNotification[]>("/marketplace/updates"),
   install: (idOrSlug: string, body?: { create_api_key?: boolean; config_overrides?: Record<string, unknown> }) =>

@@ -13,6 +13,8 @@ class TemplateCreate(BaseModel):
     slug: str = Field(..., min_length=2, max_length=120, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
     name: str = Field(..., min_length=2, max_length=200)
     category: str
+    kind: str = "package"
+    pricing_tier: str = "free"
     industry: Optional[str] = None
     description: str = ""
     version: str = "1.0.0"
@@ -36,6 +38,8 @@ class TemplateCreate(BaseModel):
 class TemplateUpdate(BaseModel):
     name: Optional[str] = None
     category: Optional[str] = None
+    kind: Optional[str] = None
+    pricing_tier: Optional[str] = None
     industry: Optional[str] = None
     description: Optional[str] = None
     thumbnail: Optional[str] = None
@@ -66,6 +70,8 @@ class TemplateResponse(BaseModel):
     slug: str
     name: str
     category: str
+    kind: str = "package"
+    pricing_tier: str = "free"
     industry: Optional[str] = None
     description: str
     version: str
@@ -88,6 +94,7 @@ class TemplateResponse(BaseModel):
     updated_at: datetime
     installed: bool = False
     update_available: bool = False
+    is_favorited: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -104,6 +111,12 @@ class TemplateVersionResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class InstallActionRequest(BaseModel):
+    """Phase 2 convenience body for update/uninstall aliases."""
+    installation_id: UUID
+    version: Optional[str] = None
 
 
 class InstallRequest(BaseModel):
@@ -146,6 +159,14 @@ class InstallationResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TemplateListPage(BaseModel):
+    items: List[TemplateResponse]
+    total: int
+    limit: int
+    offset: int
+    sort: str = "featured"
 
 
 class CategoryItem(BaseModel):

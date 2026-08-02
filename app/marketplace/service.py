@@ -14,8 +14,11 @@ from sqlalchemy.orm import Session
 from app.marketplace.models import (
     InstallStatus,
     MarketplaceTemplate,
+    PricingTier,
     TemplateCategory,
+    TemplateFavorite,
     TemplateInstallation,
+    TemplateKind,
     TemplateStatus,
     TemplateVersion,
 )
@@ -27,6 +30,7 @@ from app.marketplace.schemas import (
     InstallationResponse,
     MarketplaceDashboard,
     TemplateCreate,
+    TemplateListPage,
     TemplateResponse,
     TemplateUpdate,
     TemplateVersionCreate,
@@ -49,6 +53,14 @@ CATEGORY_LABELS = {
     TemplateCategory.RESTAURANT.value: "Restaurant",
     TemplateCategory.FINANCE.value: "Finance",
     TemplateCategory.LEGAL.value: "Legal",
+    TemplateCategory.WRITING.value: "Writing",
+    TemplateCategory.CODING.value: "Coding",
+    TemplateCategory.MARKETING.value: "Marketing",
+    TemplateCategory.HR.value: "HR",
+    TemplateCategory.RESEARCH.value: "Research",
+    TemplateCategory.AI_AGENTS.value: "AI Agents",
+    TemplateCategory.BUSINESS.value: "Business",
+    TemplateCategory.ANALYTICS.value: "Analytics",
 }
 
 
@@ -63,6 +75,28 @@ def _parse_category(value: str) -> TemplateCategory:
         raise HTTPException(
             status_code=400,
             detail=f"Invalid category '{value}'. Allowed: {', '.join(CATEGORY_LABELS)}",
+        ) from exc
+
+
+def _parse_kind(value: Optional[str]) -> TemplateKind:
+    raw = (value or TemplateKind.PACKAGE.value).lower()
+    try:
+        return TemplateKind(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid kind '{value}'. Allowed: package, prompt, agent",
+        ) from exc
+
+
+def _parse_pricing_tier(value: Optional[str]) -> PricingTier:
+    raw = (value or PricingTier.FREE.value).lower()
+    try:
+        return PricingTier(raw)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid pricing_tier '{value}'. Allowed: free, starter, pro, enterprise",
         ) from exc
 
 
@@ -81,19 +115,32 @@ class MarketplaceService:
         q: Optional[str] = None,
         category: Optional[str] = None,
         featured: Optional[bool] = None,
+        kind: Optional[str] = None,
+        pricing_tier: Optional[str] = None,
         newest: bool = False,
+        sort: Optional[str] = None,
         limit: int = 50,
-    ) -> List[TemplateResponse]:
-        items = self.repo.list_templates(
+        offset: int = 0,
+    ) -> TemplateListPage:
+        sort_key = sort or ("newest" if newest else "featured")
+        items, total = self.repo.list_templates(
             q=q,
             category=category.lower() if category else None,
             featured=featured,
+            kind=kind.lower() if kind else None,
+            pricing_tier=pricing_tier.lower() if pricing_tier else None,
+            sort=sort_key,
             limit=limit,
+            offset=offset,
         )
-        if newest:
-            items = sorted(items, key=lambda t: t.created_at, reverse=True)
         installed_map = self._installed_map(company_id) if company_id else {}
-        return [self._template_response(t, installed_map.get(t.id)) for t in items]
+        return TemplateListPage(
+            items=[self._template_response(t, installed_map.get(t.id)) for t in items],
+            total=total,
+            limit=limit,
+            offset=offset,
+            sort=sort_key,
+        )
 
     def get_template(
         self, template_id_or_slug: str, company_id: Optional[UUID] = None
@@ -105,8 +152,8 @@ class MarketplaceService:
         return self._template_response(template, install)
 
     def dashboard(self, company_id: UUID) -> MarketplaceDashboard:
-        featured = self.list_templates(company_id, featured=True, limit=8)
-        newest = self.list_templates(company_id, newest=True, limit=8)
+        featured = self.list_templates(company_id, featured=True, limit=8).items
+        newest = self.list_templates(company_id, newest=True, limit=8).items
         installs = self.repo.list_installs(company_id)
         updates = self.repo.list_updates(company_id)
         categories = [
@@ -134,16 +181,50 @@ class MarketplaceService:
             for slug, name in CATEGORY_LABELS.items()
         ]
 
+    # ── Favorites ─────────────────────────────────────────────────────────────
+
+    def list_favorites(self, company_id: UUID, user_id: UUID) -> List[TemplateResponse]:
+        installed_map = self._installed_map(company_id)
+        items = self.repo.list_favorites(company_id, user_id)
+        return [self._template_response(t, installed_map.get(t.id), favorited=True) for t in items]
+
+    def add_favorite(self, company_id: UUID, user_id: UUID, template_id_or_slug: str) -> TemplateResponse:
+        template = self._resolve_template(template_id_or_slug)
+        existing = self.repo.get_favorite(company_id, user_id, template.id)
+        if not existing:
+            self.repo.save_favorite(
+                TemplateFavorite(
+                    company_id=company_id,
+                    user_id=user_id,
+                    template_id=template.id,
+                )
+            )
+            self.repo.commit()
+        install = self.repo.get_install_for_template(company_id, template.id)
+        return self._template_response(template, install, favorited=True)
+
+    def remove_favorite(self, company_id: UUID, user_id: UUID, template_id_or_slug: str) -> dict:
+        template = self._resolve_template(template_id_or_slug)
+        existing = self.repo.get_favorite(company_id, user_id, template.id)
+        if existing:
+            self.repo.delete_favorite(existing)
+            self.repo.commit()
+        return {"detail": "Favorite removed", "template_id": str(template.id)}
+
     # ── Admin / registry CRUD ─────────────────────────────────────────────────
 
     def create_template(self, payload: TemplateCreate) -> TemplateResponse:
         if self.repo.get_by_slug(payload.slug):
             raise HTTPException(status_code=409, detail="Template slug already exists")
         category = _parse_category(payload.category)
+        kind = _parse_kind(payload.kind)
+        pricing_tier = _parse_pricing_tier(payload.pricing_tier)
         template = MarketplaceTemplate(
             slug=payload.slug,
             name=payload.name,
             category=category,
+            kind=kind,
+            pricing_tier=pricing_tier,
             industry=payload.industry,
             description=payload.description,
             version=payload.version,
@@ -183,6 +264,10 @@ class MarketplaceService:
         data = payload.model_dump(exclude_unset=True)
         if "category" in data and data["category"] is not None:
             data["category"] = _parse_category(data["category"])
+        if "kind" in data and data["kind"] is not None:
+            data["kind"] = _parse_kind(data["kind"])
+        if "pricing_tier" in data and data["pricing_tier"] is not None:
+            data["pricing_tier"] = _parse_pricing_tier(data["pricing_tier"])
         if "status" in data and data["status"] is not None:
             try:
                 data["status"] = TemplateStatus(data["status"])
@@ -190,6 +275,18 @@ class MarketplaceService:
                 raise HTTPException(status_code=400, detail="Invalid status") from exc
         for key, value in data.items():
             setattr(template, key, value)
+        self.repo.commit()
+        self.db.refresh(template)
+        return self._template_response(template)
+
+    def archive_template(self, template_id: UUID) -> TemplateResponse:
+        """Soft-delete: archive catalog entry (keeps install history)."""
+        template = self.repo.get_template(template_id)
+        if not template:
+            raise HTTPException(status_code=404, detail="Template not found")
+        template.status = TemplateStatus.ARCHIVED
+        template.is_public = False
+        template.is_featured = False
         self.repo.commit()
         self.db.refresh(template)
         return self._template_response(template)
@@ -613,12 +710,24 @@ class MarketplaceService:
         self,
         template: MarketplaceTemplate,
         install: Optional[TemplateInstallation] = None,
+        *,
+        favorited: bool = False,
     ) -> TemplateResponse:
         return TemplateResponse(
             id=template.id,
             slug=template.slug,
             name=template.name,
             category=template.category.value if hasattr(template.category, "value") else str(template.category),
+            kind=(
+                template.kind.value
+                if hasattr(template, "kind") and hasattr(template.kind, "value")
+                else getattr(template, "kind", None) or TemplateKind.PACKAGE.value
+            ),
+            pricing_tier=(
+                template.pricing_tier.value
+                if hasattr(template, "pricing_tier") and hasattr(template.pricing_tier, "value")
+                else getattr(template, "pricing_tier", None) or PricingTier.FREE.value
+            ),
             industry=template.industry,
             description=template.description or "",
             version=template.version,
@@ -641,6 +750,7 @@ class MarketplaceService:
             updated_at=template.updated_at,
             installed=bool(install),
             update_available=bool(install.update_available) if install else False,
+            is_favorited=favorited,
         )
 
     def _install_response(

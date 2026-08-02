@@ -55,7 +55,9 @@ def test_seed_and_browse_marketplace(client, db_session):
 
     listed = client.get("/api/v1/marketplace/templates", headers=headers)
     assert listed.status_code == 200, listed.text
-    items = listed.json()
+    page = listed.json()
+    assert "items" in page and "total" in page
+    items = page["items"]
     slugs = {t["slug"] for t in items}
     assert "ai-website-starter" in slugs
     assert "ai-landing-starter" in slugs
@@ -67,7 +69,7 @@ def test_seed_and_browse_marketplace(client, db_session):
 
     featured = client.get("/api/v1/marketplace/templates?featured=true", headers=headers)
     assert featured.status_code == 200
-    assert len(featured.json()) >= 1
+    assert len(featured.json()["items"]) >= 1
 
     dash = client.get("/api/v1/marketplace/dashboard", headers=headers)
     assert dash.status_code == 200

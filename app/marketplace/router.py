@@ -13,10 +13,12 @@ from app.database.database import get_db
 from app.marketplace.schemas import (
     CategoryItem,
     ConnectRequest,
+    InstallActionRequest,
     InstallRequest,
     InstallationResponse,
     MarketplaceDashboard,
     TemplateCreate,
+    TemplateListPage,
     TemplateResponse,
     TemplateUpdate,
     TemplateVersionCreate,
@@ -60,13 +62,20 @@ def list_categories(
     return service.categories()
 
 
-@router.get("/templates", response_model=List[TemplateResponse])
+@router.get("/templates", response_model=TemplateListPage)
 def list_templates(
     q: Optional[str] = Query(default=None),
     category: Optional[str] = Query(default=None),
     featured: Optional[bool] = Query(default=None),
+    kind: Optional[str] = Query(default=None),
+    pricing_tier: Optional[str] = Query(default=None),
     newest: bool = Query(default=False),
+    sort: Optional[str] = Query(
+        default=None,
+        description="featured | newest | name | installs | updated",
+    ),
     limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
@@ -75,8 +84,12 @@ def list_templates(
         q=q,
         category=category,
         featured=featured,
+        kind=kind,
+        pricing_tier=pricing_tier,
         newest=newest,
+        sort=sort,
         limit=limit,
+        offset=offset,
     )
 
 
@@ -98,6 +111,46 @@ def get_template(
     return service.get_template(template_id_or_slug, UUID(str(user.company_id)))
 
 
+# ── Favorites ─────────────────────────────────────────────────────────────────
+
+@router.get("/favorites", response_model=List[TemplateResponse])
+def list_favorites(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.list_favorites(UUID(str(user.company_id)), UUID(str(user.id)))
+
+
+@router.post(
+    "/templates/{template_id_or_slug}/favorite",
+    response_model=TemplateResponse,
+    status_code=status.HTTP_200_OK,
+)
+def add_favorite(
+    template_id_or_slug: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.add_favorite(
+        UUID(str(user.company_id)),
+        UUID(str(user.id)),
+        template_id_or_slug,
+    )
+
+
+@router.delete("/templates/{template_id_or_slug}/favorite")
+def remove_favorite(
+    template_id_or_slug: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.remove_favorite(
+        UUID(str(user.company_id)),
+        UUID(str(user.id)),
+        template_id_or_slug,
+    )
+
+
 # ── Installations ─────────────────────────────────────────────────────────────
 
 @router.get("/installed", response_model=List[InstallationResponse])
@@ -114,6 +167,30 @@ def list_updates(
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
     return service.list_update_notifications(UUID(str(user.company_id)))
+
+
+@router.post("/templates/update", response_model=InstallationResponse)
+def update_template_install_alias(
+    payload: InstallActionRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Phase 2 alias → POST /installations/{id}/update."""
+    return service.update_installation(
+        UUID(str(user.company_id)),
+        payload.installation_id,
+        payload.version,
+    )
+
+
+@router.post("/templates/uninstall")
+def uninstall_template_alias(
+    payload: InstallActionRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Phase 2 alias → DELETE /installations/{id}."""
+    return service.uninstall(UUID(str(user.company_id)), payload.installation_id)
 
 
 @router.post(
@@ -198,6 +275,7 @@ def create_template(
 
 
 @router.patch("/templates/{template_id}", response_model=TemplateResponse)
+@router.put("/templates/{template_id}", response_model=TemplateResponse)
 def update_template(
     template_id: UUID,
     payload: TemplateUpdate,
@@ -205,6 +283,16 @@ def update_template(
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
     return service.update_template(template_id, payload)
+
+
+@router.delete("/templates/{template_id}", response_model=TemplateResponse)
+def delete_template(
+    template_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Soft-delete (archive) — preserves installation FK history."""
+    return service.archive_template(template_id)
 
 
 @router.post("/templates/{template_id}/publish", response_model=TemplateResponse)
