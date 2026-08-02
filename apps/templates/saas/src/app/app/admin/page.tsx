@@ -20,7 +20,7 @@ import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
-type AdminTab = "registry" | "store";
+type AdminTab = "registry" | "store" | "analytics";
 
 const CATEGORIES = [
   "website",
@@ -563,6 +563,62 @@ function StorePanel() {
   );
 }
 
+function CatalogAnalyticsPanel() {
+  const analytics = useQuery({
+    queryKey: ["admin-marketplace-analytics"],
+    queryFn: () => marketplaceApi.adminAnalytics(30)
+  });
+  const catalog = analytics.data?.catalog;
+  const company = analytics.data?.company;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Catalog templates" value={String(catalog?.templates_total ?? "—")} />
+        <Stat label="Published" value={String(catalog?.published ?? "—")} />
+        <Stat label="Active installs" value={String(catalog?.active_installs ?? "—")} />
+        <Stat label="Favorites" value={String(catalog?.favorites_total ?? "—")} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Stat label="Draft" value={String(catalog?.draft ?? "—")} />
+        <Stat label="Archived" value={String(catalog?.archived ?? "—")} />
+        <Stat label="Your installs" value={String(company?.installed_count ?? "—")} />
+      </div>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Top templates</h3>
+        {(catalog?.top_templates || []).length === 0 ? (
+          <EmptyState title="No catalog data" />
+        ) : (
+          (catalog?.top_templates || []).map((t) => (
+            <Card key={t.template_id} className="flex items-center justify-between gap-3 p-4">
+              <div className="min-w-0">
+                <p className="font-semibold text-ink">{t.name}</p>
+                <p className="truncate text-xs text-muted">
+                  {t.slug} · {t.kind} · {t.category}
+                </p>
+              </div>
+              <Badge tone="brand">{t.install_count} installs</Badge>
+            </Card>
+          ))
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">By kind</h3>
+        <div className="flex flex-wrap gap-2">
+          {(catalog?.by_kind || []).map((item) => (
+            <Badge key={item.key} tone="neutral">
+              {item.label}: {item.count}
+            </Badge>
+          ))}
+          {!(catalog?.by_kind || []).length && <p className="text-sm text-muted">No data</p>}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -580,11 +636,13 @@ export default function AdminPage() {
   useEffect(() => {
     if (tab === "registry" && !manage && platform) setTab("store");
     if (tab === "store" && !platform && manage) setTab("registry");
+    if (tab === "analytics" && !manage) setTab(platform ? "store" : "registry");
   }, [tab, manage, platform]);
 
   const tabs = useMemo(() => {
     const items: { key: AdminTab; label: string }[] = [];
     if (manage) items.push({ key: "registry", label: "Registry" });
+    if (manage) items.push({ key: "analytics", label: "Analytics" });
     if (platform) items.push({ key: "store", label: "Agent Store" });
     return items;
   }, [manage, platform]);
@@ -597,7 +655,7 @@ export default function AdminPage() {
     <div className="space-y-6">
       <PageHeader
         title="Admin"
-        description="Marketplace registry curation and agent-store moderation."
+        description="Marketplace registry curation, analytics, and agent-store moderation."
       />
 
       <div className="flex flex-wrap gap-2 border-b border-line pb-3">
@@ -618,6 +676,7 @@ export default function AdminPage() {
       </div>
 
       {tab === "registry" && manage ? <RegistryPanel /> : null}
+      {tab === "analytics" && manage ? <CatalogAnalyticsPanel /> : null}
       {tab === "store" && platform ? <StorePanel /> : null}
     </div>
   );

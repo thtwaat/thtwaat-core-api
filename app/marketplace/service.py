@@ -196,6 +196,22 @@ class MarketplaceService:
             for slug, name in CATEGORY_LABELS.items()
         ]
 
+    def analytics(
+        self,
+        company_id: UUID,
+        *,
+        days: int = 30,
+        include_catalog: bool = False,
+    ):
+        from app.marketplace.analytics import build_marketplace_analytics
+
+        return build_marketplace_analytics(
+            self.db,
+            company_id,
+            days=days,
+            include_catalog=include_catalog,
+        )
+
     # ── Favorites ─────────────────────────────────────────────────────────────
 
     def list_favorites(self, company_id: UUID, user_id: UUID) -> List[TemplateResponse]:

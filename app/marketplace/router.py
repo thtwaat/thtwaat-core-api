@@ -16,6 +16,7 @@ from app.marketplace.schemas import (
     InstallActionRequest,
     InstallRequest,
     InstallationResponse,
+    MarketplaceAnalytics,
     MarketplaceDashboard,
     TemplateCreate,
     TemplateListPage,
@@ -53,6 +54,26 @@ def marketplace_dashboard(
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
     return service.dashboard(UUID(str(user.company_id)))
+
+
+@router.get("/analytics", response_model=MarketplaceAnalytics)
+def marketplace_analytics(
+    days: int = Query(default=30, ge=1, le=90),
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Company marketplace analytics (installs, favorites, trends)."""
+    return service.analytics(UUID(str(user.company_id)), days=days, include_catalog=False)
+
+
+@router.get("/admin/analytics", response_model=MarketplaceAnalytics)
+def marketplace_admin_analytics(
+    days: int = Query(default=30, ge=1, le=90),
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Company + catalog-wide analytics for registry operators."""
+    return service.analytics(UUID(str(user.company_id)), days=days, include_catalog=True)
 
 
 @router.get("/categories", response_model=List[CategoryItem])

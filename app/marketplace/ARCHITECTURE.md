@@ -206,7 +206,16 @@ Release management for catalog templates:
 - Marketplace detail + update confirm show release history / notes
 - FE: `marketplaceApi.versions|updateVersion|promoteVersion|getVersion`
 
-| 9 | Analytics |
+## Phase 9 (Analytics) — done
+
+Marketplace install / catalog analytics:
+
+- `GET /marketplace/analytics` — company installs, favorites, trends, breakdowns
+- `GET /marketplace/admin/analytics` — + catalog totals, top templates (`templates:manage`)
+- Aggregator: `app/marketplace/analytics.py`
+- SaaS `/app/analytics` marketplace cards/charts; Admin → Analytics tab
+- FE: `marketplaceApi.analytics` / `adminAnalytics`
+
 | 10 | Audit / docs / deploy |
 
 ## Design decisions

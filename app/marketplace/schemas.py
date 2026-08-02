@@ -218,3 +218,55 @@ class UpdateNotification(BaseModel):
     installed_version: str
     latest_version: str
     changelog: Optional[str] = None
+
+
+class AnalyticsCountItem(BaseModel):
+    key: str
+    label: str
+    count: int
+
+
+class AnalyticsDayPoint(BaseModel):
+    day: str
+    installs: int
+
+
+class AnalyticsTemplateRank(BaseModel):
+    template_id: UUID
+    slug: str
+    name: str
+    kind: str = "package"
+    category: str
+    install_count: int = 0
+    status: Optional[str] = None
+
+
+class CompanyMarketplaceAnalytics(BaseModel):
+    installed_count: int = 0
+    updates_available: int = 0
+    favorites_count: int = 0
+    by_status: List[AnalyticsCountItem] = Field(default_factory=list)
+    by_category: List[AnalyticsCountItem] = Field(default_factory=list)
+    by_kind: List[AnalyticsCountItem] = Field(default_factory=list)
+    installs_over_time: List[AnalyticsDayPoint] = Field(default_factory=list)
+    recent_installs: List[AnalyticsTemplateRank] = Field(default_factory=list)
+
+
+class CatalogMarketplaceAnalytics(BaseModel):
+    templates_total: int = 0
+    published: int = 0
+    draft: int = 0
+    archived: int = 0
+    favorites_total: int = 0
+    active_installs: int = 0
+    by_kind: List[AnalyticsCountItem] = Field(default_factory=list)
+    by_category: List[AnalyticsCountItem] = Field(default_factory=list)
+    by_pricing_tier: List[AnalyticsCountItem] = Field(default_factory=list)
+    top_templates: List[AnalyticsTemplateRank] = Field(default_factory=list)
+    installs_over_time: List[AnalyticsDayPoint] = Field(default_factory=list)
+
+
+class MarketplaceAnalytics(BaseModel):
+    company: CompanyMarketplaceAnalytics
+    catalog: Optional[CatalogMarketplaceAnalytics] = None
+    days: int = 30

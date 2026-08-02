@@ -367,7 +367,50 @@ export const marketplaceApi = {
   rollback: (installId: string) =>
     api.v1<Installation>(`/marketplace/installations/${installId}/rollback`, { method: "POST" }),
   uninstall: (installId: string) =>
-    api.v1(`/marketplace/installations/${installId}`, { method: "DELETE" })
+    api.v1(`/marketplace/installations/${installId}`, { method: "DELETE" }),
+  analytics: (days = 30) =>
+    api.v1<MarketplaceAnalytics>(`/marketplace/analytics?days=${days}`),
+  adminAnalytics: (days = 30) =>
+    api.v1<MarketplaceAnalytics>(`/marketplace/admin/analytics?days=${days}`)
+};
+
+export type AnalyticsCountItem = { key: string; label: string; count: number };
+export type AnalyticsDayPoint = { day: string; installs: number };
+export type AnalyticsTemplateRank = {
+  template_id: string;
+  slug: string;
+  name: string;
+  kind: string;
+  category: string;
+  install_count: number;
+  status?: string | null;
+};
+
+export type MarketplaceAnalytics = {
+  days: number;
+  company: {
+    installed_count: number;
+    updates_available: number;
+    favorites_count: number;
+    by_status: AnalyticsCountItem[];
+    by_category: AnalyticsCountItem[];
+    by_kind: AnalyticsCountItem[];
+    installs_over_time: AnalyticsDayPoint[];
+    recent_installs: AnalyticsTemplateRank[];
+  };
+  catalog?: {
+    templates_total: number;
+    published: number;
+    draft: number;
+    archived: number;
+    favorites_total: number;
+    active_installs: number;
+    by_kind: AnalyticsCountItem[];
+    by_category: AnalyticsCountItem[];
+    by_pricing_tier: AnalyticsCountItem[];
+    top_templates: AnalyticsTemplateRank[];
+    installs_over_time: AnalyticsDayPoint[];
+  } | null;
 };
 
 // ── Agent Store (admin + storefront hooks) ────────────────────────────────────

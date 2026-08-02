@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -13,15 +13,19 @@ import {
   Bar,
   BarChart
 } from "recharts";
-import { usageApi } from "@/lib/services";
+import { marketplaceApi, usageApi } from "@/lib/services";
 import { formatBytes, formatNumber } from "@/lib/utils";
 import { PageHeader, Stat } from "@/components/ui/misc";
-import { Card, CardHeader } from "@/components/ui/card";
+import { Card, CardHeader, Badge } from "@/components/ui/card";
 
 export default function AnalyticsPage() {
   const current = useQuery({ queryKey: ["usage-current"], queryFn: usageApi.current });
   const history = useQuery({ queryKey: ["usage-history"], queryFn: () => usageApi.history(30) });
   const dashboard = useQuery({ queryKey: ["usage-dashboard"], queryFn: usageApi.dashboard });
+  const marketplace = useQuery({
+    queryKey: ["marketplace-analytics"],
+    queryFn: () => marketplaceApi.analytics(30)
+  });
 
   const chartData = useMemo(() => {
     const map = new Map<string, { day: string; messages: number; tokens: number; api: number }>();
@@ -38,16 +42,29 @@ export default function AnalyticsPage() {
 
   const usage = current.data?.usage || {};
   const topAgents = (dashboard.data?.top_agents as Array<Record<string, unknown>>) || [];
+  const mkt = marketplace.data?.company;
+  const mktChart = mkt?.installs_over_time || [];
+  const mktCategories = mkt?.by_category || [];
 
   return (
     <div className="space-y-6">
-      <PageHeader title="Analytics" description="Messages, tokens, storage, and API usage charts." />
+      <PageHeader title="Analytics" description="Usage, marketplace installs, and agent activity." />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Messages" value={formatNumber(usage.ai_messages)} />
         <Stat label="Tokens" value={formatNumber(usage.total_tokens)} />
         <Stat label="API requests" value={formatNumber(usage.api_requests)} />
         <Stat label="Storage" value={formatBytes(usage.storage_bytes)} />
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Stat label="Templates installed" value={formatNumber(mkt?.installed_count)} />
+        <Stat label="Updates available" value={formatNumber(mkt?.updates_available)} />
+        <Stat label="Favorites" value={formatNumber(mkt?.favorites_count)} />
+        <Stat
+          label="Installs (30d)"
+          value={formatNumber(mktChart.reduce((sum, p) => sum + p.installs, 0))}
+        />
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
@@ -67,6 +84,23 @@ export default function AnalyticsPage() {
         </Card>
 
         <Card>
+          <CardHeader title="Marketplace installs" description="Last 30 days" />
+          <div className="h-64">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={mktChart}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="day" tick={{ fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <Tooltip />
+                <Area type="monotone" dataKey="installs" stroke="#0f766e" fill="#ccfbf1" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </Card>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-2">
+        <Card>
           <CardHeader title="API usage" />
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -80,7 +114,64 @@ export default function AnalyticsPage() {
             </ResponsiveContainer>
           </div>
         </Card>
+
+        <Card>
+          <CardHeader title="Installs by category" />
+          <div className="h-64">
+            {mktCategories.length === 0 ? (
+              <p className="px-1 py-8 text-sm text-muted">No marketplace installs yet.</p>
+            ) : (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={mktCategories}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#0f766e" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </div>
+        </Card>
       </div>
+
+      <Card>
+        <CardHeader title="Recent marketplace installs" />
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead className="text-muted">
+              <tr>
+                <th className="pb-2 font-medium">Template</th>
+                <th className="pb-2 font-medium">Kind</th>
+                <th className="pb-2 font-medium">Category</th>
+                <th className="pb-2 font-medium">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(mkt?.recent_installs || []).map((row) => (
+                <tr key={row.template_id} className="border-t border-line">
+                  <td className="py-2">
+                    <p className="font-medium text-ink">{row.name}</p>
+                    <p className="text-xs text-muted">{row.slug}</p>
+                  </td>
+                  <td className="py-2">
+                    <Badge tone="neutral">{row.kind}</Badge>
+                  </td>
+                  <td className="py-2">{row.category}</td>
+                  <td className="py-2">{row.status || "—"}</td>
+                </tr>
+              ))}
+              {!(mkt?.recent_installs || []).length && (
+                <tr>
+                  <td className="py-4 text-muted" colSpan={4}>
+                    No marketplace installs yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Card>
 
       <Card>
         <CardHeader title="Top agents" description="From /usage/dashboard" />
