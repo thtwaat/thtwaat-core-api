@@ -1,0 +1,227 @@
+"""Generate Phase 5 PostgreSQL seed + rollback SQL from prompt JSON catalog.
+
+Usage:
+  python scripts/generate_marketplace_seed_sql.py
+"""
+from __future__ import annotations
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SEEDS = ROOT / "data" / "marketplace" / "seeds"
+INDEX = SEEDS / "index.json"
+SQL_DIR = ROOT / "data" / "marketplace" / "sql"
+SEED_SQL = SQL_DIR / "001_seed_prompt_templates.sql"
+UPGRADE_SQL = SQL_DIR / "002_upgrade_prompt_templates.sql"
+ROLLBACK_SQL = SQL_DIR / "900_rollback_prompt_seeds.sql"
+
+
+def _sql_str(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _sql_json(obj) -> str:
+    return _sql_str(json.dumps(obj, ensure_ascii=False, separators=(",", ":")))
+
+
+def _sql_text_array(tags: list) -> str:
+    if not tags:
+        return "ARRAY[]::text[]"
+    return "ARRAY[" + ", ".join(_sql_str(t) for t in tags) + "]::text[]"
+
+
+def _default_config(doc: dict) -> dict:
+    return {
+        "prompt": doc.get("prompt", ""),
+        "variables": doc.get("variables") or [],
+        "temperature": float(doc.get("temperature", 0.4)),
+        "example_input": doc.get("example_input"),
+        "example_output": doc.get("example_output"),
+        "seed_id": doc.get("id"),
+    }
+
+
+def _load_docs() -> list[dict]:
+    index = json.loads(INDEX.read_text(encoding="utf-8"))
+    docs = []
+    for entry in index["templates"]:
+        docs.append(json.loads((SEEDS / entry["file"]).read_text(encoding="utf-8")))
+    return docs
+
+
+def _template_upsert(doc: dict) -> str:
+    cfg = _default_config(doc)
+    visibility = (doc.get("visibility") or "public").lower()
+    is_public = "TRUE" if visibility == "public" else "FALSE"
+    featured = "TRUE" if doc.get("featured") else "FALSE"
+    status = "published" if visibility == "public" else "draft"
+    industry = doc.get("industry")
+    industry_sql = _sql_str(industry) if industry else "NULL"
+    author = doc.get("author") or "THTWAAT"
+    return f"""INSERT INTO marketplace_templates (
+  id, slug, name, category, kind, pricing_tier, industry, description, version,
+  icon, tags, author, status, price, is_public, is_featured,
+  supports_agents, supports_domains, supports_billing, supports_mobile,
+  package_path, install_count, default_config, created_at, updated_at
+) VALUES (
+  {_sql_str(doc['id'])}::uuid,
+  {_sql_str(doc['slug'])},
+  {_sql_str(doc['name'])},
+  {_sql_str(doc['category'])}::template_category_enum,
+  {_sql_str(doc.get('kind') or 'prompt')}::template_kind_enum,
+  {_sql_str(doc.get('pricing_tier') or 'free')}::template_pricing_tier_enum,
+  {industry_sql},
+  {_sql_str(doc.get('description') or '')},
+  {_sql_str(doc.get('version') or '1.0.0')},
+  {_sql_str(doc.get('icon') or 'sparkles')},
+  {_sql_text_array(list(doc.get('tags') or []))},
+  {_sql_str(author)},
+  {_sql_str(status)}::template_status_enum,
+  0,
+  {is_public},
+  {featured},
+  TRUE, FALSE, FALSE, FALSE,
+  NULL,
+  0,
+  {_sql_json(cfg)}::jsonb,
+  NOW(), NOW()
+)
+ON CONFLICT (slug) DO UPDATE SET
+  name = EXCLUDED.name,
+  category = EXCLUDED.category,
+  kind = EXCLUDED.kind,
+  pricing_tier = EXCLUDED.pricing_tier,
+  industry = EXCLUDED.industry,
+  description = EXCLUDED.description,
+  icon = EXCLUDED.icon,
+  tags = EXCLUDED.tags,
+  author = EXCLUDED.author,
+  status = EXCLUDED.status,
+  is_public = EXCLUDED.is_public,
+  is_featured = EXCLUDED.is_featured,
+  default_config = EXCLUDED.default_config,
+  updated_at = NOW()
+  -- note: version column updated only by upgrade script / version insert
+;"""
+
+
+def _version_upsert(doc: dict, *, clear_latest: bool) -> str:
+    cfg = _default_config(doc)
+    version = doc.get("version") or "1.0.0"
+    changelog = doc.get("changelog") or f"Seed {version}"
+    tid = _sql_str(doc["id"])
+    parts = []
+    if clear_latest:
+        parts.append(
+            f"""UPDATE marketplace_template_versions
+SET is_latest = FALSE, updated_at = NOW()
+WHERE template_id = {tid}::uuid
+  AND version <> {_sql_str(version)}
+  AND is_latest = TRUE;"""
+        )
+    parts.append(
+        f"""INSERT INTO marketplace_template_versions (
+  id, template_id, version, changelog, config, is_latest, published_at, created_at, updated_at
+) VALUES (
+  gen_random_uuid(),
+  {tid}::uuid,
+  {_sql_str(version)},
+  {_sql_str(changelog)},
+  {_sql_json(cfg)}::jsonb,
+  TRUE,
+  NOW(),
+  NOW(),
+  NOW()
+)
+ON CONFLICT (template_id, version) DO UPDATE SET
+  changelog = EXCLUDED.changelog,
+  config = EXCLUDED.config,
+  is_latest = TRUE,
+  published_at = COALESCE(marketplace_template_versions.published_at, NOW()),
+  updated_at = NOW();
+
+UPDATE marketplace_templates
+SET version = {_sql_str(version)},
+    default_config = {_sql_json(cfg)}::jsonb,
+    updated_at = NOW()
+WHERE id = {tid}::uuid;"""
+    )
+    return "\n".join(parts)
+
+
+def main() -> None:
+    SQL_DIR.mkdir(parents=True, exist_ok=True)
+    docs = _load_docs()
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    header = f"""-- AUTO-GENERATED by scripts/generate_marketplace_seed_sql.py
+-- Generated: {stamp}
+-- Templates: {len(docs)}
+-- Requires migration d0e1f2a3b4c5 (kind, pricing_tier, expanded categories).
+-- Idempotent: ON CONFLICT upserts. Safe to re-run.
+BEGIN;
+"""
+    seed_body = [header]
+    seed_body.append("-- Catalog rows (metadata refresh; version via version upsert below)")
+    for doc in docs:
+        seed_body.append(_template_upsert(doc))
+        seed_body.append(_version_upsert(doc, clear_latest=False))
+    seed_body.append("COMMIT;")
+    SEED_SQL.write_text("\n".join(seed_body) + "\n", encoding="utf-8")
+
+    upgrade_body = [
+        header.replace("Idempotent: ON CONFLICT upserts. Safe to re-run.",
+                       "Upgrade path: clears prior is_latest, upserts new/current version."),
+        "-- Prefer Python CLI for upgrades in app deploys:",
+        "--   python -m scripts.seed_marketplace --prompts-only -v",
+        "-- This SQL mirrors the same version bump semantics for ops.",
+    ]
+    for doc in docs:
+        upgrade_body.append(_template_upsert(doc))
+        upgrade_body.append(_version_upsert(doc, clear_latest=True))
+    upgrade_body.append("COMMIT;")
+    UPGRADE_SQL.write_text("\n".join(upgrade_body) + "\n", encoding="utf-8")
+
+    slugs = ",\n  ".join(_sql_str(d["slug"]) for d in docs)
+    ids = ",\n  ".join(f"{_sql_str(d['id'])}::uuid" for d in docs)
+    rollback = f"""-- AUTO-GENERATED by scripts/generate_marketplace_seed_sql.py
+-- Generated: {stamp}
+-- Rollback Phase 5 prompt seeds only (does not touch package starters).
+-- Deletes installations/favorites referencing these templates via CASCADE/SET NULL where defined.
+BEGIN;
+
+DELETE FROM marketplace_template_favorites
+WHERE template_id IN (
+  {ids}
+);
+
+DELETE FROM marketplace_template_installations
+WHERE template_id IN (
+  {ids}
+);
+
+DELETE FROM marketplace_template_versions
+WHERE template_id IN (
+  {ids}
+);
+
+DELETE FROM marketplace_templates
+WHERE id IN (
+  {ids}
+)
+   OR slug IN (
+  {slugs}
+);
+
+COMMIT;
+"""
+    ROLLBACK_SQL.write_text(rollback, encoding="utf-8")
+    print(f"Wrote {SEED_SQL.relative_to(ROOT)}")
+    print(f"Wrote {UPGRADE_SQL.relative_to(ROOT)}")
+    print(f"Wrote {ROLLBACK_SQL.relative_to(ROOT)}")
+    print(f"Prompt templates: {len(docs)}")
+
+
+if __name__ == "__main__":
+    main()

@@ -159,6 +159,22 @@ Client: `marketplaceApi.listPage`, `favorites`, `favorite`, `unfavorite`.
 
 Each file includes UUID, slug, category, kind, prompt, variables, temperature, tags,
 visibility, featured, version, example I/O, pricing_tier.
+
+## Phase 5 (SQL / CLI seed) — done
+
+Idempotent install + upgrade + rollback:
+
+- Python loader: `app/marketplace/seed_loader.py`
+- Catalog entry: `seed_marketplace_catalog()` / CLI `python -m scripts.seed_marketplace`
+- Flags: `--prompts-only`, `--packages-only`, `--dry-run`, `--no-upgrade`, `--no-refresh`, `-v`
+- SQL (generated): `data/marketplace/sql/001_seed_prompt_templates.sql`
+- Upgrade SQL: `data/marketplace/sql/002_upgrade_prompt_templates.sql`
+- Rollback: `data/marketplace/sql/900_rollback_prompt_seeds.sql`
+- Regenerate SQL: `python scripts/generate_marketplace_seed_sql.py`
+
+Prompt payloads land in `default_config` / version `config` JSONB.
+Stable UUIDs from JSON are preserved on first insert (slug unique conflict → upsert).
+
 | 6 | Admin UI → marketplace registry + agent-store admin APIs |
 | 7 | Postgres FTS on name/description/tags |
 | 8 | Versioning UI + release notes |

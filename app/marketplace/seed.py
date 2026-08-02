@@ -6,7 +6,6 @@ from decimal import Decimal
 from sqlalchemy.orm import Session
 
 from app.marketplace.schemas import TemplateCreate
-from app.marketplace.service import MarketplaceService
 
 
 SEED_TEMPLATES = [
@@ -117,16 +116,61 @@ SEED_TEMPLATES = [
 ]
 
 
-def seed_marketplace_templates(db: Session, *, force: bool = False) -> int:
-    """Idempotently seed core templates. Returns number created."""
-    service = MarketplaceService(db)
-    created = 0
-    for payload in SEED_TEMPLATES:
-        existing = service.repo.get_by_slug(payload.slug)
-        if existing and not force:
-            continue
-        if existing and force:
-            continue
-        service.create_template(payload)
-        created += 1
-    return created
+def seed_marketplace_templates(
+    db: Session,
+    *,
+    force: bool = False,
+    include_prompts: bool = False,
+    upgrade: bool = True,
+    dry_run: bool = False,
+) -> int:
+    """Idempotently seed core package templates. Returns number created.
+
+    Prompt catalog is opt-in here for backward-compatible tests; use
+    `seed_marketplace_catalog` (CLI default) for packages + prompts.
+    """
+    from app.marketplace.seed_loader import merge_stats, seed_package_templates, seed_prompt_templates
+
+    _ = force
+    parts = [
+        seed_package_templates(db, SEED_TEMPLATES, upgrade=upgrade, dry_run=dry_run),
+    ]
+    if include_prompts:
+        parts.append(
+            seed_prompt_templates(
+                db,
+                upgrade=upgrade,
+                refresh_same_version=False,
+                dry_run=dry_run,
+            )
+        )
+    return merge_stats(*parts).created
+
+
+def seed_marketplace_catalog(
+    db: Session,
+    *,
+    include_packages: bool = True,
+    include_prompts: bool = True,
+    upgrade: bool = True,
+    refresh_same_version: bool = True,
+    dry_run: bool = False,
+):
+    """Phase 5 entry: full idempotent catalog seed with create/upgrade/refresh stats."""
+    from app.marketplace.seed_loader import SeedStats, merge_stats, seed_package_templates, seed_prompt_templates
+
+    parts = []
+    if include_packages:
+        parts.append(
+            seed_package_templates(db, SEED_TEMPLATES, upgrade=upgrade, dry_run=dry_run)
+        )
+    if include_prompts:
+        parts.append(
+            seed_prompt_templates(
+                db,
+                upgrade=upgrade,
+                refresh_same_version=refresh_same_version,
+                dry_run=dry_run,
+            )
+        )
+    return merge_stats(*parts) if parts else SeedStats()
