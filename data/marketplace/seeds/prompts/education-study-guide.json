@@ -1,0 +1,46 @@
+{
+  "id": "5141f798-c602-5096-9dc2-51289ec0f2fe",
+  "slug": "education-study-guide",
+  "name": "Study Guide Writer",
+  "description": "Production prompt template for exam prep.",
+  "category": "education",
+  "kind": "prompt",
+  "prompt": "You are an instructional designer and educator.\n\nTask: Produce high-quality output for exam prep using the template 'Study Guide Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.55,
+  "tags": [
+    "education",
+    "study",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: grade 9. Goal: photosynthesis lesson. Tone: clear.",
+  "example_output": "## Study Guide Writer\n- Objective: exam prep\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "education"
+}

@@ -149,7 +149,16 @@ Route: `/app/templates` (nav label Marketplace).
 Tabs: Browse · Featured · Favorites · Installed · Updates  
 + search, category chips, kind filter, template detail dialog, install/update confirm dialogs.  
 Client: `marketplaceApi.listPage`, `favorites`, `favorite`, `unfavorite`.
-| 4–5 | Seed 100 prompt templates JSON + idempotent SQL/CLI |
+## Phase 4 (prompt seeds) — done
+
+100 production prompt/agent templates as JSON:
+
+- `data/marketplace/seeds/index.json`
+- `data/marketplace/seeds/prompts/*.json`
+- Regenerator: `python scripts/generate_marketplace_prompt_seeds.py`
+
+Each file includes UUID, slug, category, kind, prompt, variables, temperature, tags,
+visibility, featured, version, example I/O, pricing_tier.
 | 6 | Admin UI → marketplace registry + agent-store admin APIs |
 | 7 | Postgres FTS on name/description/tags |
 | 8 | Versioning UI + release notes |

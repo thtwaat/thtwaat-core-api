@@ -1,0 +1,1020 @@
+{
+  "version": "1.0.0",
+  "count": 100,
+  "categories": [
+    "ai_agents",
+    "analytics",
+    "business",
+    "coding",
+    "education",
+    "finance",
+    "healthcare",
+    "hr",
+    "legal",
+    "marketing",
+    "research",
+    "writing"
+  ],
+  "templates": [
+    {
+      "id": "ff584019-e2f8-5a0d-b300-a5740dccc193",
+      "slug": "writing-blog-outline",
+      "category": "writing",
+      "name": "Blog Outline Writer",
+      "file": "prompts/writing-blog-outline.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e8dbcc42-f27f-5784-86e6-0b5fcbef7933",
+      "slug": "writing-blog-draft",
+      "category": "writing",
+      "name": "Long-form Blog Drafter",
+      "file": "prompts/writing-blog-draft.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "65b0b5e9-d052-50c4-8433-3587332668bb",
+      "slug": "writing-seo-meta",
+      "category": "writing",
+      "name": "SEO Meta Copywriter",
+      "file": "prompts/writing-seo-meta.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "6254ab89-9152-5f59-9622-e7f5ec188279",
+      "slug": "writing-newsletter",
+      "category": "writing",
+      "name": "Newsletter Composer",
+      "file": "prompts/writing-newsletter.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "710b1635-1691-5969-9713-087f48a6cb64",
+      "slug": "writing-linkedin-post",
+      "category": "writing",
+      "name": "LinkedIn Post Writer",
+      "file": "prompts/writing-linkedin-post.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "c28fac15-527b-5e13-b441-9db898fde14c",
+      "slug": "writing-press-release",
+      "category": "writing",
+      "name": "Press Release Writer",
+      "file": "prompts/writing-press-release.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e8203ea1-66bd-54c7-a2de-29006bac6ea0",
+      "slug": "writing-product-description",
+      "category": "writing",
+      "name": "Product Description Writer",
+      "file": "prompts/writing-product-description.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "f70a771b-75c1-5583-84c5-1ea1fb00ea84",
+      "slug": "writing-rewrite-clarity",
+      "category": "writing",
+      "name": "Clarity Rewriter",
+      "file": "prompts/writing-rewrite-clarity.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "839cc168-e868-55f9-b4ff-c48d10c5a960",
+      "slug": "writing-story-hook",
+      "category": "writing",
+      "name": "Story Hook Generator",
+      "file": "prompts/writing-story-hook.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "a79c0842-6473-5202-b241-a8b16ca3dd14",
+      "slug": "coding-code-review",
+      "category": "coding",
+      "name": "Code Review Assistant",
+      "file": "prompts/coding-code-review.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "6a7df847-4926-510a-ac69-938bd0ada3a2",
+      "slug": "coding-bug-explainer",
+      "category": "coding",
+      "name": "Bug Explainer",
+      "file": "prompts/coding-bug-explainer.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "7a55dcbe-8f30-58e1-b939-8cc084ab4f05",
+      "slug": "coding-unit-test-gen",
+      "category": "coding",
+      "name": "Unit Test Generator",
+      "file": "prompts/coding-unit-test-gen.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "c2cfd629-f056-5f21-aaff-58ea9511df45",
+      "slug": "coding-api-docs",
+      "category": "coding",
+      "name": "API Docs Writer",
+      "file": "prompts/coding-api-docs.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "57416216-e9f2-5097-8bcc-f04a71dc0c16",
+      "slug": "coding-sql-optimizer",
+      "category": "coding",
+      "name": "SQL Query Optimizer",
+      "file": "prompts/coding-sql-optimizer.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "c76f8fa1-4c6d-5b27-827b-b80565932bab",
+      "slug": "coding-regex-builder",
+      "category": "coding",
+      "name": "Regex Builder",
+      "file": "prompts/coding-regex-builder.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "f2055b29-d045-5de2-8ab2-8a5661436d8b",
+      "slug": "coding-refactor-plan",
+      "category": "coding",
+      "name": "Refactor Planner",
+      "file": "prompts/coding-refactor-plan.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "7fe0c9c4-27c2-54cd-989d-79bfe652c112",
+      "slug": "coding-dockerfile-gen",
+      "category": "coding",
+      "name": "Dockerfile Generator",
+      "file": "prompts/coding-dockerfile-gen.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "6ee6c702-0030-5c0e-b6e5-a51759aebebd",
+      "slug": "coding-error-triage",
+      "category": "coding",
+      "name": "Error Log Triage",
+      "file": "prompts/coding-error-triage.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "4d093796-c8d9-55d1-9e41-ea7e5a5ba9f2",
+      "slug": "marketing-ad-copy",
+      "category": "marketing",
+      "name": "Ad Copy Generator",
+      "file": "prompts/marketing-ad-copy.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "3aefe77b-ae7a-520e-ab30-b9dd1b43a74f",
+      "slug": "marketing-landing-hero",
+      "category": "marketing",
+      "name": "Landing Hero Copy",
+      "file": "prompts/marketing-landing-hero.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "1865eceb-a598-5b2f-940f-b92c527e8464",
+      "slug": "marketing-campaign-brief",
+      "category": "marketing",
+      "name": "Campaign Brief Builder",
+      "file": "prompts/marketing-campaign-brief.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "3e1a368e-b395-5689-9362-408bf0c428f4",
+      "slug": "marketing-persona-builder",
+      "category": "marketing",
+      "name": "Buyer Persona Builder",
+      "file": "prompts/marketing-persona-builder.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "a6e73fc8-76cb-51e5-ba16-0dc3bb9f9ee9",
+      "slug": "marketing-ab-variant",
+      "category": "marketing",
+      "name": "A/B Variant Writer",
+      "file": "prompts/marketing-ab-variant.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "a0c9a92f-01e9-569b-a7c0-e3649ea91b25",
+      "slug": "marketing-ugc-script",
+      "category": "marketing",
+      "name": "UGC Script Writer",
+      "file": "prompts/marketing-ugc-script.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "f76c3c47-4c5a-538f-9b27-fb1a3c7b97d7",
+      "slug": "marketing-launch-email",
+      "category": "marketing",
+      "name": "Launch Email Sequence",
+      "file": "prompts/marketing-launch-email.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "863982e9-2334-58f3-b0fc-31c283c22593",
+      "slug": "marketing-competitor-angle",
+      "category": "marketing",
+      "name": "Competitor Angle Finder",
+      "file": "prompts/marketing-competitor-angle.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "4603510e-1059-5d04-8f18-2195fb6af06b",
+      "slug": "marketing-hashtag-pack",
+      "category": "marketing",
+      "name": "Hashtag Pack Generator",
+      "file": "prompts/marketing-hashtag-pack.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "64b86188-6670-5493-b39d-38598e9b4ad4",
+      "slug": "finance-expense-summary",
+      "category": "finance",
+      "name": "Expense Summary Analyst",
+      "file": "prompts/finance-expense-summary.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "b3072d6e-7b8a-5cfc-ba67-5ead08866b3c",
+      "slug": "finance-invoice-followup",
+      "category": "finance",
+      "name": "Invoice Follow-up Writer",
+      "file": "prompts/finance-invoice-followup.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "407b07e0-52db-5897-a891-3df5ca8a7bcd",
+      "slug": "finance-budget-narrative",
+      "category": "finance",
+      "name": "Budget Narrative Writer",
+      "file": "prompts/finance-budget-narrative.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e619af0b-94cb-5a28-8894-cf768b17f203",
+      "slug": "finance-cashflow-brief",
+      "category": "finance",
+      "name": "Cashflow Briefing",
+      "file": "prompts/finance-cashflow-brief.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "1ee7dd1c-8c0d-548a-ac9c-480300fcaddc",
+      "slug": "finance-pricing-memo",
+      "category": "finance",
+      "name": "Pricing Strategy Memo",
+      "file": "prompts/finance-pricing-memo.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "c1035663-7f41-547e-a90f-32decaaed432",
+      "slug": "finance-investor-update",
+      "category": "finance",
+      "name": "Investor Update Draft",
+      "file": "prompts/finance-investor-update.json",
+      "featured": true,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "54ade6fa-92f0-55d0-810d-6bdf47ebbbc2",
+      "slug": "finance-kpi-commentary",
+      "category": "finance",
+      "name": "KPI Commentary Writer",
+      "file": "prompts/finance-kpi-commentary.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "aef7caa4-a174-5812-93ee-4bcbd64e44ff",
+      "slug": "finance-risk-note",
+      "category": "finance",
+      "name": "Financial Risk Note",
+      "file": "prompts/finance-risk-note.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e63d6c61-2b79-5a3d-a469-0602c2545e51",
+      "slug": "hr-jd-writer",
+      "category": "hr",
+      "name": "Job Description Writer",
+      "file": "prompts/hr-jd-writer.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "cb9137cf-d560-502d-b6df-99d9934e39b4",
+      "slug": "hr-interview-scorecard",
+      "category": "hr",
+      "name": "Interview Scorecard Builder",
+      "file": "prompts/hr-interview-scorecard.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "47711d3d-aa40-5178-b5ec-e71cf66a2766",
+      "slug": "hr-offer-letter",
+      "category": "hr",
+      "name": "Offer Letter Drafter",
+      "file": "prompts/hr-offer-letter.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "25b269ad-eec2-56a4-a527-71491cac42a5",
+      "slug": "hr-onboarding-plan",
+      "category": "hr",
+      "name": "Onboarding Plan Writer",
+      "file": "prompts/hr-onboarding-plan.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "30f886c4-3235-50bb-9631-456dd52518aa",
+      "slug": "hr-performance-review",
+      "category": "hr",
+      "name": "Performance Review Helper",
+      "file": "prompts/hr-performance-review.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "94f78508-8600-5944-a20b-de0af9e4ee03",
+      "slug": "hr-policy-summary",
+      "category": "hr",
+      "name": "HR Policy Summarizer",
+      "file": "prompts/hr-policy-summary.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "4a9668e3-e586-568d-908c-45017ce44fa0",
+      "slug": "hr-rejection-email",
+      "category": "hr",
+      "name": "Candidate Rejection Email",
+      "file": "prompts/hr-rejection-email.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "2ce3a35e-a115-591c-a262-36ec8b406e48",
+      "slug": "hr-engagement-survey",
+      "category": "hr",
+      "name": "Engagement Survey Designer",
+      "file": "prompts/hr-engagement-survey.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "9a48a004-7f4b-5207-8f1d-798e99444665",
+      "slug": "legal-nda-summary",
+      "category": "legal",
+      "name": "NDA Clause Summarizer",
+      "file": "prompts/legal-nda-summary.json",
+      "featured": true,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "ace2f583-a8e2-560a-9863-08e4fd2165c9",
+      "slug": "legal-contract-risk",
+      "category": "legal",
+      "name": "Contract Risk Spotter",
+      "file": "prompts/legal-contract-risk.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "f18d2d45-8fb4-586e-a93c-2364024a2753",
+      "slug": "legal-privacy-policy",
+      "category": "legal",
+      "name": "Privacy Policy Drafter",
+      "file": "prompts/legal-privacy-policy.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "79a0d7bf-5b64-5c31-bc86-c4b20a5898ae",
+      "slug": "legal-tos-outline",
+      "category": "legal",
+      "name": "Terms of Service Outline",
+      "file": "prompts/legal-tos-outline.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "fa38c49d-1a25-5335-843e-f9a66382e9ac",
+      "slug": "legal-compliance-checklist",
+      "category": "legal",
+      "name": "Compliance Checklist Builder",
+      "file": "prompts/legal-compliance-checklist.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "5fa1b035-1b35-5cf6-a619-dce8e46e7db7",
+      "slug": "legal-dispute-response",
+      "category": "legal",
+      "name": "Dispute Response Drafter",
+      "file": "prompts/legal-dispute-response.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "cc529955-0176-5d63-ad2e-7987b08fad3e",
+      "slug": "legal-vendor-dpa",
+      "category": "legal",
+      "name": "Vendor DPA Checklist",
+      "file": "prompts/legal-vendor-dpa.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "ba54fea1-b8cf-5a19-a627-e42036fd616a",
+      "slug": "legal-legal-faq",
+      "category": "legal",
+      "name": "Legal FAQ Writer",
+      "file": "prompts/legal-legal-faq.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "c32087ed-bc06-5c9f-bdd3-4e2ef2c88518",
+      "slug": "healthcare-patient-faq",
+      "category": "healthcare",
+      "name": "Patient FAQ Writer",
+      "file": "prompts/healthcare-patient-faq.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "f26d2ea9-1c36-555e-89ed-8d58a43575c7",
+      "slug": "healthcare-symptom-triage-copy",
+      "category": "healthcare",
+      "name": "Symptom Triage Copy",
+      "file": "prompts/healthcare-symptom-triage-copy.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "7a1fecf8-dffb-58c0-8bd2-9079ca70d752",
+      "slug": "healthcare-appointment-reminder",
+      "category": "healthcare",
+      "name": "Appointment Reminder Writer",
+      "file": "prompts/healthcare-appointment-reminder.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "a8380b8d-7209-5c6c-92b6-e315fc064048",
+      "slug": "healthcare-care-plan-summary",
+      "category": "healthcare",
+      "name": "Care Plan Summarizer",
+      "file": "prompts/healthcare-care-plan-summary.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "eb2d685e-c66c-56da-b892-a8e04b7d1686",
+      "slug": "healthcare-consent-form",
+      "category": "healthcare",
+      "name": "Consent Form Plain-language",
+      "file": "prompts/healthcare-consent-form.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "eaa2f049-3768-56a7-b76c-576dd359a41b",
+      "slug": "healthcare-clinic-blog",
+      "category": "healthcare",
+      "name": "Clinic Blog Assistant",
+      "file": "prompts/healthcare-clinic-blog.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "1fa2b610-430d-58d4-9000-002dbed5982d",
+      "slug": "healthcare-insurance-explain",
+      "category": "healthcare",
+      "name": "Insurance Benefit Explainer",
+      "file": "prompts/healthcare-insurance-explain.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "cb2deefc-6e14-55e0-be38-71241b7e4742",
+      "slug": "healthcare-discharge-notes",
+      "category": "healthcare",
+      "name": "Discharge Notes Simplifier",
+      "file": "prompts/healthcare-discharge-notes.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "fc61b830-181a-5abb-8696-8564500162f7",
+      "slug": "education-lesson-plan",
+      "category": "education",
+      "name": "Lesson Plan Builder",
+      "file": "prompts/education-lesson-plan.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "f0a24339-c1af-5e5c-9961-65d3e6406d72",
+      "slug": "education-quiz-generator",
+      "category": "education",
+      "name": "Quiz Generator",
+      "file": "prompts/education-quiz-generator.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e1ebc6d0-1c26-56c5-baaa-cdf1de812c76",
+      "slug": "education-rubric-builder",
+      "category": "education",
+      "name": "Grading Rubric Builder",
+      "file": "prompts/education-rubric-builder.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "5141f798-c602-5096-9dc2-51289ec0f2fe",
+      "slug": "education-study-guide",
+      "category": "education",
+      "name": "Study Guide Writer",
+      "file": "prompts/education-study-guide.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "d7426ebc-d597-5e2b-bc10-49b95fbf3233",
+      "slug": "education-parent-update",
+      "category": "education",
+      "name": "Parent Update Email",
+      "file": "prompts/education-parent-update.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "f0ef758d-5e9e-5cb4-8a22-6d3b31a26d29",
+      "slug": "education-course-outline",
+      "category": "education",
+      "name": "Course Outline Designer",
+      "file": "prompts/education-course-outline.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "dae61b32-89c5-5e37-a005-e8e7608b8fe5",
+      "slug": "education-socratic-tutor",
+      "category": "education",
+      "name": "Socratic Tutor Prompt",
+      "file": "prompts/education-socratic-tutor.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "c3c70781-3354-5d10-ae69-92b8d05343f6",
+      "slug": "education-essay-feedback",
+      "category": "education",
+      "name": "Essay Feedback Coach",
+      "file": "prompts/education-essay-feedback.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "8bf7cd1e-e805-5d59-8815-3d73832da5ef",
+      "slug": "research-lit-review",
+      "category": "research",
+      "name": "Literature Review Assistant",
+      "file": "prompts/research-lit-review.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "030f8c1c-8346-5a1a-8244-030e5506aa9d",
+      "slug": "research-research-question",
+      "category": "research",
+      "name": "Research Question Refiner",
+      "file": "prompts/research-research-question.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "e225db5d-6147-53d0-af4b-699d5c6bf115",
+      "slug": "research-method-outline",
+      "category": "research",
+      "name": "Methods Outline Writer",
+      "file": "prompts/research-method-outline.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "db676a80-eb85-5e98-b4ad-c4673a046b73",
+      "slug": "research-citation-helper",
+      "category": "research",
+      "name": "Citation Formatter Helper",
+      "file": "prompts/research-citation-helper.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "bcb2e24a-dc55-5d94-adfc-a244ef349b16",
+      "slug": "research-abstract-writer",
+      "category": "research",
+      "name": "Abstract Writer",
+      "file": "prompts/research-abstract-writer.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "0aa98a73-a668-5a4b-81cc-6a61835fc8ee",
+      "slug": "research-gap-finder",
+      "category": "research",
+      "name": "Research Gap Finder",
+      "file": "prompts/research-gap-finder.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "0bd9e764-9689-55db-8ea7-15ab36c57d64",
+      "slug": "research-survey-design",
+      "category": "research",
+      "name": "Survey Design Assistant",
+      "file": "prompts/research-survey-design.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "58e854ca-6a17-52cc-a389-46d03a174d69",
+      "slug": "research-findings-summary",
+      "category": "research",
+      "name": "Findings Summarizer",
+      "file": "prompts/research-findings-summary.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "82098abf-1a7e-5f7b-8c57-6f31ef6aa45a",
+      "slug": "ai-agents-customer-support-agent",
+      "category": "ai_agents",
+      "name": "Customer Support Agent Prompt",
+      "file": "prompts/ai-agents-customer-support-agent.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "agent"
+    },
+    {
+      "id": "286eb457-3cfd-52b8-9f10-df523d0a87c1",
+      "slug": "ai-agents-sales-qualifier",
+      "category": "ai_agents",
+      "name": "Sales Qualifier Agent",
+      "file": "prompts/ai-agents-sales-qualifier.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "agent"
+    },
+    {
+      "id": "6d70cf24-ac9a-50ac-a53a-7b8e097c37fd",
+      "slug": "ai-agents-knowledge-rag",
+      "category": "ai_agents",
+      "name": "Knowledge RAG Assistant",
+      "file": "prompts/ai-agents-knowledge-rag.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "agent"
+    },
+    {
+      "id": "24121a3a-8c52-54bf-ba11-aca5900c9b6c",
+      "slug": "ai-agents-ops-runbook",
+      "category": "ai_agents",
+      "name": "Ops Runbook Agent",
+      "file": "prompts/ai-agents-ops-runbook.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "agent"
+    },
+    {
+      "id": "2364395d-d687-5768-87a1-2c75f297e6ca",
+      "slug": "ai-agents-meeting-secretary",
+      "category": "ai_agents",
+      "name": "Meeting Secretary Agent",
+      "file": "prompts/ai-agents-meeting-secretary.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "agent"
+    },
+    {
+      "id": "b3fcc0d8-e7ee-56b3-adf2-57cb69c42d4c",
+      "slug": "ai-agents-onboarding-concierge",
+      "category": "ai_agents",
+      "name": "Onboarding Concierge Agent",
+      "file": "prompts/ai-agents-onboarding-concierge.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "agent"
+    },
+    {
+      "id": "82907c7c-de80-59c7-b1b5-9abbeff0226c",
+      "slug": "ai-agents-moderation-agent",
+      "category": "ai_agents",
+      "name": "Content Moderation Agent",
+      "file": "prompts/ai-agents-moderation-agent.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "agent"
+    },
+    {
+      "id": "54e5766a-259a-56a8-bc2e-ea7e23854e96",
+      "slug": "ai-agents-scheduler-agent",
+      "category": "ai_agents",
+      "name": "Scheduling Agent Prompt",
+      "file": "prompts/ai-agents-scheduler-agent.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "agent"
+    },
+    {
+      "id": "c915ac8d-f7e0-550b-bfa0-9d9f51e5339c",
+      "slug": "ai-agents-analytics-agent",
+      "category": "ai_agents",
+      "name": "Analytics Explainer Agent",
+      "file": "prompts/ai-agents-analytics-agent.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "agent"
+    },
+    {
+      "id": "2724f6ac-6ffd-549f-938a-25cae0833bcc",
+      "slug": "business-okrs-writer",
+      "category": "business",
+      "name": "OKR Writer",
+      "file": "prompts/business-okrs-writer.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "67cc37ea-64ca-50fd-a35a-eaa3299db12c",
+      "slug": "business-meeting-agenda",
+      "category": "business",
+      "name": "Meeting Agenda Builder",
+      "file": "prompts/business-meeting-agenda.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e2b8b595-ee30-5b31-899d-10e1773bb398",
+      "slug": "business-decision-memo",
+      "category": "business",
+      "name": "Decision Memo Writer",
+      "file": "prompts/business-decision-memo.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e25208bc-0f69-5e2e-acc4-f05b5d4e99e5",
+      "slug": "business-sop-writer",
+      "category": "business",
+      "name": "SOP Writer",
+      "file": "prompts/business-sop-writer.json",
+      "featured": true,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "9cf63e1a-8b7c-5c79-af2f-ae268cf34adc",
+      "slug": "business-swot-analysis",
+      "category": "business",
+      "name": "SWOT Analysis Facilitator",
+      "file": "prompts/business-swot-analysis.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "c817bf1b-e269-5e0b-9a10-5cf7a8399c03",
+      "slug": "business-vendor-rfp",
+      "category": "business",
+      "name": "Vendor RFP Drafter",
+      "file": "prompts/business-vendor-rfp.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "0e82cc52-a908-57cf-b3fd-b6386dcc08e9",
+      "slug": "business-partnership-pitch",
+      "category": "business",
+      "name": "Partnership Pitch Writer",
+      "file": "prompts/business-partnership-pitch.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "6d03f6fb-d594-5431-8368-86a3de26b42b",
+      "slug": "business-status-report",
+      "category": "business",
+      "name": "Weekly Status Report",
+      "file": "prompts/business-status-report.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "250b62a5-8047-5edd-b42e-662517a900da",
+      "slug": "analytics-metric-definition",
+      "category": "analytics",
+      "name": "Metric Definition Writer",
+      "file": "prompts/analytics-metric-definition.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "7fdba11f-644d-58df-a2ab-8cd68dc4a6a1",
+      "slug": "analytics-dashboard-narrative",
+      "category": "analytics",
+      "name": "Dashboard Narrative",
+      "file": "prompts/analytics-dashboard-narrative.json",
+      "featured": false,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "8cc71bc9-b6a8-5b73-bdfe-e58464029e0d",
+      "slug": "analytics-funnel-analysis",
+      "category": "analytics",
+      "name": "Funnel Analysis Explainer",
+      "file": "prompts/analytics-funnel-analysis.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e1988d91-682a-5992-9d45-8d07c878018e",
+      "slug": "analytics-cohort-summary",
+      "category": "analytics",
+      "name": "Cohort Summary Writer",
+      "file": "prompts/analytics-cohort-summary.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "872ee0bf-debf-5dd8-9b52-13b956b2a15a",
+      "slug": "analytics-anomaly-explain",
+      "category": "analytics",
+      "name": "Anomaly Explainer",
+      "file": "prompts/analytics-anomaly-explain.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "e3382224-ec89-5179-ba24-b76192951357",
+      "slug": "analytics-experiment-design",
+      "category": "analytics",
+      "name": "Experiment Design Brief",
+      "file": "prompts/analytics-experiment-design.json",
+      "featured": false,
+      "pricing_tier": "starter",
+      "kind": "prompt"
+    },
+    {
+      "id": "7cbd7462-4480-5cc2-9d96-3490b6ad0904",
+      "slug": "analytics-sql-brief",
+      "category": "analytics",
+      "name": "Analytics SQL Brief",
+      "file": "prompts/analytics-sql-brief.json",
+      "featured": true,
+      "pricing_tier": "pro",
+      "kind": "prompt"
+    },
+    {
+      "id": "d263c2e3-1903-560f-9eec-db5b57108a38",
+      "slug": "analytics-executive-insight",
+      "category": "analytics",
+      "name": "Executive Insight Card",
+      "file": "prompts/analytics-executive-insight.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    }
+  ]
+}

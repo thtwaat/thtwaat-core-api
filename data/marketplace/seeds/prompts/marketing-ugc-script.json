@@ -1,0 +1,46 @@
+{
+  "id": "a0c9a92f-01e9-569b-a7c0-e3649ea91b25",
+  "slug": "marketing-ugc-script",
+  "name": "UGC Script Writer",
+  "description": "Production prompt template for short video scripts.",
+  "category": "marketing",
+  "kind": "prompt",
+  "prompt": "You are a performance marketing strategist and copywriter.\n\nTask: Produce high-quality output for short video scripts using the template 'UGC Script Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.75,
+  "tags": [
+    "marketing",
+    "ugc",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: SMB owners. Goal: trial signups. Tone: direct.",
+  "example_output": "## UGC Script Writer\n- Objective: short video scripts\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "pro",
+  "author": "THTWAAT",
+  "industry": "marketing"
+}

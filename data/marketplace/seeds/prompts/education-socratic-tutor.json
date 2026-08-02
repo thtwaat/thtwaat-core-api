@@ -1,0 +1,47 @@
+{
+  "id": "dae61b32-89c5-5e37-a005-e8e7608b8fe5",
+  "slug": "education-socratic-tutor",
+  "name": "Socratic Tutor Prompt",
+  "description": "Production prompt template for guided questioning.",
+  "category": "education",
+  "kind": "prompt",
+  "prompt": "You are an instructional designer and educator.\n\nTask: Produce high-quality output for guided questioning using the template 'Socratic Tutor Prompt'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.55,
+  "tags": [
+    "education",
+    "socratic",
+    "prompt",
+    "thtwaat",
+    "featured"
+  ],
+  "visibility": "public",
+  "featured": true,
+  "version": "1.0.0",
+  "example_input": "Audience: grade 9. Goal: photosynthesis lesson. Tone: clear.",
+  "example_output": "## Socratic Tutor Prompt\n- Objective: guided questioning\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "education"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "0bd9e764-9689-55db-8ea7-15ab36c57d64",
+  "slug": "research-survey-design",
+  "name": "Survey Design Assistant",
+  "description": "Production prompt template for research surveys.",
+  "category": "research",
+  "kind": "prompt",
+  "prompt": "You are a rigorous research assistant.\n\nTask: Produce high-quality output for research surveys using the template 'Survey Design Assistant'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "question",
+      "label": "Primary question",
+      "required": true
+    },
+    {
+      "name": "data_or_sources",
+      "label": "Data / sources",
+      "required": false
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.4,
+  "tags": [
+    "research",
+    "survey",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Question: impact of RAG on support deflection. Sources: 3 papers.",
+  "example_output": "## Survey Design Assistant\n- Objective: research surveys\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "pro",
+  "author": "THTWAAT",
+  "industry": "research"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "eb2d685e-c66c-56da-b892-a8e04b7d1686",
+  "slug": "healthcare-consent-form",
+  "name": "Consent Form Plain-language",
+  "description": "Production prompt template for consent text.",
+  "category": "healthcare",
+  "kind": "prompt",
+  "prompt": "You are a healthcare communications assistant. Do not diagnose or prescribe.\n\nTask: Produce high-quality output for consent text using the template 'Consent Form Plain-language'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "topic",
+      "label": "Topic",
+      "required": true
+    },
+    {
+      "name": "disclaimer_needed",
+      "label": "Include medical disclaimer",
+      "required": false
+    }
+  ],
+  "temperature": 0.35,
+  "tags": [
+    "healthcare",
+    "consent",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: patients. Topic: preparing for first physio visit.",
+  "example_output": "## Consent Form Plain-language\n- Objective: consent text\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "healthcare"
+}

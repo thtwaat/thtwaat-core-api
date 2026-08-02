@@ -1,0 +1,46 @@
+{
+  "id": "e63d6c61-2b79-5a3d-a469-0602c2545e51",
+  "slug": "hr-jd-writer",
+  "name": "Job Description Writer",
+  "description": "Production prompt template for job posts.",
+  "category": "hr",
+  "kind": "prompt",
+  "prompt": "You are an experienced HR business partner.\n\nTask: Produce high-quality output for job posts using the template 'Job Description Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.5,
+  "tags": [
+    "hr",
+    "jd",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: hiring managers. Goal: backend engineer JD. Tone: inclusive.",
+  "example_output": "## Job Description Writer\n- Objective: job posts\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "hr"
+}

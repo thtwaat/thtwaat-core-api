@@ -1,0 +1,41 @@
+{
+  "id": "ace2f583-a8e2-560a-9863-08e4fd2165c9",
+  "slug": "legal-contract-risk",
+  "name": "Contract Risk Spotter",
+  "description": "Production prompt template for risky clauses.",
+  "category": "legal",
+  "kind": "prompt",
+  "prompt": "You are a legal drafting assistant. This is not legal advice; flag that clearly.\n\nTask: Produce high-quality output for risky clauses using the template 'Contract Risk Spotter'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "jurisdiction",
+      "label": "Jurisdiction (if known)",
+      "required": false
+    },
+    {
+      "name": "document_excerpt",
+      "label": "Document excerpt",
+      "required": true
+    },
+    {
+      "name": "risk_tolerance",
+      "label": "Risk tolerance",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "legal",
+    "contract",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Excerpt: mutual NDA draft. Jurisdiction: India. Risk: moderate.",
+  "example_output": "## Contract Risk Spotter\n- Objective: risky clauses\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "legal"
+}

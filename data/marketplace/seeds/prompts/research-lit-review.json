@@ -1,0 +1,41 @@
+{
+  "id": "8bf7cd1e-e805-5d59-8815-3d73832da5ef",
+  "slug": "research-lit-review",
+  "name": "Literature Review Assistant",
+  "description": "Production prompt template for paper synthesis.",
+  "category": "research",
+  "kind": "prompt",
+  "prompt": "You are a rigorous research assistant.\n\nTask: Produce high-quality output for paper synthesis using the template 'Literature Review Assistant'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "question",
+      "label": "Primary question",
+      "required": true
+    },
+    {
+      "name": "data_or_sources",
+      "label": "Data / sources",
+      "required": false
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.4,
+  "tags": [
+    "research",
+    "lit",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Question: impact of RAG on support deflection. Sources: 3 papers.",
+  "example_output": "## Literature Review Assistant\n- Objective: paper synthesis\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "research"
+}

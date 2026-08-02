@@ -1,0 +1,46 @@
+{
+  "id": "e1ebc6d0-1c26-56c5-baaa-cdf1de812c76",
+  "slug": "education-rubric-builder",
+  "name": "Grading Rubric Builder",
+  "description": "Production prompt template for rubrics.",
+  "category": "education",
+  "kind": "prompt",
+  "prompt": "You are an instructional designer and educator.\n\nTask: Produce high-quality output for rubrics using the template 'Grading Rubric Builder'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.55,
+  "tags": [
+    "education",
+    "rubric",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: grade 9. Goal: photosynthesis lesson. Tone: clear.",
+  "example_output": "## Grading Rubric Builder\n- Objective: rubrics\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "education"
+}

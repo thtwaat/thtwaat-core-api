@@ -1,0 +1,41 @@
+{
+  "id": "f18d2d45-8fb4-586e-a93c-2364024a2753",
+  "slug": "legal-privacy-policy",
+  "name": "Privacy Policy Drafter",
+  "description": "Production prompt template for privacy notices.",
+  "category": "legal",
+  "kind": "prompt",
+  "prompt": "You are a legal drafting assistant. This is not legal advice; flag that clearly.\n\nTask: Produce high-quality output for privacy notices using the template 'Privacy Policy Drafter'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "jurisdiction",
+      "label": "Jurisdiction (if known)",
+      "required": false
+    },
+    {
+      "name": "document_excerpt",
+      "label": "Document excerpt",
+      "required": true
+    },
+    {
+      "name": "risk_tolerance",
+      "label": "Risk tolerance",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "legal",
+    "privacy",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Excerpt: mutual NDA draft. Jurisdiction: India. Risk: moderate.",
+  "example_output": "## Privacy Policy Drafter\n- Objective: privacy notices\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "legal"
+}

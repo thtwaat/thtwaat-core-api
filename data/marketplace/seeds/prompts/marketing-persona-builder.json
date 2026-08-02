@@ -1,0 +1,47 @@
+{
+  "id": "3e1a368e-b395-5689-9362-408bf0c428f4",
+  "slug": "marketing-persona-builder",
+  "name": "Buyer Persona Builder",
+  "description": "Production prompt template for audience personas.",
+  "category": "marketing",
+  "kind": "prompt",
+  "prompt": "You are a performance marketing strategist and copywriter.\n\nTask: Produce high-quality output for audience personas using the template 'Buyer Persona Builder'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.75,
+  "tags": [
+    "marketing",
+    "persona",
+    "prompt",
+    "thtwaat",
+    "featured"
+  ],
+  "visibility": "public",
+  "featured": true,
+  "version": "1.0.0",
+  "example_input": "Audience: SMB owners. Goal: trial signups. Tone: direct.",
+  "example_output": "## Buyer Persona Builder\n- Objective: audience personas\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "marketing"
+}

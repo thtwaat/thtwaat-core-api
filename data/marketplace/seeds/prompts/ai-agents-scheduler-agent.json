@@ -1,0 +1,41 @@
+{
+  "id": "54e5766a-259a-56a8-bc2e-ea7e23854e96",
+  "slug": "ai-agents-scheduler-agent",
+  "name": "Scheduling Agent Prompt",
+  "description": "Production prompt template for calendar coordination.",
+  "category": "ai_agents",
+  "kind": "agent",
+  "prompt": "You are designing production-ready system prompts for AI agents.\n\nTask: Produce high-quality output for calendar coordination using the template 'Scheduling Agent Prompt'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "product",
+      "label": "Product / domain",
+      "required": true
+    },
+    {
+      "name": "tools",
+      "label": "Tools available",
+      "required": false
+    },
+    {
+      "name": "guardrails",
+      "label": "Guardrails",
+      "required": false
+    }
+  ],
+  "temperature": 0.35,
+  "tags": [
+    "ai-agents",
+    "scheduler",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Product: billing helpdesk. Tools: ticket API, KB search.",
+  "example_output": "## Scheduling Agent Prompt\n- Objective: calendar coordination\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "ai_agents"
+}

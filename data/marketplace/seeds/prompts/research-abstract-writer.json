@@ -1,0 +1,41 @@
+{
+  "id": "bcb2e24a-dc55-5d94-adfc-a244ef349b16",
+  "slug": "research-abstract-writer",
+  "name": "Abstract Writer",
+  "description": "Production prompt template for paper abstracts.",
+  "category": "research",
+  "kind": "prompt",
+  "prompt": "You are a rigorous research assistant.\n\nTask: Produce high-quality output for paper abstracts using the template 'Abstract Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "question",
+      "label": "Primary question",
+      "required": true
+    },
+    {
+      "name": "data_or_sources",
+      "label": "Data / sources",
+      "required": false
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.4,
+  "tags": [
+    "research",
+    "abstract",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Question: impact of RAG on support deflection. Sources: 3 papers.",
+  "example_output": "## Abstract Writer\n- Objective: paper abstracts\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "research"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "5fa1b035-1b35-5cf6-a619-dce8e46e7db7",
+  "slug": "legal-dispute-response",
+  "name": "Dispute Response Drafter",
+  "description": "Production prompt template for formal responses.",
+  "category": "legal",
+  "kind": "prompt",
+  "prompt": "You are a legal drafting assistant. This is not legal advice; flag that clearly.\n\nTask: Produce high-quality output for formal responses using the template 'Dispute Response Drafter'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "jurisdiction",
+      "label": "Jurisdiction (if known)",
+      "required": false
+    },
+    {
+      "name": "document_excerpt",
+      "label": "Document excerpt",
+      "required": true
+    },
+    {
+      "name": "risk_tolerance",
+      "label": "Risk tolerance",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "legal",
+    "dispute",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Excerpt: mutual NDA draft. Jurisdiction: India. Risk: moderate.",
+  "example_output": "## Dispute Response Drafter\n- Objective: formal responses\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "pro",
+  "author": "THTWAAT",
+  "industry": "legal"
+}

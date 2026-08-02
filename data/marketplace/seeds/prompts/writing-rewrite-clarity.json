@@ -1,0 +1,46 @@
+{
+  "id": "f70a771b-75c1-5583-84c5-1ea1fb00ea84",
+  "slug": "writing-rewrite-clarity",
+  "name": "Clarity Rewriter",
+  "description": "Production prompt template for simplifying dense text.",
+  "category": "writing",
+  "kind": "prompt",
+  "prompt": "You are an expert professional writer.\n\nTask: Produce high-quality output for simplifying dense text using the template 'Clarity Rewriter'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.7,
+  "tags": [
+    "writing",
+    "rewrite",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: founders. Goal: publish a post about AI onboarding. Tone: practical.",
+  "example_output": "## Clarity Rewriter\n- Objective: simplifying dense text\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "writing"
+}

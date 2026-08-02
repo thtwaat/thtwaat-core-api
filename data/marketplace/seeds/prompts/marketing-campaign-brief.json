@@ -1,0 +1,46 @@
+{
+  "id": "1865eceb-a598-5b2f-940f-b92c527e8464",
+  "slug": "marketing-campaign-brief",
+  "name": "Campaign Brief Builder",
+  "description": "Production prompt template for campaign planning.",
+  "category": "marketing",
+  "kind": "prompt",
+  "prompt": "You are a performance marketing strategist and copywriter.\n\nTask: Produce high-quality output for campaign planning using the template 'Campaign Brief Builder'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.75,
+  "tags": [
+    "marketing",
+    "campaign",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: SMB owners. Goal: trial signups. Tone: direct.",
+  "example_output": "## Campaign Brief Builder\n- Objective: campaign planning\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "marketing"
+}

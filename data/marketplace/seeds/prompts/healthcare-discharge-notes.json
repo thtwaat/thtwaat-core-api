@@ -1,0 +1,41 @@
+{
+  "id": "cb2deefc-6e14-55e0-be38-71241b7e4742",
+  "slug": "healthcare-discharge-notes",
+  "name": "Discharge Notes Simplifier",
+  "description": "Production prompt template for patient-friendly notes.",
+  "category": "healthcare",
+  "kind": "prompt",
+  "prompt": "You are a healthcare communications assistant. Do not diagnose or prescribe.\n\nTask: Produce high-quality output for patient-friendly notes using the template 'Discharge Notes Simplifier'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "topic",
+      "label": "Topic",
+      "required": true
+    },
+    {
+      "name": "disclaimer_needed",
+      "label": "Include medical disclaimer",
+      "required": false
+    }
+  ],
+  "temperature": 0.35,
+  "tags": [
+    "healthcare",
+    "discharge",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: patients. Topic: preparing for first physio visit.",
+  "example_output": "## Discharge Notes Simplifier\n- Objective: patient-friendly notes\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "pro",
+  "author": "THTWAAT",
+  "industry": "healthcare"
+}

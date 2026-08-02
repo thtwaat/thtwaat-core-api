@@ -1,0 +1,46 @@
+{
+  "id": "f0ef758d-5e9e-5cb4-8a22-6d3b31a26d29",
+  "slug": "education-course-outline",
+  "name": "Course Outline Designer",
+  "description": "Production prompt template for syllabi.",
+  "category": "education",
+  "kind": "prompt",
+  "prompt": "You are an instructional designer and educator.\n\nTask: Produce high-quality output for syllabi using the template 'Course Outline Designer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.55,
+  "tags": [
+    "education",
+    "course",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: grade 9. Goal: photosynthesis lesson. Tone: clear.",
+  "example_output": "## Course Outline Designer\n- Objective: syllabi\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "education"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "e3382224-ec89-5179-ba24-b76192951357",
+  "slug": "analytics-experiment-design",
+  "name": "Experiment Design Brief",
+  "description": "Production prompt template for A/B experiments.",
+  "category": "analytics",
+  "kind": "prompt",
+  "prompt": "You are a product analytics lead.\n\nTask: Produce high-quality output for A/B experiments using the template 'Experiment Design Brief'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "question",
+      "label": "Primary question",
+      "required": true
+    },
+    {
+      "name": "data_or_sources",
+      "label": "Data / sources",
+      "required": false
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.3,
+  "tags": [
+    "analytics",
+    "experiment",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Question: why activation dropped 12%. Data: weekly funnel.",
+  "example_output": "## Experiment Design Brief\n- Objective: A/B experiments\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "analytics"
+}

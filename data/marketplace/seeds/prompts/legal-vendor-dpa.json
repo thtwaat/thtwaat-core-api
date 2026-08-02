@@ -1,0 +1,41 @@
+{
+  "id": "cc529955-0176-5d63-ad2e-7987b08fad3e",
+  "slug": "legal-vendor-dpa",
+  "name": "Vendor DPA Checklist",
+  "description": "Production prompt template for data processing agreements.",
+  "category": "legal",
+  "kind": "prompt",
+  "prompt": "You are a legal drafting assistant. This is not legal advice; flag that clearly.\n\nTask: Produce high-quality output for data processing agreements using the template 'Vendor DPA Checklist'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "jurisdiction",
+      "label": "Jurisdiction (if known)",
+      "required": false
+    },
+    {
+      "name": "document_excerpt",
+      "label": "Document excerpt",
+      "required": true
+    },
+    {
+      "name": "risk_tolerance",
+      "label": "Risk tolerance",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "legal",
+    "vendor",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Excerpt: mutual NDA draft. Jurisdiction: India. Risk: moderate.",
+  "example_output": "## Vendor DPA Checklist\n- Objective: data processing agreements\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "legal"
+}

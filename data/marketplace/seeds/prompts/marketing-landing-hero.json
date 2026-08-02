@@ -1,0 +1,46 @@
+{
+  "id": "3aefe77b-ae7a-520e-ab30-b9dd1b43a74f",
+  "slug": "marketing-landing-hero",
+  "name": "Landing Hero Copy",
+  "description": "Production prompt template for hero headlines.",
+  "category": "marketing",
+  "kind": "prompt",
+  "prompt": "You are a performance marketing strategist and copywriter.\n\nTask: Produce high-quality output for hero headlines using the template 'Landing Hero Copy'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.75,
+  "tags": [
+    "marketing",
+    "landing",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: SMB owners. Goal: trial signups. Tone: direct.",
+  "example_output": "## Landing Hero Copy\n- Objective: hero headlines\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "marketing"
+}

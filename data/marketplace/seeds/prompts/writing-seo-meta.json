@@ -1,0 +1,46 @@
+{
+  "id": "65b0b5e9-d052-50c4-8433-3587332668bb",
+  "slug": "writing-seo-meta",
+  "name": "SEO Meta Copywriter",
+  "description": "Production prompt template for title and meta descriptions.",
+  "category": "writing",
+  "kind": "prompt",
+  "prompt": "You are an expert professional writer.\n\nTask: Produce high-quality output for title and meta descriptions using the template 'SEO Meta Copywriter'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.7,
+  "tags": [
+    "writing",
+    "seo",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: founders. Goal: publish a post about AI onboarding. Tone: practical.",
+  "example_output": "## SEO Meta Copywriter\n- Objective: title and meta descriptions\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "writing"
+}

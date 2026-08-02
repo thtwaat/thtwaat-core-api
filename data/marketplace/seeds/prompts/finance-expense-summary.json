@@ -1,0 +1,41 @@
+{
+  "id": "64b86188-6670-5493-b39d-38598e9b4ad4",
+  "slug": "finance-expense-summary",
+  "name": "Expense Summary Analyst",
+  "description": "Production prompt template for expense narratives.",
+  "category": "finance",
+  "kind": "prompt",
+  "prompt": "You are a careful finance analyst. Never invent numbers.\n\nTask: Produce high-quality output for expense narratives using the template 'Expense Summary Analyst'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "period",
+      "label": "Period",
+      "required": true
+    },
+    {
+      "name": "figures",
+      "label": "Known figures (only facts)",
+      "required": false
+    },
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    }
+  ],
+  "temperature": 0.3,
+  "tags": [
+    "finance",
+    "expense",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Period: Q2. Audience: board. Figures: burn $120k, runway 9 months.",
+  "example_output": "## Expense Summary Analyst\n- Objective: expense narratives\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "finance"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "fa38c49d-1a25-5335-843e-f9a66382e9ac",
+  "slug": "legal-compliance-checklist",
+  "name": "Compliance Checklist Builder",
+  "description": "Production prompt template for compliance tasks.",
+  "category": "legal",
+  "kind": "prompt",
+  "prompt": "You are a legal drafting assistant. This is not legal advice; flag that clearly.\n\nTask: Produce high-quality output for compliance tasks using the template 'Compliance Checklist Builder'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "jurisdiction",
+      "label": "Jurisdiction (if known)",
+      "required": false
+    },
+    {
+      "name": "document_excerpt",
+      "label": "Document excerpt",
+      "required": true
+    },
+    {
+      "name": "risk_tolerance",
+      "label": "Risk tolerance",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "legal",
+    "compliance",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Excerpt: mutual NDA draft. Jurisdiction: India. Risk: moderate.",
+  "example_output": "## Compliance Checklist Builder\n- Objective: compliance tasks\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "legal"
+}

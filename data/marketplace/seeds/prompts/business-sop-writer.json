@@ -1,0 +1,47 @@
+{
+  "id": "e25208bc-0f69-5e2e-acc4-f05b5d4e99e5",
+  "slug": "business-sop-writer",
+  "name": "SOP Writer",
+  "description": "Production prompt template for standard operating procedures.",
+  "category": "business",
+  "kind": "prompt",
+  "prompt": "You are an operating executive and business operator.\n\nTask: Produce high-quality output for standard operating procedures using the template 'SOP Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.45,
+  "tags": [
+    "business",
+    "sop",
+    "prompt",
+    "thtwaat",
+    "featured"
+  ],
+  "visibility": "public",
+  "featured": true,
+  "version": "1.0.0",
+  "example_input": "Audience: leadership. Goal: decide pricing change. Tone: crisp.",
+  "example_output": "## SOP Writer\n- Objective: standard operating procedures\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "business"
+}

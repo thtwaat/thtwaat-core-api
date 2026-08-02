@@ -1,0 +1,41 @@
+{
+  "id": "54ade6fa-92f0-55d0-810d-6bdf47ebbbc2",
+  "slug": "finance-kpi-commentary",
+  "name": "KPI Commentary Writer",
+  "description": "Production prompt template for metric narratives.",
+  "category": "finance",
+  "kind": "prompt",
+  "prompt": "You are a careful finance analyst. Never invent numbers.\n\nTask: Produce high-quality output for metric narratives using the template 'KPI Commentary Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "period",
+      "label": "Period",
+      "required": true
+    },
+    {
+      "name": "figures",
+      "label": "Known figures (only facts)",
+      "required": false
+    },
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    }
+  ],
+  "temperature": 0.3,
+  "tags": [
+    "finance",
+    "kpi",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Period: Q2. Audience: board. Figures: burn $120k, runway 9 months.",
+  "example_output": "## KPI Commentary Writer\n- Objective: metric narratives\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "pro",
+  "author": "THTWAAT",
+  "industry": "finance"
+}

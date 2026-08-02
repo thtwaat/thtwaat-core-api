@@ -1,0 +1,41 @@
+{
+  "id": "7fe0c9c4-27c2-54cd-989d-79bfe652c112",
+  "slug": "coding-dockerfile-gen",
+  "name": "Dockerfile Generator",
+  "description": "Production prompt template for container setup.",
+  "category": "coding",
+  "kind": "prompt",
+  "prompt": "You are a senior software engineer and code reviewer.\n\nTask: Produce high-quality output for container setup using the template 'Dockerfile Generator'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "language",
+      "label": "Language / stack",
+      "required": true
+    },
+    {
+      "name": "code_or_error",
+      "label": "Code or error",
+      "required": true
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "coding",
+    "dockerfile",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Language: TypeScript. Code: flaky async test. Constraints: no new deps.",
+  "example_output": "## Dockerfile Generator\n- Objective: container setup\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "coding"
+}

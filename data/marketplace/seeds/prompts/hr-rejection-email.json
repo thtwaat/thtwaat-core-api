@@ -1,0 +1,46 @@
+{
+  "id": "4a9668e3-e586-568d-908c-45017ce44fa0",
+  "slug": "hr-rejection-email",
+  "name": "Candidate Rejection Email",
+  "description": "Production prompt template for respectful declines.",
+  "category": "hr",
+  "kind": "prompt",
+  "prompt": "You are an experienced HR business partner.\n\nTask: Produce high-quality output for respectful declines using the template 'Candidate Rejection Email'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.5,
+  "tags": [
+    "hr",
+    "rejection",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: hiring managers. Goal: backend engineer JD. Tone: inclusive.",
+  "example_output": "## Candidate Rejection Email\n- Objective: respectful declines\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "hr"
+}

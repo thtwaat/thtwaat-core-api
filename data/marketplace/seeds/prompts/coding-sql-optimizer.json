@@ -1,0 +1,41 @@
+{
+  "id": "57416216-e9f2-5097-8bcc-f04a71dc0c16",
+  "slug": "coding-sql-optimizer",
+  "name": "SQL Query Optimizer",
+  "description": "Production prompt template for query performance.",
+  "category": "coding",
+  "kind": "prompt",
+  "prompt": "You are a senior software engineer and code reviewer.\n\nTask: Produce high-quality output for query performance using the template 'SQL Query Optimizer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "language",
+      "label": "Language / stack",
+      "required": true
+    },
+    {
+      "name": "code_or_error",
+      "label": "Code or error",
+      "required": true
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "coding",
+    "sql",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Language: TypeScript. Code: flaky async test. Constraints: no new deps.",
+  "example_output": "## SQL Query Optimizer\n- Objective: query performance\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "pro",
+  "author": "THTWAAT",
+  "industry": "coding"
+}

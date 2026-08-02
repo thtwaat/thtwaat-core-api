@@ -1,0 +1,46 @@
+{
+  "id": "2ce3a35e-a115-591c-a262-36ec8b406e48",
+  "slug": "hr-engagement-survey",
+  "name": "Engagement Survey Designer",
+  "description": "Production prompt template for survey questions.",
+  "category": "hr",
+  "kind": "prompt",
+  "prompt": "You are an experienced HR business partner.\n\nTask: Produce high-quality output for survey questions using the template 'Engagement Survey Designer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.5,
+  "tags": [
+    "hr",
+    "engagement",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: hiring managers. Goal: backend engineer JD. Tone: inclusive.",
+  "example_output": "## Engagement Survey Designer\n- Objective: survey questions\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "hr"
+}

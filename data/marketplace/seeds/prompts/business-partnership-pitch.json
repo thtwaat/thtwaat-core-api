@@ -1,0 +1,46 @@
+{
+  "id": "0e82cc52-a908-57cf-b3fd-b6386dcc08e9",
+  "slug": "business-partnership-pitch",
+  "name": "Partnership Pitch Writer",
+  "description": "Production prompt template for partner outreach.",
+  "category": "business",
+  "kind": "prompt",
+  "prompt": "You are an operating executive and business operator.\n\nTask: Produce high-quality output for partner outreach using the template 'Partnership Pitch Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.45,
+  "tags": [
+    "business",
+    "partnership",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: leadership. Goal: decide pricing change. Tone: crisp.",
+  "example_output": "## Partnership Pitch Writer\n- Objective: partner outreach\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "business"
+}

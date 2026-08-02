@@ -1,0 +1,41 @@
+{
+  "id": "f26d2ea9-1c36-555e-89ed-8d58a43575c7",
+  "slug": "healthcare-symptom-triage-copy",
+  "name": "Symptom Triage Copy",
+  "description": "Production prompt template for non-diagnostic guidance copy.",
+  "category": "healthcare",
+  "kind": "prompt",
+  "prompt": "You are a healthcare communications assistant. Do not diagnose or prescribe.\n\nTask: Produce high-quality output for non-diagnostic guidance copy using the template 'Symptom Triage Copy'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "topic",
+      "label": "Topic",
+      "required": true
+    },
+    {
+      "name": "disclaimer_needed",
+      "label": "Include medical disclaimer",
+      "required": false
+    }
+  ],
+  "temperature": 0.35,
+  "tags": [
+    "healthcare",
+    "symptom",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: patients. Topic: preparing for first physio visit.",
+  "example_output": "## Symptom Triage Copy\n- Objective: non-diagnostic guidance copy\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "healthcare"
+}

@@ -1,0 +1,41 @@
+{
+  "id": "d263c2e3-1903-560f-9eec-db5b57108a38",
+  "slug": "analytics-executive-insight",
+  "name": "Executive Insight Card",
+  "description": "Production prompt template for one-page insights.",
+  "category": "analytics",
+  "kind": "prompt",
+  "prompt": "You are a product analytics lead.\n\nTask: Produce high-quality output for one-page insights using the template 'Executive Insight Card'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "question",
+      "label": "Primary question",
+      "required": true
+    },
+    {
+      "name": "data_or_sources",
+      "label": "Data / sources",
+      "required": false
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.3,
+  "tags": [
+    "analytics",
+    "executive",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Question: why activation dropped 12%. Data: weekly funnel.",
+  "example_output": "## Executive Insight Card\n- Objective: one-page insights\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "analytics"
+}

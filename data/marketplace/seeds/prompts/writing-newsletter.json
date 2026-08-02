@@ -1,0 +1,46 @@
+{
+  "id": "6254ab89-9152-5f59-9622-e7f5ec188279",
+  "slug": "writing-newsletter",
+  "name": "Newsletter Composer",
+  "description": "Production prompt template for email newsletters.",
+  "category": "writing",
+  "kind": "prompt",
+  "prompt": "You are an expert professional writer.\n\nTask: Produce high-quality output for email newsletters using the template 'Newsletter Composer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.7,
+  "tags": [
+    "writing",
+    "newsletter",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: founders. Goal: publish a post about AI onboarding. Tone: practical.",
+  "example_output": "## Newsletter Composer\n- Objective: email newsletters\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "pro",
+  "author": "THTWAAT",
+  "industry": "writing"
+}

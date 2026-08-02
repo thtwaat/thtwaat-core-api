@@ -1,0 +1,46 @@
+{
+  "id": "e8203ea1-66bd-54c7-a2de-29006bac6ea0",
+  "slug": "writing-product-description",
+  "name": "Product Description Writer",
+  "description": "Production prompt template for e-commerce copy.",
+  "category": "writing",
+  "kind": "prompt",
+  "prompt": "You are an expert professional writer.\n\nTask: Produce high-quality output for e-commerce copy using the template 'Product Description Writer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    },
+    {
+      "name": "goal",
+      "label": "Goal",
+      "required": true
+    },
+    {
+      "name": "context",
+      "label": "Context / notes",
+      "required": false
+    },
+    {
+      "name": "tone",
+      "label": "Tone",
+      "required": false
+    }
+  ],
+  "temperature": 0.7,
+  "tags": [
+    "writing",
+    "product",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Audience: founders. Goal: publish a post about AI onboarding. Tone: practical.",
+  "example_output": "## Product Description Writer\n- Objective: e-commerce copy\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "writing"
+}

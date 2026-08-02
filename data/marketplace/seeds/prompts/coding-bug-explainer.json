@@ -1,0 +1,42 @@
+{
+  "id": "6a7df847-4926-510a-ac69-938bd0ada3a2",
+  "slug": "coding-bug-explainer",
+  "name": "Bug Explainer",
+  "description": "Production prompt template for root-cause analysis.",
+  "category": "coding",
+  "kind": "prompt",
+  "prompt": "You are a senior software engineer and code reviewer.\n\nTask: Produce high-quality output for root-cause analysis using the template 'Bug Explainer'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "language",
+      "label": "Language / stack",
+      "required": true
+    },
+    {
+      "name": "code_or_error",
+      "label": "Code or error",
+      "required": true
+    },
+    {
+      "name": "constraints",
+      "label": "Constraints",
+      "required": false
+    }
+  ],
+  "temperature": 0.2,
+  "tags": [
+    "coding",
+    "bug",
+    "prompt",
+    "thtwaat",
+    "featured"
+  ],
+  "visibility": "public",
+  "featured": true,
+  "version": "1.0.0",
+  "example_input": "Language: TypeScript. Code: flaky async test. Constraints: no new deps.",
+  "example_output": "## Bug Explainer\n- Objective: root-cause analysis\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "coding"
+}

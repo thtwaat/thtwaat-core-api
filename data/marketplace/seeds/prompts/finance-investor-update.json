@@ -1,0 +1,42 @@
+{
+  "id": "c1035663-7f41-547e-a90f-32decaaed432",
+  "slug": "finance-investor-update",
+  "name": "Investor Update Draft",
+  "description": "Production prompt template for investor emails.",
+  "category": "finance",
+  "kind": "prompt",
+  "prompt": "You are a careful finance analyst. Never invent numbers.\n\nTask: Produce high-quality output for investor emails using the template 'Investor Update Draft'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "period",
+      "label": "Period",
+      "required": true
+    },
+    {
+      "name": "figures",
+      "label": "Known figures (only facts)",
+      "required": false
+    },
+    {
+      "name": "audience",
+      "label": "Audience",
+      "required": true
+    }
+  ],
+  "temperature": 0.3,
+  "tags": [
+    "finance",
+    "investor",
+    "prompt",
+    "thtwaat",
+    "featured"
+  ],
+  "visibility": "public",
+  "featured": true,
+  "version": "1.0.0",
+  "example_input": "Period: Q2. Audience: board. Figures: burn $120k, runway 9 months.",
+  "example_output": "## Investor Update Draft\n- Objective: investor emails\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "starter",
+  "author": "THTWAAT",
+  "industry": "finance"
+}

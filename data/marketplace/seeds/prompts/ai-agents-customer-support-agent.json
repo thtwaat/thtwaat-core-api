@@ -1,0 +1,41 @@
+{
+  "id": "82098abf-1a7e-5f7b-8c57-6f31ef6aa45a",
+  "slug": "ai-agents-customer-support-agent",
+  "name": "Customer Support Agent Prompt",
+  "description": "Production prompt template for support bots.",
+  "category": "ai_agents",
+  "kind": "agent",
+  "prompt": "You are designing production-ready system prompts for AI agents.\n\nTask: Produce high-quality output for support bots using the template 'Customer Support Agent Prompt'.\nRequirements:\n- Follow the user variables exactly.\n- Be specific, structured, and actionable.\n- Call out assumptions explicitly.\n- If information is missing, ask concise clarifying questions first.\n- Prefer bullet points and short sections over walls of text.\n",
+  "variables": [
+    {
+      "name": "product",
+      "label": "Product / domain",
+      "required": true
+    },
+    {
+      "name": "tools",
+      "label": "Tools available",
+      "required": false
+    },
+    {
+      "name": "guardrails",
+      "label": "Guardrails",
+      "required": false
+    }
+  ],
+  "temperature": 0.35,
+  "tags": [
+    "ai-agents",
+    "customer",
+    "prompt",
+    "thtwaat"
+  ],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Product: billing helpdesk. Tools: ticket API, KB search.",
+  "example_output": "## Customer Support Agent Prompt\n- Objective: support bots\n- Assumptions: listed briefly\n- Deliverable: structured draft ready to edit\n- Next steps: 2-3 concrete actions\n",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "ai_agents"
+}
