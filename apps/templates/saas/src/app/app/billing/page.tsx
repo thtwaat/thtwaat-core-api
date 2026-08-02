@@ -33,7 +33,13 @@ export default function BillingPage() {
   }
 
   const upgrade = useMutation({
-    mutationFn: async (plan: { id: string; name: string }) => {
+    mutationFn: async (plan: { id: string; name: string; amount?: number; price?: number }) => {
+      const price = Number(plan.amount ?? plan.price ?? 0);
+      // Free / $0 plans: no Stripe/Razorpay call (avoids API 503 when Stripe unset).
+      if (!(price > 0)) {
+        return { status: "free" as const };
+      }
+
       if (site.razorpayKey) {
         const customerName =
           [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
@@ -56,17 +62,14 @@ export default function BillingPage() {
         });
       }
 
-      const data = await billingApi.stripeCheckout(
-        plan.id,
-        `${site.url}/app/billing?success=1`,
-        `${site.url}/app/billing`
+      throw new Error(
+        "No payment provider configured. Set NEXT_PUBLIC_RAZORPAY_KEY_ID and API Razorpay secrets."
       );
-      return { status: "stripe" as const, data };
     },
     onSuccess: async (result) => {
-      if (result && "status" in result && result.status === "stripe") {
-        const url = result.data.checkout_url;
-        if (url) window.location.href = url;
+      if (result && "status" in result && result.status === "free") {
+        toast.message("You are already on the Free plan.");
+        await refreshBillingState();
         return;
       }
 
@@ -161,7 +164,14 @@ export default function BillingPage() {
                 </p>
                 <Button
                   className="w-full"
-                  onClick={() => upgrade.mutate({ id: plan.id, name: plan.name })}
+                  onClick={() =>
+                    upgrade.mutate({
+                      id: plan.id,
+                      name: plan.name,
+                      amount: plan.amount,
+                      price: plan.price
+                    })
+                  }
                   disabled={upgrade.isPending}
                 >
                   {upgrade.isPending ? "Processing…" : `Choose ${plan.name}`}

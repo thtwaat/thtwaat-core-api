@@ -18,6 +18,14 @@ class InvoiceStatus(str, enum.Enum):
     UNCOLLECTIBLE = "uncollectible"
 
 
+def _pg_enum(enum_cls: type[enum.Enum], name: str):
+    return SAEnum(
+        enum_cls,
+        name=name,
+        values_callable=lambda members: [item.value for item in members],
+    )
+
+
 class Invoice(Base, TimestampMixin):
     __tablename__ = "invoices"
 
@@ -35,7 +43,11 @@ class Invoice(Base, TimestampMixin):
     amount_due  = Column(Numeric(10, 2), nullable=False)
     amount_paid = Column(Numeric(10, 2), nullable=False, default=0)
     currency    = Column(String(3), nullable=False, default="USD")
-    status      = Column(SAEnum(InvoiceStatus, name="invoice_status_enum"), nullable=False, default=InvoiceStatus.OPEN)
+    status      = Column(
+        _pg_enum(InvoiceStatus, "invoice_status_enum"),
+        nullable=False,
+        default=InvoiceStatus.OPEN,
+    )
 
     # Dates
     period_start = Column(DateTime(timezone=True), nullable=True)

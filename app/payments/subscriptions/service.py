@@ -67,9 +67,7 @@ class SubscriptionService:
 
     def create_stripe_checkout_session(self, company_id: uuid.UUID, data: StripeCheckoutRequest) -> CheckoutSessionResponse:
         """Creates a Stripe Checkout Session for a plan subscription."""
-        if not settings.STRIPE_SECRET_KEY:
-            raise HTTPException(status_code=503, detail="Stripe is not configured.")
-        stripe.api_key = settings.STRIPE_SECRET_KEY
+        from decimal import Decimal
 
         company = self.company_repo.get_by_id(company_id)
         if not company:
@@ -78,6 +76,46 @@ class SubscriptionService:
         plan = self.plan_repo.get_by_id(data.plan_id)
         if not plan or not plan.is_active:
             raise HTTPException(status_code=404, detail="Plan not found or inactive.")
+
+        # Free / $0: no Stripe required (old SaaS builds still call this endpoint).
+        try:
+            amount = Decimal(str(plan.amount if plan.amount is not None else 0))
+        except Exception:
+            amount = Decimal("0")
+        if amount <= 0:
+            try:
+                existing = self.sub_repo.get_active_by_company(company_id)
+            except Exception as exc:
+                logger.warning("free checkout: active-sub lookup failed: %s", exc)
+                existing = None
+            if not existing:
+                try:
+                    self.sub_repo.create(
+                        {
+                            "company_id": company_id,
+                            "plan_id": plan.id,
+                            "provider": SubscriptionProvider.MANUAL.value,
+                            "status": SubscriptionStatus.ACTIVE.value,
+                            "metadata_": {"source": "free_plan_checkout"},
+                        }
+                    )
+                except Exception as exc:
+                    # Already on free / duplicate - still activate limits and succeed.
+                    logger.warning("free checkout: sub create skipped: %s", exc)
+                    self.db.rollback()
+            try:
+                self._activate_company_plan(company_id, plan)
+            except Exception as exc:
+                logger.warning("free checkout: activate plan failed: %s", exc)
+                self.db.rollback()
+            return CheckoutSessionResponse(
+                checkout_url=data.success_url,
+                provider="manual",
+            )
+
+        if not settings.STRIPE_SECRET_KEY:
+            raise HTTPException(status_code=503, detail="Stripe is not configured.")
+        stripe.api_key = settings.STRIPE_SECRET_KEY
 
         if not plan.stripe_price_id:
             raise HTTPException(

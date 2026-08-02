@@ -70,7 +70,7 @@ describe("billing/usage Authorization header", () => {
   it("GET /payments/plans includes Authorization Bearer", async () => {
     const { billingApi } = await loadApis();
     await billingApi.plans();
-    assertBearerOn("/payments/plans");
+    assertBearerOn("/payments/plans/");
   });
 
   it("GET /payments/subscriptions/me includes Authorization Bearer", async () => {

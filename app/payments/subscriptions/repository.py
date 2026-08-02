@@ -8,6 +8,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy import select, update
 from app.payments.subscriptions.model import Subscription, SubscriptionStatus, SubscriptionProvider
 
+# PG enum labels are lowercase values (active), not names (ACTIVE).
+_ACTIVE_STATUSES = (
+    SubscriptionStatus.ACTIVE.value,
+    SubscriptionStatus.TRIALING.value,
+    SubscriptionStatus.PAST_DUE.value,
+)
+
 
 class SubscriptionRepository:
     def __init__(self, db: Session):
@@ -26,17 +33,23 @@ class SubscriptionRepository:
         ).scalar_one_or_none()
 
     def get_active_by_company(self, company_id: uuid.UUID) -> Optional[Subscription]:
-        """Returns the active or trialing subscription for a company."""
-        return self.db.execute(
-            select(Subscription).where(
-                Subscription.company_id == company_id,
-                Subscription.status.in_([
-                    SubscriptionStatus.ACTIVE,
-                    SubscriptionStatus.TRIALING,
-                    SubscriptionStatus.PAST_DUE
-                ])
+        """Returns the newest active/trialing/past_due subscription for a company.
+
+        Uses ``.first()`` (not ``scalar_one_or_none``) so duplicate active rows
+        never raise MultipleResultsFound → HTTP 500 on GET /subscriptions/me.
+        """
+        return (
+            self.db.execute(
+                select(Subscription)
+                .where(
+                    Subscription.company_id == company_id,
+                    Subscription.status.in_(_ACTIVE_STATUSES),
+                )
+                .order_by(Subscription.created_at.desc())
             )
-        ).scalar_one_or_none()
+            .scalars()
+            .first()
+        )
 
     def get_by_provider_subscription_id(self, provider_sub_id: str) -> Optional[Subscription]:
         return self.db.execute(
@@ -61,7 +74,7 @@ class SubscriptionRepository:
     ) -> Optional[Subscription]:
         stmt = select(Subscription).where(
             Subscription.company_id == company_id,
-            Subscription.status == SubscriptionStatus.INCOMPLETE,
+            Subscription.status == SubscriptionStatus.INCOMPLETE.value,
         )
         if provider is not None:
             stmt = stmt.where(Subscription.provider == provider)
@@ -81,8 +94,9 @@ class SubscriptionRepository:
         status: SubscriptionStatus,
         **kwargs
     ) -> None:
-        values = {"status": status, **kwargs}
-        if status == SubscriptionStatus.CANCELLED and "cancelled_at" not in values:
+        status_value = status.value if isinstance(status, SubscriptionStatus) else status
+        values = {"status": status_value, **kwargs}
+        if status_value == SubscriptionStatus.CANCELLED.value and "cancelled_at" not in values:
             values["cancelled_at"] = datetime.now(timezone.utc)
         self.db.execute(
             update(Subscription).where(Subscription.id == sub_id).values(**values)

@@ -30,10 +30,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
     )
 
 async def sqlalchemy_exception_handler(request: Request, exc: SQLAlchemyError):
-    logger.error(f"Database error: {str(exc)}")
+    root = getattr(exc, "orig", None) or exc
+    detail = str(root).split("\n")[0][:400]
+    logger.error("Database error path=%s: %s", request.url.path, detail)
+    # Include a short detail so ops can see enum/column mismatches without docker log diving.
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        content={"error": "A database error occurred.", "code": 500}
+        content={
+            "error": "A database error occurred.",
+            "code": 500,
+            "detail": detail,
+            "path": request.url.path,
+        },
     )
 
 async def global_exception_handler(request: Request, exc: Exception):

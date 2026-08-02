@@ -3,7 +3,7 @@ app/payments/subscriptions/router.py
 """
 import uuid
 from typing import List, Optional
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
@@ -82,10 +82,40 @@ def verify_razorpay_payment(
 )
 def get_my_subscription(
     current_user: UserProfileResponse = Depends(get_current_user),
-    service: SubscriptionService = Depends(get_sub_service)
+    service: SubscriptionService = Depends(get_sub_service),
 ):
-    """Returns the active subscription for the authenticated user's company."""
-    return service.get_subscription(current_user.company_id)
+    """
+    Active subscription for the company, or JSON ``null`` (HTTP 200).
+    DB failures → 503 with a clear detail (not opaque 500).
+    """
+    import logging
+
+    from sqlalchemy.exc import SQLAlchemyError
+
+    log = logging.getLogger(__name__)
+    try:
+        sub = service.get_subscription(current_user.company_id)
+    except SQLAlchemyError as exc:
+        log.exception("GET /payments/subscriptions/me db error company=%s", current_user.company_id)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Billing data unavailable ({exc.__class__.__name__})",
+        ) from exc
+
+    if sub is None:
+        return None
+
+    try:
+        return SubscriptionResponse.model_validate(sub)
+    except Exception as exc:
+        log.exception(
+            "GET /payments/subscriptions/me serialize error sub=%s",
+            getattr(sub, "id", None),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Subscription record could not be serialized",
+        ) from exc
 
 
 @router.get(
