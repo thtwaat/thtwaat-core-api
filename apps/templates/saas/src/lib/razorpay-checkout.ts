@@ -189,7 +189,7 @@ export async function runRazorpayCheckout(input: {
       return { status: "network_failed", error: error instanceof Error ? error : new Error(String(error)) };
     }
 
-    if ("cancelled" in payment && payment.cancelled) {
+    if ("cancelled" in payment) {
       return { status: "cancelled" };
     }
 
