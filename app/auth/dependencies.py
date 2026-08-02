@@ -1,10 +1,11 @@
 from fastapi import Depends
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.auth.service import AuthService
+from app.auth.security import bearer_scheme
 
-security = HTTPBearer()
+security = bearer_scheme
 
 def get_current_user_and_company(
     credentials: HTTPAuthorizationCredentials = Depends(security),

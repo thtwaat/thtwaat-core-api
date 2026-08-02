@@ -62,18 +62,29 @@ def delete_history_endpoint(
     return {"message": "History deleted successfully"}
 
 @router.get("/providers", summary="List supported AI Providers")
-def list_providers_endpoint():
+def list_providers_endpoint(
+    current_user: UserProfileResponse = Depends(get_current_user),
+):
+    _ = current_user
     return {
         "providers": ["openai", "gemini", "anthropic", "ollama", "openrouter"],
         "default": "openai"
     }
 
 @router.get("/models", summary="List supported models for a provider")
-async def list_models_endpoint(provider: str = Query("openai")):
+async def list_models_endpoint(
+    provider: str = Query("openai"),
+    current_user: UserProfileResponse = Depends(get_current_user),
+):
+    _ = current_user
     provider_instance = AIProviderFactory.get_provider(provider)
     models = await provider_instance.models()
     return {"provider": provider, "models": models}
 
 @router.get("/health", summary="Check Provider Health / Configuration")
-async def health_endpoint(service: AIService = Depends(get_ai_service)):
+async def health_endpoint(
+    current_user: UserProfileResponse = Depends(get_current_user),
+    service: AIService = Depends(get_ai_service),
+):
+    _ = current_user
     return await service.get_health()

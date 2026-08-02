@@ -84,6 +84,10 @@ app = FastAPI(
     openapi_url=None if settings.app_env == "production" else "/openapi.json",
 )
 
+from app.auth.openapi_security import build_custom_openapi
+
+app.openapi = lambda: build_custom_openapi(app)  # type: ignore[method-assign]
+
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request

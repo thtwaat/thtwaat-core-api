@@ -85,7 +85,7 @@ export const usageApi = {
 };
 
 export const billingApi = {
-  plans: () => api.v1<Plan[]>("/payments/plans", { auth: false }),
+  plans: () => api.v1<Plan[]>("/payments/plans"),
   subscription: () => api.v1<Subscription>("/payments/subscriptions/me"),
   invoices: () => api.v1<Invoice[]>("/payments/invoices"),
   razorpayOrder: (body: {

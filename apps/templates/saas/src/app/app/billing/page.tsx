@@ -169,7 +169,7 @@ export default function BillingPage() {
               </Card>
             );
           })}
-          {!plans.data?.length && <EmptyState title="No plans returned" description="Plans endpoint is public at /payments/plans." />}
+          {!plans.data?.length && <EmptyState title="No plans returned" description="No active plans are available yet." />}
         </div>
       </div>
 

@@ -5,10 +5,11 @@ FastAPI APIRouter for Authentication.
 """
 
 from fastapi import APIRouter, Depends, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
+from app.auth.security import bearer_scheme
 from app.auth.schema import (
     LoginRequest, 
     RefreshRequest, 
@@ -39,7 +40,7 @@ router = APIRouter(
     tags=["Authentication"],
 )
 
-security = HTTPBearer()
+security = bearer_scheme
 
 # Auth-sensitive routes: keep limits tight to blunt credential stuffing / OTP spray.
 _LOGIN_LIMIT = auth_rate_limit(times=10, seconds=60)

@@ -76,7 +76,9 @@ def list_agents(
 @router.get("/templates", response_model=List[AgentResponse])
 def list_templates(
     db: Session = Depends(get_db),
+    auth_data: dict = Depends(get_current_user_and_company),
 ):
+    _ = auth_data  # JWT required; templates are platform-wide, not tenant-filtered
     return db.query(AgentConfig).filter(AgentConfig.is_template == True).all()
 
 @router.get("/{agent_id}", response_model=AgentResponse)

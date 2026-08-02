@@ -155,7 +155,11 @@ def history(
     response_model=ToolsResponse,
     summary="List Copilot tools and workflow definitions",
 )
-def list_tools(service: CopilotService = Depends(get_copilot_service)):
+def list_tools(
+    user: UserProfileResponse = Depends(get_current_user),
+    service: CopilotService = Depends(get_copilot_service),
+):
+    _ = user  # JWT required; tool catalog is not tenant-scoped
     return service.list_tools()
 
 

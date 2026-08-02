@@ -290,8 +290,17 @@ class AuthService:
         stmt = select(User).where(User.id == uuid.UUID(user_id_str))
         user = self.db.scalar(stmt)
         
-        if not user or not user.is_active or user.status != UserStatus.ACTIVE:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive",
+            )
+        # Match login: authenticated identity that is suspended → 403 (not 401).
+        if not user.is_active or user.status != UserStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is suspended or inactive.",
+            )
 
         return UserProfileResponse(
             id=user.id,
@@ -692,9 +701,17 @@ class AuthService:
         stmt = select(User).where(User.id == user_id)
         user = self.db.scalar(stmt)
         
-        if not user or not user.is_active or user.status != UserStatus.ACTIVE:
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
-            
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="User not found or inactive",
+            )
+        if not user.is_active or user.status != UserStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is suspended or inactive.",
+            )
+
         mfa = self.repo.get_mfa_settings(user_id)
         if not mfa or not mfa.enabled:
             raise HTTPException(status_code=400, detail="MFA is not enabled for this user")
