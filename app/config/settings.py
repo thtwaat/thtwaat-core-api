@@ -143,6 +143,8 @@ class Settings(BaseSettings):
 
     # Public publish / embed base URL (used in embed scripts & iframe URLs)
     PUBLIC_API_BASE_URL: str = "http://localhost:8000"
+    # iframe embed JWT lifetime (seconds). Live API keys must never appear in iframe URLs.
+    EMBED_TOKEN_TTL_SECONDS: int = 3600
 
     # Domain Manager / custom domains
     DOMAIN_CNAME_TARGET: str = "cname.thtwaat.com"

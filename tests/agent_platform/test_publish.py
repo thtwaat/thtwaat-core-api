@@ -52,7 +52,7 @@ def _create_agent(client, headers):
 
 
 def test_publish_agent_returns_embed_payload(client):
-    headers, _ = _auth(client, role="admin")
+    headers, _ = _auth(client, role="company_owner")
     agent = _create_agent(client, headers)
 
     resp = client.post(f"/api/v1/agents/{agent['id']}/publish", headers=headers)
@@ -64,8 +64,76 @@ def test_publish_agent_returns_embed_payload(client):
     assert data["widget_id"].startswith("wgt_")
     assert "/public/v1/chat" in data["public_chat_url"]
     assert "widget.js" in data["embed_script"]
+    assert f'data-api-key="{data["api_key"]}"' in data["embed_script"]
     assert "/public/v1/widget/embed" in data["iframe_url"]
-    assert "api_key=" in data["iframe_url"]
+    assert "api_key=" not in data["iframe_url"]
+    assert "tht_live_" not in data["iframe_url"]
+    assert f"widget_id={data['widget_id']}" in data["iframe_url"]
+    assert "embed_token=" in data["iframe_url"]
+
+    embed_page = client.get(data["iframe_url"])
+    assert embed_page.status_code == 200, embed_page.text
+    assert "api_key=" not in str(embed_page.url)
+    assert "tht_live_" not in embed_page.text
+    assert "tht_embed_" in embed_page.text
+    assert data["widget_id"] in embed_page.text
+
+    # Widget config lookup by widget_id (Option A/B public config).
+    cfg = client.get(f"/public/v1/widget/{data['widget_id']}")
+    assert cfg.status_code == 200, cfg.text
+    assert cfg.json()["widget_id"] == data["widget_id"]
+    assert cfg.json()["status"] == "PUBLISHED"
+
+
+def test_iframe_embed_rejects_live_api_key_in_url(client):
+    headers, _ = _auth(client, role="company_owner")
+    agent = _create_agent(client, headers)
+    pub = client.post(f"/api/v1/agents/{agent['id']}/publish", headers=headers)
+    assert pub.status_code == 200
+    live_key = pub.json()["api_key"]
+
+    resp = client.get(f"/public/v1/widget/embed?api_key={live_key}")
+    assert resp.status_code == 400
+    assert "iframe" in resp.text.lower() or "embed" in resp.text.lower()
+
+
+def test_iframe_embed_rejects_invalid_token(client):
+    resp = client.get(
+        "/public/v1/widget/embed?widget_id=wgt_missing&embed_token=not-valid"
+    )
+    assert resp.status_code == 401
+
+
+def test_iframe_embed_rejects_expired_token(client):
+    from datetime import datetime, timedelta, timezone
+    from urllib.parse import parse_qs, urlparse
+
+    from jose import jwt
+
+    from app.agent_platform.publish import embed_tokens
+    from app.config.settings import settings
+
+    headers, _ = _auth(client, role="company_owner")
+    agent = _create_agent(client, headers)
+    pub = client.post(f"/api/v1/agents/{agent['id']}/publish", headers=headers)
+    assert pub.status_code == 200
+    widget_id = pub.json()["widget_id"]
+
+    qs = parse_qs(urlparse(pub.json()["iframe_url"]).query)
+    good = qs["embed_token"][0]
+    claims = jwt.decode(good, settings.JWT_SECRET_KEY, algorithms=["HS256"])
+    past = datetime.now(timezone.utc) - timedelta(hours=3)
+    expired = embed_tokens.mint_embed_token(
+        widget_id=widget_id,
+        agent_id=claims["aid"],
+        company_id=claims["cid"],
+        ttl_seconds=60,
+        now=past,
+    )
+    resp = client.get(
+        f"/public/v1/widget/embed?widget_id={widget_id}&embed_token={expired}"
+    )
+    assert resp.status_code == 401
 
 
 def test_publish_forbidden_for_viewer(client):

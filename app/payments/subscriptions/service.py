@@ -171,23 +171,45 @@ class SubscriptionService:
         }
         order = client.order.create(data=order_data)
 
-        # Create pending subscription record
+        order_meta = {
+            "razorpay_order_id": order["id"],
+            "plan_id": str(plan.id),
+            "customer_name": data.customer_name,
+            "customer_email": data.customer_email,
+        }
+
+        # Persist server-side order → plan mapping (never rely on client at verify time).
         existing = self.sub_repo.get_active_by_company(company_id)
         if existing:
-            sub = existing
-        else:
-            sub = self.sub_repo.create({
-                "company_id": company_id,
-                "plan_id": plan.id,
-                "provider": SubscriptionProvider.RAZORPAY,
-                "status": SubscriptionStatus.INCOMPLETE,
+            meta = dict(existing.metadata_ or {})
+            meta.update(order_meta)
+            meta["pending_plan_id"] = str(plan.id)
+            sub = self.sub_repo.update(existing, {
                 "payment_id": order["id"],
-                "metadata_": {
-                    "razorpay_order_id": order["id"],
-                    "customer_name": data.customer_name,
-                    "customer_email": data.customer_email,
-                }
+                "metadata_": meta,
             })
+        else:
+            pending = self.sub_repo.get_incomplete_by_company(
+                company_id, SubscriptionProvider.RAZORPAY
+            )
+            if pending:
+                meta = dict(pending.metadata_ or {})
+                meta.update(order_meta)
+                sub = self.sub_repo.update(pending, {
+                    "plan_id": plan.id,
+                    "payment_id": order["id"],
+                    "metadata_": meta,
+                    "status": SubscriptionStatus.INCOMPLETE,
+                })
+            else:
+                sub = self.sub_repo.create({
+                    "company_id": company_id,
+                    "plan_id": plan.id,
+                    "provider": SubscriptionProvider.RAZORPAY,
+                    "status": SubscriptionStatus.INCOMPLETE,
+                    "payment_id": order["id"],
+                    "metadata_": order_meta,
+                })
 
         return CheckoutSessionResponse(
             order_id=order["id"],
@@ -195,12 +217,44 @@ class SubscriptionService:
             provider="razorpay"
         )
 
+    def _resolve_razorpay_order_subscription(
+        self,
+        company_id: uuid.UUID,
+        razorpay_order_id: str,
+    ) -> Optional[Subscription]:
+        """Locate the pending/active subscription bound to this Razorpay order."""
+        sub = self.sub_repo.get_by_payment_id(razorpay_order_id)
+        if sub and sub.company_id == company_id:
+            return sub
+        # After a prior verify, payment_id may already be the payment id; use metadata.
+        for candidate in self.sub_repo.list_by_company(company_id):
+            meta = candidate.metadata_ or {}
+            if meta.get("razorpay_order_id") == razorpay_order_id:
+                return candidate
+        return None
+
+    def _trusted_plan_id_from_subscription(self, sub: Subscription) -> uuid.UUID:
+        """Plan must come from the server-side order mapping, never the client body."""
+        meta = sub.metadata_ or {}
+        for key in ("pending_plan_id", "plan_id"):
+            raw = meta.get(key)
+            if raw:
+                try:
+                    return uuid.UUID(str(raw))
+                except (TypeError, ValueError):
+                    continue
+        return sub.plan_id
+
     def verify_razorpay_payment(
         self,
         company_id: uuid.UUID,
         data: RazorpayVerifyRequest
     ) -> SubscriptionResponse:
-        """Verifies Razorpay signature and activates the subscription."""
+        """Verifies Razorpay signature and activates the subscription.
+
+        Plan activation uses the server-side order mapping only. Client ``plan_id``
+        is accepted for backward compatibility but must match the stored plan.
+        """
         import hmac
         import hashlib
 
@@ -218,25 +272,44 @@ class SubscriptionService:
         if not hmac.compare_digest(expected, data.razorpay_signature):
             raise HTTPException(status_code=400, detail="Invalid Razorpay signature. Payment verification failed.")
 
-        plan = self.plan_repo.get_by_id(data.plan_id)
-        if not plan:
-            raise HTTPException(status_code=404, detail="Plan not found.")
+        # Idempotent re-verify: same payment already recorded.
+        existing_invoice = self.invoice_repo.get_by_provider_payment_id(data.razorpay_payment_id)
+        if existing_invoice and existing_invoice.company_id == company_id:
+            if existing_invoice.subscription_id:
+                sub = self.sub_repo.get_by_id(existing_invoice.subscription_id)
+                if sub and sub.company_id == company_id:
+                    return sub
+            active = self.sub_repo.get_active_by_company(company_id)
+            if active:
+                return active
+            raise HTTPException(
+                status_code=400,
+                detail="Payment already verified but subscription mapping is missing.",
+            )
 
-        # Find or create subscription
-        sub = self.sub_repo.get_active_by_company(company_id)
+        sub = self._resolve_razorpay_order_subscription(company_id, data.razorpay_order_id)
         if not sub:
-            sub = self.sub_repo.create({
-                "company_id": company_id,
-                "plan_id": plan.id,
-                "provider": SubscriptionProvider.RAZORPAY,
-                "payment_id": data.razorpay_payment_id,
-                "status": SubscriptionStatus.ACTIVE,
-            })
-        else:
-            self.sub_repo.update(sub, {
-                "status": SubscriptionStatus.ACTIVE,
-                "payment_id": data.razorpay_payment_id,
-            })
+            raise HTTPException(
+                status_code=400,
+                detail="No server-side order mapping found for this Razorpay order.",
+            )
+
+        trusted_plan_id = self._trusted_plan_id_from_subscription(sub)
+        if data.plan_id != trusted_plan_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Submitted plan_id does not match the plan bound to this order.",
+            )
+
+        plan = self.plan_repo.get_by_id(trusted_plan_id)
+        if not plan:
+            raise HTTPException(status_code=400, detail="Plan bound to this order was not found.")
+
+        self.sub_repo.update(sub, {
+            "plan_id": trusted_plan_id,
+            "status": SubscriptionStatus.ACTIVE,
+            "payment_id": data.razorpay_payment_id,
+        })
 
         # Create invoice record
         invoice = self.invoice_repo.create({
@@ -254,7 +327,7 @@ class SubscriptionService:
         # Update subscription with invoice ref
         self.sub_repo.update(sub, {"invoice_id": invoice.id})
 
-        # Update company plan and status
+        # Update company plan and status from trusted server-side plan only
         self._activate_company_plan(company_id, plan)
 
         self.db.refresh(sub)

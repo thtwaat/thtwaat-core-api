@@ -13,7 +13,15 @@ class PushProvider(NotificationProviderBase):
     def provider_name(self) -> str:
         return notifications_settings.PUSH_PROVIDER
 
-    def send(self, recipient: str, subject: Optional[str], body: str) -> NotificationResult:
+    def send(
+        self,
+        recipient: str,
+        subject: Optional[str],
+        body: str,
+        *,
+        html: Optional[str] = None,
+        text: Optional[str] = None,
+    ) -> NotificationResult:
         logger.info(f"STUB [Push - {self.provider_name}]: Sending to device token {recipient}")
         # Placeholder for real integration (e.g. FCM, APNs)
         return NotificationResult(success=True)

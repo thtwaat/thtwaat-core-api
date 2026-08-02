@@ -45,10 +45,9 @@ class AuthService:
     @staticmethod
     def verify_password(plain_password: str, hashed_password: str) -> bool:
         """Check if the provided password matches the bcrypt hash."""
-        # Handle the dummy hash from the Users module scaffolding temporarily
-        if hashed_password.startswith("dummy_hash_"):
-            return hashed_password == f"dummy_hash_{plain_password[::-1]}"
-            
+        if not hashed_password or hashed_password.startswith("dummy_hash_"):
+            # Reject legacy scaffolding hashes — never accept plaintext bypasses.
+            return False
         try:
             return bcrypt.checkpw(
                 plain_password.encode("utf-8"),

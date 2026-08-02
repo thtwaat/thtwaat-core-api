@@ -4,31 +4,92 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { billingApi, usageApi } from "@/lib/services";
 import { site } from "@/lib/config";
+import { useAuth } from "@/lib/auth";
 import { formatDate, formatNumber } from "@/lib/utils";
+import {
+  loadRazorpayCheckoutScript,
+  openRazorpayCheckout,
+  runRazorpayCheckout
+} from "@/lib/razorpay-checkout";
 import { PageHeader, EmptyState, Progress, Stat } from "@/components/ui/misc";
 import { Badge, Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
 export default function BillingPage() {
   const qc = useQueryClient();
+  const { user } = useAuth();
   const plans = useQuery({ queryKey: ["plans"], queryFn: billingApi.plans });
   const sub = useQuery({ queryKey: ["subscription"], queryFn: billingApi.subscription });
   const invoices = useQuery({ queryKey: ["invoices"], queryFn: billingApi.invoices });
   const usage = useQuery({ queryKey: ["usage-current"], queryFn: usageApi.current });
 
+  async function refreshBillingState() {
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["subscription"] }),
+      qc.invalidateQueries({ queryKey: ["invoices"] }),
+      qc.invalidateQueries({ queryKey: ["usage-current"] }),
+      qc.invalidateQueries({ queryKey: ["plans"] })
+    ]);
+  }
+
   const upgrade = useMutation({
-    mutationFn: async (planId: string) => {
+    mutationFn: async (plan: { id: string; name: string }) => {
       if (site.razorpayKey) {
-        return billingApi.razorpayOrder(planId);
+        const customerName =
+          [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
+          user?.email?.split("@")[0] ||
+          "Customer";
+        const customerEmail = user?.email || "";
+
+        return runRazorpayCheckout({
+          planId: plan.id,
+          planName: plan.name,
+          customerName,
+          customerEmail,
+          deps: {
+            razorpayKey: site.razorpayKey,
+            createOrder: billingApi.razorpayOrder,
+            verifyPayment: billingApi.razorpayVerify,
+            loadCheckoutScript: loadRazorpayCheckoutScript,
+            openCheckout: openRazorpayCheckout
+          }
+        });
       }
-      return billingApi.stripeCheckout(planId, `${site.url}/app/billing?success=1`, `${site.url}/app/billing`);
+
+      const data = await billingApi.stripeCheckout(
+        plan.id,
+        `${site.url}/app/billing?success=1`,
+        `${site.url}/app/billing`
+      );
+      return { status: "stripe" as const, data };
     },
-    onSuccess: (data) => {
-      if ("checkout_url" in data && data.checkout_url) {
-        window.location.href = data.checkout_url;
+    onSuccess: async (result) => {
+      if (result && "status" in result && result.status === "stripe") {
+        const url = result.data.checkout_url;
+        if (url) window.location.href = url;
         return;
       }
-      toast.success(`Razorpay order created: ${(data as { order_id: string }).order_id}`);
+
+      if (!result || !("status" in result)) return;
+
+      switch (result.status) {
+        case "success":
+          toast.success("Payment verified. Your plan is updating.");
+          await refreshBillingState();
+          break;
+        case "cancelled":
+          toast.message("Checkout cancelled");
+          break;
+        case "verify_failed":
+          toast.error(result.error.message || "Payment verification failed");
+          break;
+        case "network_failed":
+          toast.error(result.error.message || "Checkout failed. Please try again.");
+          break;
+        case "blocked":
+          toast.message("Checkout already in progress");
+          break;
+      }
     },
     onError: (e: Error) => toast.error(e.message)
   });
@@ -98,8 +159,12 @@ export default function BillingPage() {
                   ${price}
                   <span className="text-sm font-normal text-muted">/{plan.interval || "mo"}</span>
                 </p>
-                <Button className="w-full" onClick={() => upgrade.mutate(plan.id)} disabled={upgrade.isPending}>
-                  Choose {plan.name}
+                <Button
+                  className="w-full"
+                  onClick={() => upgrade.mutate({ id: plan.id, name: plan.name })}
+                  disabled={upgrade.isPending}
+                >
+                  {upgrade.isPending ? "Processing…" : `Choose ${plan.name}`}
                 </Button>
               </Card>
             );

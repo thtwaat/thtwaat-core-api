@@ -29,6 +29,11 @@ class InvoiceRepository:
             select(Invoice).where(Invoice.provider_invoice_id == provider_invoice_id)
         ).scalar_one_or_none()
 
+    def get_by_provider_payment_id(self, provider_payment_id: str) -> Optional[Invoice]:
+        return self.db.execute(
+            select(Invoice).where(Invoice.provider_payment_id == provider_payment_id)
+        ).scalar_one_or_none()
+
     def list_by_company(self, company_id: uuid.UUID, skip: int = 0, limit: int = 50) -> List[Invoice]:
         return list(self.db.execute(
             select(Invoice)

@@ -6,7 +6,6 @@ FastAPI router for Storage module operations.
 
 import uuid
 from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, status
-from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
@@ -42,20 +41,20 @@ async def upload_file(
     """
     MAX_SIZE = 5 * 1024 * 1024 # 5MB
     ALLOWED_TYPES = [
-        "image/jpeg", "image/png", "image/gif", "image/webp", 
-        "application/pdf", "text/plain", "text/csv", 
+        "image/jpeg", "image/png", "image/gif", "image/webp",
+        "application/pdf", "text/plain", "text/csv",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ]
-    
+
     # 1. Content Type Validation
     if file.content_type not in ALLOWED_TYPES:
         raise HTTPException(status_code=400, detail=f"Unsupported file type: {file.content_type}")
-        
+
     # 2. File Size Validation (fast initial check if content-length header is present, fallback to read)
     file.file.seek(0, 2)
     size = file.file.tell()
     file.file.seek(0)
-    
+
     if size > MAX_SIZE:
         raise HTTPException(status_code=413, detail="File too large. Maximum size is 5MB.")
 
@@ -64,7 +63,7 @@ async def upload_file(
         company_id=current_user.company_id,
         user_id=current_user.id
     )
-    
+
     return {
         "id": db_file.id,
         "original_filename": db_file.original_filename,
@@ -89,11 +88,11 @@ def get_file_metadata(
     Retrieve the metadata for a specific uploaded file.
     """
     db_file = service.get_file_metadata(file_id)
-    
+
     # Enforce basic ownership checks
     if db_file.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="Not authorized to access this file")
-        
+
     return db_file
 
 
@@ -107,15 +106,12 @@ def download_file(
     service: StorageService = Depends(get_storage_service),
 ):
     """
-    Get the download URL for the file (authenticated, company-scoped).
-    Redirects to the S3/MinIO URL or returns the relative local path for clients to handle.
-    """
-    db_file = service.get_file_metadata(file_id)
-    if db_file.company_id != current_user.company_id:
-        raise HTTPException(status_code=403, detail="Not authorized to access this file")
+    Download a file belonging to the authenticated user's company.
 
-    url = service.get_download_url(file_id)
-    return RedirectResponse(url=url)
+    Local provider: streams bytes via FileResponse after path-safety checks.
+    S3/MinIO: redirects to the provider URL (unchanged).
+    """
+    return service.download_file(file_id, current_user.company_id)
 
 
 @router.delete(
@@ -134,5 +130,5 @@ def delete_file(
     db_file = service.get_file_metadata(file_id)
     if db_file.company_id != current_user.company_id:
         raise HTTPException(status_code=403, detail="Not authorized to delete this file")
-        
+
     service.soft_delete_file(file_id)

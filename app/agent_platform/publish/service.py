@@ -24,6 +24,10 @@ from app.agent_platform.publish.schemas import (
     WidgetConfigResponse,
     WidgetConfigUpdate,
 )
+from app.agent_platform.publish.embed_tokens import (
+    embed_token_ttl_seconds,
+    mint_embed_token,
+)
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -61,12 +65,42 @@ class PublishService:
     def build_public_chat_url(self) -> str:
         return f"{self._base_url()}/public/v1/chat"
 
-    def build_iframe_url(self, api_key_or_placeholder: str = "tht_live_<YOUR_KEY>") -> str:
-        # Official HTML shell (see sdk/widget/EMBED.md) — not /widget/{id} JSON config.
+    def mint_widget_embed_token(
+        self,
+        *,
+        widget_id: str,
+        agent_id: UUID,
+        company_id: UUID,
+        ttl_seconds: int | None = None,
+    ) -> str:
+        return mint_embed_token(
+            widget_id=widget_id,
+            agent_id=agent_id,
+            company_id=company_id,
+            ttl_seconds=ttl_seconds if ttl_seconds is not None else embed_token_ttl_seconds(),
+        )
+
+    def build_iframe_url(
+        self,
+        widget_id: str,
+        *,
+        agent_id: UUID,
+        company_id: UUID,
+        embed_token: str | None = None,
+    ) -> str:
+        """iframe URL uses widget_id + signed embed token — never a live API key."""
         from urllib.parse import quote
 
-        key = quote(api_key_or_placeholder, safe="")
-        return f"{self._base_url()}/public/v1/widget/embed?api_key={key}"
+        token = embed_token or self.mint_widget_embed_token(
+            widget_id=widget_id,
+            agent_id=agent_id,
+            company_id=company_id,
+        )
+        return (
+            f"{self._base_url()}/public/v1/widget/embed"
+            f"?widget_id={quote(widget_id, safe='')}"
+            f"&embed_token={quote(token, safe='')}"
+        )
 
     def build_embed_script(
         self,
@@ -90,8 +124,20 @@ class PublishService:
             attrs.append(f'data-prompts="{prompts}"')
         return "<script\n  " + "\n  ".join(attrs) + ">\n</script>"
 
-    def build_iframe_tag(self, api_key_or_placeholder: str = "tht_live_<YOUR_KEY>") -> str:
-        url = self.build_iframe_url(api_key_or_placeholder)
+    def build_iframe_tag(
+        self,
+        widget_id: str,
+        *,
+        agent_id: UUID,
+        company_id: UUID,
+        embed_token: str | None = None,
+    ) -> str:
+        url = self.build_iframe_url(
+            widget_id,
+            agent_id=agent_id,
+            company_id=company_id,
+            embed_token=embed_token,
+        )
         return (
             f'<iframe src="{url}" title="THTWAAT Chat" '
             f'width="380" height="600" style="border:0;border-radius:16px;" '
@@ -117,12 +163,23 @@ class PublishService:
         if not config.agent_name:
             config.agent_name = agent.name
 
+        embed_token = self.mint_widget_embed_token(
+            widget_id=agent.widget_id,
+            agent_id=agent.id,
+            company_id=company_id,
+        )
+
         return EmbedSnippetResponse(
             agent_id=agent.id,
             widget_id=agent.widget_id,
             status=agent.status,
             script=self.build_embed_script(api_key_placeholder, config),
-            iframe=self.build_iframe_tag(api_key_placeholder),
+            iframe=self.build_iframe_tag(
+                agent.widget_id,
+                agent_id=agent.id,
+                company_id=company_id,
+                embed_token=embed_token,
+            ),
             preview_url=f"{self._base_url()}/public/v1/widget/embed",
             config=config,
         )
@@ -187,6 +244,11 @@ class PublishService:
             widget_cfg.agent_name = agent.name
 
         embed_key = raw_key or f"{KEY_PREFIX}<YOUR_KEY>"
+        embed_token = self.mint_widget_embed_token(
+            widget_id=agent.widget_id,
+            agent_id=agent.id,
+            company_id=company_id,
+        )
 
         _audit(
             "agent_published",
@@ -203,7 +265,12 @@ class PublishService:
             widget_id=agent.widget_id,
             public_chat_url=self.build_public_chat_url(),
             embed_script=self.build_embed_script(embed_key, widget_cfg),
-            iframe_url=self.build_iframe_url(embed_key),
+            iframe_url=self.build_iframe_url(
+                agent.widget_id,
+                agent_id=agent.id,
+                company_id=company_id,
+                embed_token=embed_token,
+            ),
             published_at=agent.published_at,
         )
 
@@ -362,7 +429,11 @@ class PublishService:
             config=config,
             public_chat_url=self.build_public_chat_url(),
             embed_script=self.build_embed_script(f"{KEY_PREFIX}<YOUR_KEY>", config),
-            iframe_url=self.build_iframe_url(f"{KEY_PREFIX}<YOUR_KEY>"),
+            iframe_url=self.build_iframe_url(
+                agent.widget_id,
+                agent_id=agent.id,
+                company_id=company_id,
+            ),
         )
 
     def update_widget_config(

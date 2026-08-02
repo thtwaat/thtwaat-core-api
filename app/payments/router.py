@@ -64,8 +64,10 @@ def list_payments(
         gateway_filter=gateway_filter
     )
 
+# Use the `:uuid` path converter so static siblings like /payments/plans are not
+# captured by this dynamic segment (string `{payment_id}` would match first and 422).
 @router.get(
-    "/{payment_id}",
+    "/{payment_id:uuid}",
     response_model=PaymentResponse,
     summary="Get payment details",
 )
@@ -80,7 +82,7 @@ def get_payment(
     return service.get_payment(payment_id, current_user.company_id)
 
 @router.patch(
-    "/{payment_id}/status",
+    "/{payment_id:uuid}/status",
     response_model=PaymentResponse,
     summary="Update payment status",
 )
@@ -96,7 +98,7 @@ def update_payment_status(
     return service.update_payment_status(payment_id, payload, current_user.company_id)
 
 @router.post(
-    "/{payment_id}/refund",
+    "/{payment_id:uuid}/refund",
     response_model=PaymentResponse,
     summary="Refund a payment",
 )
@@ -111,7 +113,7 @@ def refund_payment(
     return service.refund_payment(payment_id, current_user.company_id)
 
 @router.delete(
-    "/{payment_id}",
+    "/{payment_id:uuid}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a payment",
 )

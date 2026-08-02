@@ -27,33 +27,52 @@ def _extract_raw_key(request: Request, body_api_key: str | None = None) -> str:
     )
 
 
-def verify_api_key(request: Request, db: Session = Depends(get_db)) -> AgentApiKey:
-    raw_key = _extract_raw_key(request)
-    key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
-
-    api_key = (
-        db.query(AgentApiKey)
-        .filter(AgentApiKey.key_hash == key_hash, AgentApiKey.is_active.is_(True))
-        .first()
-    )
-    if not api_key:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
-
-    if api_key.revoked_at is not None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key revoked")
-
-    if api_key.expires_at is not None and api_key.expires_at <= datetime.now(timezone.utc):
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key expired")
-
-    api_key.last_used_at = datetime.now(timezone.utc)
-    db.commit()
-    return api_key
-
-
 def verify_api_key_from_value(raw_key: str, db: Session) -> AgentApiKey:
     if not raw_key or not raw_key.startswith("tht_"):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid API key")
 
+    # Short-lived iframe embed credentials (tht_embed_<jwt>) — not live API keys.
+    from app.agent_platform.publish.embed_tokens import parse_embed_credential, verify_embed_token
+    from app.agent_platform.models.agent import AgentConfig
+
+    embed_jwt = parse_embed_credential(raw_key)
+    if embed_jwt is not None:
+        claims = verify_embed_token(embed_jwt)
+        agent = (
+            db.query(AgentConfig)
+            .filter(
+                AgentConfig.id == claims["aid"],
+                AgentConfig.widget_id == claims["wid"],
+                AgentConfig.company_id == claims["cid"],
+            )
+            .first()
+        )
+        if not agent or agent.status != "PUBLISHED":
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid embed token",
+            )
+        api_key = (
+            db.query(AgentApiKey)
+            .filter(
+                AgentApiKey.agent_id == agent.id,
+                AgentApiKey.company_id == agent.company_id,
+                AgentApiKey.is_active.is_(True),
+            )
+            .order_by(AgentApiKey.created_at.desc())
+            .first()
+        )
+        if not api_key or api_key.revoked_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No active API key for this widget",
+            )
+        if api_key.expires_at is not None and api_key.expires_at <= datetime.now(timezone.utc):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key expired")
+        api_key.last_used_at = datetime.now(timezone.utc)
+        db.commit()
+        return api_key
+
     key_hash = hashlib.sha256(raw_key.encode("utf-8")).hexdigest()
     api_key = (
         db.query(AgentApiKey)
@@ -70,6 +89,11 @@ def verify_api_key_from_value(raw_key: str, db: Session) -> AgentApiKey:
     api_key.last_used_at = datetime.now(timezone.utc)
     db.commit()
     return api_key
+
+
+def verify_api_key(request: Request, db: Session = Depends(get_db)) -> AgentApiKey:
+    raw_key = _extract_raw_key(request)
+    return verify_api_key_from_value(raw_key, db)
 
 
 def enforce_quota(api_key: AgentApiKey = Depends(verify_api_key), db: Session = Depends(get_db)) -> AgentApiKey:

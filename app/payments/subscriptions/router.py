@@ -89,6 +89,11 @@ def get_my_subscription(
 
 
 @router.get(
+    "/",
+    response_model=List[SubscriptionResponse],
+    summary="List subscriptions for the current company",
+)
+@router.get(
     "/history",
     response_model=List[SubscriptionResponse],
     summary="Get all subscriptions for the current company",

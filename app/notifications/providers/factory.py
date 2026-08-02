@@ -16,7 +16,7 @@ class InAppProvider(NotificationProviderBase):
     def provider_name(self) -> str:
         return "in_app"
 
-    def send(self, recipient: str, subject=None, body: str = "") -> NotificationResult:
+    def send(self, recipient: str, subject=None, body: str = "", *, html=None, text=None) -> NotificationResult:
         # No external delivery needed — record is persisted by the service layer
         return NotificationResult(success=True)
 

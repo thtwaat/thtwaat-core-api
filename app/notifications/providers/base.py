@@ -18,9 +18,17 @@ class NotificationProviderBase(ABC):
         pass
 
     @abstractmethod
-    def send(self, recipient: str, subject: Optional[str], body: str) -> NotificationResult:
+    def send(
+        self,
+        recipient: str,
+        subject: Optional[str],
+        body: str,
+        *,
+        html: Optional[str] = None,
+        text: Optional[str] = None,
+    ) -> NotificationResult:
         """
-        Sends the notification. 
+        Sends the notification.
         Returns NotificationResult.
         Synchronous for now to simulate direct sending.
         """

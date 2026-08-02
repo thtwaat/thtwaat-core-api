@@ -48,6 +48,26 @@ class SubscriptionRepository:
             select(Subscription).where(Subscription.provider_customer_id == customer_id)
         ).scalar_one_or_none()
 
+    def get_by_payment_id(self, payment_id: str) -> Optional[Subscription]:
+        """Lookup by Razorpay order id (stored on create) or payment id (after verify)."""
+        return self.db.execute(
+            select(Subscription).where(Subscription.payment_id == payment_id)
+        ).scalar_one_or_none()
+
+    def get_incomplete_by_company(
+        self,
+        company_id: uuid.UUID,
+        provider: Optional[SubscriptionProvider] = None,
+    ) -> Optional[Subscription]:
+        stmt = select(Subscription).where(
+            Subscription.company_id == company_id,
+            Subscription.status == SubscriptionStatus.INCOMPLETE,
+        )
+        if provider is not None:
+            stmt = stmt.where(Subscription.provider == provider)
+        stmt = stmt.order_by(Subscription.created_at.desc())
+        return self.db.execute(stmt).scalars().first()
+
     def list_by_company(self, company_id: uuid.UUID) -> List[Subscription]:
         return list(self.db.execute(
             select(Subscription)

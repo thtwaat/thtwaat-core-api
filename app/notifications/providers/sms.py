@@ -13,7 +13,15 @@ class SMSProvider(NotificationProviderBase):
     def provider_name(self) -> str:
         return notifications_settings.SMS_PROVIDER
 
-    def send(self, recipient: str, subject: Optional[str], body: str) -> NotificationResult:
+    def send(
+        self,
+        recipient: str,
+        subject: Optional[str],
+        body: str,
+        *,
+        html: Optional[str] = None,
+        text: Optional[str] = None,
+    ) -> NotificationResult:
         logger.info(f"STUB [SMS - {self.provider_name}]: Sending to {recipient} | Body length: {len(body)}")
         # Placeholder for real integration (e.g. Twilio, AWS SNS)
         return NotificationResult(success=True)

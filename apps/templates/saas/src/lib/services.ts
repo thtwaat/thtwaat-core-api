@@ -88,10 +88,28 @@ export const billingApi = {
   plans: () => api.v1<Plan[]>("/payments/plans", { auth: false }),
   subscription: () => api.v1<Subscription>("/payments/subscriptions/me"),
   invoices: () => api.v1<Invoice[]>("/payments/invoices"),
-  razorpayOrder: (plan_id: string) =>
-    api.v1<{ order_id: string }>("/payments/subscriptions/razorpay/order", {
+  razorpayOrder: (body: {
+    plan_id: string;
+    customer_name: string;
+    customer_email: string;
+    customer_phone?: string;
+  }) =>
+    api.v1<{ order_id: string; subscription_id?: string; provider?: string }>(
+      "/payments/subscriptions/razorpay/order",
+      {
+        method: "POST",
+        body
+      }
+    ),
+  razorpayVerify: (body: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    plan_id: string;
+  }) =>
+    api.v1("/payments/subscriptions/razorpay/verify", {
       method: "POST",
-      body: { plan_id }
+      body
     }),
   stripeCheckout: (plan_id: string, success_url: string, cancel_url: string) =>
     api.v1<{ checkout_url: string }>("/payments/subscriptions/stripe/checkout", {

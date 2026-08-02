@@ -13,7 +13,15 @@ class WhatsAppProvider(NotificationProviderBase):
     def provider_name(self) -> str:
         return notifications_settings.WHATSAPP_PROVIDER
 
-    def send(self, recipient: str, subject: Optional[str], body: str) -> NotificationResult:
+    def send(
+        self,
+        recipient: str,
+        subject: Optional[str],
+        body: str,
+        *,
+        html: Optional[str] = None,
+        text: Optional[str] = None,
+    ) -> NotificationResult:
         logger.info(f"STUB [WhatsApp - {self.provider_name}]: Sending to {recipient}")
         # Placeholder for real integration (e.g. Twilio WhatsApp, Meta API)
         return NotificationResult(success=True)

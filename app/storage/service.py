@@ -14,6 +14,10 @@ from app.storage.repository import StorageRepository
 from app.storage.model import StorageFile, StorageProvider
 from app.storage.providers.factory import get_storage_provider
 from app.storage.config import storage_settings
+from app.storage.local_paths import UnsafeLocalPathError, resolve_safe_local_path
+from pathlib import Path
+from fastapi.responses import FileResponse, RedirectResponse, Response
+
 
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
@@ -111,3 +115,33 @@ class StorageService:
     def get_download_url(self, file_id: uuid.UUID) -> str:
         db_file = self.get_file_metadata(file_id)
         return self.provider.get_file_url(db_file.storage_path)
+
+    def download_file(self, file_id: uuid.UUID, company_id: uuid.UUID) -> Response:
+        """
+        Company-scoped download.
+
+        Local files are streamed via FileResponse after path confinement checks.
+        S3/MinIO continue to redirect to the provider URL (unchanged).
+        """
+        db_file = self.repo.get_by_id(file_id)
+        if not db_file or db_file.company_id != company_id:
+            # Identical 404 for missing and cross-tenant (no existence leak).
+            raise HTTPException(status_code=404, detail="File not found")
+
+        if db_file.provider == StorageProvider.LOCAL:
+            try:
+                path = resolve_safe_local_path(
+                    base_dir=Path(storage_settings.LOCAL_STORAGE_DIR),
+                    storage_filename=db_file.storage_filename,
+                )
+            except (UnsafeLocalPathError, FileNotFoundError, OSError):
+                raise HTTPException(status_code=404, detail="File not found") from None
+
+            return FileResponse(
+                path=path,
+                media_type=db_file.mime_type or "application/octet-stream",
+                filename=db_file.original_filename,
+            )
+
+        url = self.provider.get_file_url(db_file.storage_path)
+        return RedirectResponse(url=url)
