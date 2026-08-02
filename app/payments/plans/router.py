@@ -20,6 +20,12 @@ def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
 
 
 @router.get(
+    "",
+    response_model=List[PlanResponse],
+    summary="List all active subscription plans",
+    include_in_schema=False,
+)
+@router.get(
     "/",
     response_model=List[PlanResponse],
     summary="List all active subscription plans",
@@ -32,7 +38,7 @@ def list_plans(
 
 
 @router.get(
-    "/{plan_id}",
+    "/{plan_id:uuid}",
     response_model=PlanResponse,
     summary="Get plan details",
 )

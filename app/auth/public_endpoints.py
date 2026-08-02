@@ -52,6 +52,7 @@ INTENTIONAL_PUBLIC_OPERATIONS: FrozenSet[Tuple[str, str]] = frozenset(
         ("GET", "/api/v1/enterprise/sso/{connection_id}/initiate"),
         ("POST", "/api/v1/enterprise/sso/oidc/callback"),
         # Public billing catalog
+        ("GET", "/api/v1/payments/plans"),
         ("GET", "/api/v1/payments/plans/"),
         ("GET", "/api/v1/payments/plans/{plan_id}"),
         # Payment provider webhooks (signature auth)
