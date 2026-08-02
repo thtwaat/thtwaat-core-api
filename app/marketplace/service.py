@@ -121,14 +121,27 @@ class MarketplaceService:
         sort: Optional[str] = None,
         limit: int = 50,
         offset: int = 0,
+        status: Optional[str] = TemplateStatus.PUBLISHED.value,
+        is_public: Optional[bool] = True,
     ) -> TemplateListPage:
         sort_key = sort or ("newest" if newest else "featured")
+        status_filter: Optional[str]
+        if status is None:
+            status_filter = None
+        else:
+            status_filter = status.lower()
+            if status_filter == "all":
+                status_filter = None
+            elif status_filter not in {s.value for s in TemplateStatus}:
+                raise HTTPException(status_code=400, detail="Invalid status filter")
         items, total = self.repo.list_templates(
             q=q,
             category=category.lower() if category else None,
             featured=featured,
             kind=kind.lower() if kind else None,
             pricing_tier=pricing_tier.lower() if pricing_tier else None,
+            status=status_filter,
+            is_public=is_public,
             sort=sort_key,
             limit=limit,
             offset=offset,

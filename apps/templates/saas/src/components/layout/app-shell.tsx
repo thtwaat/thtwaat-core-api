@@ -13,17 +13,19 @@ import {
   Menu,
   Rocket,
   Settings,
+  Shield,
   Sparkles,
   Store,
   X
 } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
+import { canAccessAdmin } from "@/lib/permissions";
 import { site } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 
-const nav = [
+const baseNav = [
   { href: "/app", label: "Overview", icon: LayoutDashboard },
   { href: "/app/create", label: "Create Product", icon: Sparkles },
   { href: "/app/agents", label: "Agents", icon: Bot },
@@ -41,6 +43,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, logout, loading } = useAuth();
   const [open, setOpen] = useState(false);
+
+  const nav = useMemo(() => {
+    if (!canAccessAdmin(user?.role)) return baseNav;
+    const insertAt = baseNav.findIndex((i) => i.href === "/app/settings");
+    const withAdmin = [...baseNav];
+    withAdmin.splice(insertAt < 0 ? withAdmin.length : insertAt, 0, {
+      href: "/app/admin",
+      label: "Admin",
+      icon: Shield
+    });
+    return withAdmin;
+  }, [user?.role]);
 
   if (loading) {
     return (

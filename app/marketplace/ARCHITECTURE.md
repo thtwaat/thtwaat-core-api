@@ -175,7 +175,19 @@ Idempotent install + upgrade + rollback:
 Prompt payloads land in `default_config` / version `config` JSONB.
 Stable UUIDs from JSON are preserved on first insert (slug unique conflict → upsert).
 
-| 6 | Admin UI → marketplace registry + agent-store admin APIs |
+## Phase 6 (Admin UI) — done
+
+SaaS route: `/app/admin` (nav: Admin, role-gated).
+
+Tabs:
+- **Registry** (`templates:manage`) — list draft/published/archived, create, publish, feature, archive, add version
+- **Agent Store** (`platform:admin` / `super_admin`) — stats, pending moderation, abuse resolve
+
+API:
+- `GET /marketplace/admin/templates?status=all|draft|published|archived`
+- Existing registry CRUD + agent-store `/admin/*` moderation endpoints
+- FE clients: `marketplaceApi.adminList|createTemplate|…`, `agentStoreApi.*`
+
 | 7 | Postgres FTS on name/description/tags |
 | 8 | Versioning UI + release notes |
 | 9 | Analytics |

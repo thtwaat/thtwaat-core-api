@@ -262,6 +262,39 @@ export const marketplaceApi = {
       `/marketplace/templates${qs.size ? `?${qs}` : ""}`
     );
   },
+  adminList: (params?: {
+    q?: string;
+    category?: string;
+    kind?: string;
+    pricing_tier?: string;
+    status?: string;
+    sort?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set("q", params.q);
+    if (params?.category) qs.set("category", params.category);
+    if (params?.kind) qs.set("kind", params.kind);
+    if (params?.pricing_tier) qs.set("pricing_tier", params.pricing_tier);
+    if (params?.status) qs.set("status", params.status);
+    if (params?.sort) qs.set("sort", params.sort);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    if (params?.offset != null) qs.set("offset", String(params.offset));
+    return api.v1<{ items: TemplateItem[]; total: number; limit: number; offset: number; sort: string }>(
+      `/marketplace/admin/templates${qs.size ? `?${qs}` : ""}`
+    );
+  },
+  createTemplate: (body: Record<string, unknown>) =>
+    api.v1<TemplateItem>("/marketplace/templates", { method: "POST", body }),
+  updateTemplate: (id: string, body: Record<string, unknown>) =>
+    api.v1<TemplateItem>(`/marketplace/templates/${id}`, { method: "PUT", body }),
+  archiveTemplate: (id: string) =>
+    api.v1<TemplateItem>(`/marketplace/templates/${id}`, { method: "DELETE" }),
+  publishTemplate: (id: string) =>
+    api.v1<TemplateItem>(`/marketplace/templates/${id}/publish`, { method: "POST" }),
+  addVersion: (id: string, body: { version: string; changelog?: string; config?: Record<string, unknown>; set_latest?: boolean }) =>
+    api.v1<Record<string, unknown>>(`/marketplace/templates/${id}/versions`, { method: "POST", body }),
   get: (idOrSlug: string) => api.v1<TemplateItem>(`/marketplace/templates/${idOrSlug}`),
   versions: (id: string) => api.v1<Array<Record<string, unknown>>>(`/marketplace/templates/${id}/versions`),
   favorites: () => api.v1<TemplateItem[]>("/marketplace/favorites"),
@@ -290,6 +323,65 @@ export const marketplaceApi = {
     api.v1<Installation>(`/marketplace/installations/${installId}/rollback`, { method: "POST" }),
   uninstall: (installId: string) =>
     api.v1(`/marketplace/installations/${installId}`, { method: "DELETE" })
+};
+
+// ── Agent Store (admin + storefront hooks) ────────────────────────────────────
+
+export type StoreAdminStats = {
+  listings_total: number;
+  pending_review: number;
+  published: number;
+  suspended: number;
+  open_abuse_reports: number;
+  purchases_completed: number;
+  gross_gmv: number;
+};
+
+export type AgentListing = {
+  id: string;
+  slug: string;
+  title: string;
+  short_description: string;
+  status: string;
+  is_featured: boolean;
+  is_verified_badge: boolean;
+  publisher_name?: string | null;
+  pricing_model: string;
+  price_amount: string | number;
+  current_version: string;
+  install_count: number;
+  created_at: string;
+};
+
+export type AbuseReport = {
+  id: string;
+  listing_id: string;
+  reason: string;
+  details?: string | null;
+  status: string;
+  created_at: string;
+};
+
+export const agentStoreApi = {
+  adminStats: () => api.v1<StoreAdminStats>("/agent-store/admin/stats"),
+  pending: (limit = 50) =>
+    api.v1<AgentListing[]>(`/agent-store/admin/pending?limit=${limit}`),
+  moderate: (listingId: string, body: { action: string; notes?: string }) =>
+    api.v1<AgentListing>(`/agent-store/admin/listings/${listingId}/moderate`, {
+      method: "POST",
+      body
+    }),
+  abuseReports: (params?: { status?: string; limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.limit) qs.set("limit", String(params.limit));
+    return api.v1<AbuseReport[]>(`/agent-store/admin/abuse-reports${qs.size ? `?${qs}` : ""}`);
+  },
+  resolveAbuse: (reportId: string, body: { status: string; resolution_notes?: string }) =>
+    api.v1<AbuseReport>(`/agent-store/admin/abuse-reports/${reportId}/resolve`, {
+      method: "POST",
+      body
+    })
 };
 
 // ── Product Generator ─────────────────────────────────────────────────────────

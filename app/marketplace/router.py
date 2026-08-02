@@ -261,6 +261,38 @@ def uninstall_template(
 
 # ── Registry admin (platform / manage) ────────────────────────────────────────
 
+@router.get("/admin/templates", response_model=TemplateListPage)
+def admin_list_templates(
+    q: Optional[str] = Query(default=None),
+    category: Optional[str] = Query(default=None),
+    kind: Optional[str] = Query(default=None),
+    pricing_tier: Optional[str] = Query(default=None),
+    status_filter: Optional[str] = Query(
+        default="all",
+        alias="status",
+        description="draft | published | archived | all",
+    ),
+    sort: Optional[str] = Query(default="updated"),
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Registry view — includes draft/archived (not limited to public published)."""
+    return service.list_templates(
+        UUID(str(user.company_id)),
+        q=q,
+        category=category,
+        kind=kind,
+        pricing_tier=pricing_tier,
+        status=status_filter,
+        is_public=None,
+        sort=sort,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.post(
     "/templates",
     response_model=TemplateResponse,
