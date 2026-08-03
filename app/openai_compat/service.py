@@ -406,6 +406,37 @@ class CompletionsService:
         async for frame in aiter_sse_from_material(material):
             yield frame
 
+    def finalize_true_stream(
+        self,
+        principal: CompletionsPrincipal,
+        body: ChatCompletionRequest,
+        *,
+        result,
+    ) -> None:
+        """
+        Persist completion log after a true provider SSE finishes.
+
+        Day 1: no new billing features — skips usage meter / webhooks when cancelled.
+        """
+        if result is None or getattr(result, "cancelled", False):
+            return
+        latency_ms = 0
+        if result.metrics is not None:
+            latency_ms = int(result.metrics.total_stream_duration_ms or 0)
+        self._persist_log(
+            principal=principal,
+            completion_id=result.completion_id,
+            body=body,
+            provider=result.provider,
+            content=result.content,
+            prompt_tokens=result.prompt_tokens,
+            completion_tokens=result.completion_tokens,
+            finish_reason=result.finish_reason,
+            latency_ms=latency_ms,
+            status="succeeded",
+            error_detail=None,
+        )
+
     def _notify_completion(
         self,
         *,

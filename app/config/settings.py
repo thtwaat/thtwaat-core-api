@@ -149,6 +149,10 @@ class Settings(BaseSettings):
     INFERENCE_PROMPT_GUARD_ENABLED: bool = True
     # block = 400 OpenAI-shaped error; log = allow but warn
     INFERENCE_PROMPT_GUARD_MODE: str = "block"
+    # Sem03 Week 2 Day 1 — true provider SSE streaming
+    STREAM_ENABLED: bool = True
+    # When true and OPENAI_API_KEY set, use live OpenAI SSE; else synthetic incremental
+    INFERENCE_STREAM_LIVE_OPENAI: bool = True
     # Week 2 Day 2 — Redis caching for openai_compat
     OPENAI_COMPAT_CACHE_ENABLED: bool = True
     OPENAI_COMPAT_MODEL_CACHE_TTL_SECONDS: int = 300

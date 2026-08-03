@@ -78,3 +78,20 @@ class InferenceProvider(ABC):
     @abstractmethod
     def models(self) -> List[Dict[str, Any]]:
         """OpenAI model objects this provider contributes to GET /v1/models."""
+
+    async def stream_chat(
+        self,
+        *,
+        model: str,
+        messages: Sequence[Dict[str, Any]],
+        temperature: Optional[float] = 0.7,
+        max_tokens: Optional[int] = None,
+        **kwargs: Any,
+    ):
+        """
+        Optional token stream (Sem03 W2+).
+
+        Default: not implemented — use StreamingAdapter via StreamEngine instead.
+        """
+        raise ProviderConfigError(f"Provider '{self.name}' does not support stream_chat()")
+        yield  # pragma: no cover — keep as async generator type

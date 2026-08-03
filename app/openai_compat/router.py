@@ -1,12 +1,13 @@
-"""OpenAI-compatible HTTP surface — root /v1 (Week 2–3)."""
+"""OpenAI-compatible HTTP surface — root /v1 (Week 2–3 + Sem03 stream)."""
 from __future__ import annotations
 
 from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
+from app.config.settings import settings
 from app.database.database import get_db
 from app.openai_compat.dependencies import CompletionsPrincipal, resolve_completions_principal
 from app.openai_compat.idempotency import (
@@ -154,7 +155,7 @@ def retrieve_model(
     },
     openapi_extra={
         "security": [{"AgentAPIKey": []}],
-        "x-thtwaat-course": "semester-02/week-03/day-04",
+        "x-thtwaat-course": "semester-03/week-02/day-01",
         "parameters": [
             {
                 "name": "Idempotency-Key",
@@ -174,6 +175,7 @@ def retrieve_model(
 async def create_chat_completion(
     body: ChatCompletionRequest,
     response: Response,
+    request: Request,
     principal: CompletionsPrincipal = Depends(resolve_completions_principal),
     db: Session = Depends(get_db),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
@@ -182,8 +184,11 @@ async def create_chat_completion(
     OpenAI SDK compatible completions.
 
     JSON when stream=false; SSE when stream=true.
-    Week 3 Day 4: Idempotency-Key works for both; stream replays re-emit SSE.
+    Sem03 W2 D1: gateway mode uses true provider token streaming when STREAM_ENABLED.
     """
+    from app.openai_compat.errors import openai_error
+    from app.openai_compat.providers.stream_factory import stream_enabled
+
     store = IdempotencyStore()
     key: Optional[str] = None
     request_hash: Optional[str] = None
@@ -214,7 +219,6 @@ async def create_chat_completion(
         if action == "replay" and record is not None and record.response is not None:
             replay_record = record
 
-    # Replays do not consume rate-limit budget (Week 2 Day 4 contract).
     limiter = OpenAICompatRateLimiter(db)
     decision = None
     if replay_record is None:
@@ -233,10 +237,19 @@ async def create_chat_completion(
         return headers
 
     if body.stream:
+        from app.openai_compat.prompt_guard import assert_safe_completion_messages
         from app.openai_compat.streaming import (
             aiter_sse_from_material,
             material_from_stored_response,
         )
+
+        if not stream_enabled() and replay_record is None:
+            raise openai_error(
+                status_code=400,
+                message="Streaming is disabled (STREAM_ENABLED=false)",
+                type_="invalid_request_error",
+                code="stream_disabled",
+            )
 
         if replay_record is not None:
             material = material_from_stored_response(replay_record.response or {})
@@ -246,7 +259,64 @@ async def create_chat_completion(
                 headers=_sse_headers(replayed=True),
             )
 
+        assert_safe_completion_messages(body.messages)
         svc = CompletionsService(db)
+        mode = (settings.OPENAI_COMPAT_INFERENCE or "stub").strip().lower()
+        use_true_stream = mode == "gateway" and stream_enabled()
+
+        if use_true_stream:
+            from app.openai_compat.stream_engine import (
+                StreamEngine,
+                resolve_stream_provider_name,
+            )
+
+            engine = StreamEngine()
+
+            async def _true_stream_and_store():
+                try:
+                    provider_name = await resolve_stream_provider_name(
+                        model=body.model, provider=body.provider
+                    )
+                    async for frame in engine.aiter_sse(
+                        model=body.model,
+                        messages=body.messages,
+                        provider_name=provider_name,
+                        temperature=body.temperature
+                        if body.temperature is not None
+                        else 0.7,
+                        max_tokens=body.max_tokens,
+                        request=request,
+                    ):
+                        yield frame
+                except Exception:
+                    if key is not None:
+                        store.abandon(
+                            company_id=principal.company_id, idempotency_key=key
+                        )
+                    raise
+
+                result = engine.result
+                if result is None or result.cancelled:
+                    if key is not None:
+                        store.abandon(
+                            company_id=principal.company_id, idempotency_key=key
+                        )
+                    return
+                svc.finalize_true_stream(principal, body, result=result)
+                if key is not None and request_hash is not None:
+                    store.complete(
+                        company_id=principal.company_id,
+                        idempotency_key=key,
+                        request_hash=request_hash,
+                        response=result.response,
+                        http_status=200,
+                    )
+
+            return StreamingResponse(
+                _true_stream_and_store(),
+                media_type="text/event-stream",
+                headers=_sse_headers(replayed=False),
+            )
 
         async def _stream_and_store():
             try:
@@ -272,7 +342,6 @@ async def create_chat_completion(
             headers=_sse_headers(replayed=False),
         )
 
-    # JSON path
     if replay_record is not None:
         response.headers["Idempotent-Replayed"] = "true"
         response.headers["X-Cache"] = "BYPASS"

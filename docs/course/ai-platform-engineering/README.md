@@ -47,10 +47,10 @@
 ## Current position
 
 **→ Semester 03 — Inference Engineering** (4-week intensive)  
-**Current:** Week 1 **complete** — tag `sem03-w1-ollama-openai`  
-**Next:** Week 2 (catalog sync + true local streaming) — locked until approved  
+**Current:** Week 2 Day 1 — Production streaming engine  
+**Previous:** Week 1 complete — tag `sem03-w1-ollama-openai`  
 
-See: [`semester-03/week-01/REVIEW.md`](./semester-03/week-01/REVIEW.md) · [`RETRO.md`](./semester-03/week-01/RETRO.md)
+See: [`semester-03/week-02/day-01.md`](./semester-03/week-02/day-01.md)
 
 Previous: [`semester-02/`](./semester-02/) API gateway (`sem02-v1.0.0`)
 
