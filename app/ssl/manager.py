@@ -168,6 +168,7 @@ class SslManager:
         domain.cert_path = str(cert) if cert else domain.cert_path
         domain.key_path = str(key) if key else domain.key_path
         domain.renewal_error = None
+        domain.failure_reason = None
         domain.ssl_last_checked_at = now
         domain.ssl_provider = "letsencrypt"
         domain.status = DomainStatus.LIVE

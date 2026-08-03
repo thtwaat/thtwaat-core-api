@@ -199,7 +199,20 @@ class DomainService:
         self.db = db
         self.repo = DomainRepository(db)
 
+    def _clear_stale_failure(self, domain: CompanyDomain) -> None:
+        """Drop leftover simulate/DNS notes once the domain is live with SSL."""
+        reason = (domain.failure_reason or "").strip()
+        if not reason:
+            return
+        status_val = domain.status.value if hasattr(domain.status, "value") else str(domain.status)
+        ssl_val = str(domain.ssl_status or "").upper()
+        stale = "SSL_MODE=simulate" in reason or reason.startswith("DNS not confirmed")
+        if status_val == DomainStatus.LIVE.value and stale and ssl_val in ("ACTIVE", "ISSUED"):
+            domain.failure_reason = None
+            self.repo.save(domain)
+
     def _to_response(self, domain: CompanyDomain) -> DomainResponse:
+        self._clear_stale_failure(domain)
         method = domain.verification_method.value if hasattr(domain.verification_method, "value") else str(domain.verification_method)
         status_val = domain.status.value if hasattr(domain.status, "value") else str(domain.status)
         data = DomainResponse(
@@ -510,15 +523,13 @@ class DomainService:
                 domain.status = DomainStatus.SSL_PENDING
                 domain.verified_at = datetime.now(timezone.utc)
                 domain.ssl_status = SslStatus.PENDING.value
-                domain.failure_reason = (
-                    f"DNS not confirmed yet; continuing under SSL_MODE=simulate. "
-                    f"({verified.message})"
-                )
+                domain.failure_reason = None
                 self.repo.save(domain)
                 logger.warning(
-                    "ssl_request_simulate_skip_dns domain_id=%s hostname=%s",
+                    "ssl_request_simulate_skip_dns domain_id=%s hostname=%s reason=%s",
                     domain_id,
                     domain.hostname,
+                    verified.message,
                 )
 
         result = SslManager(self.db).request(domain_id, company_id, user_id)

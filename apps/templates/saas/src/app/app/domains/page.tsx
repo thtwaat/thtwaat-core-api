@@ -119,7 +119,14 @@ export default function DomainsPage() {
                     Add the DNS records below, then click Verify (or Request SSL to verify + issue in one step).
                   </p>
                 )}
-                {domain.failure_reason && <p className="mt-2 text-sm text-red-600">{domain.failure_reason}</p>}
+                {domain.failure_reason && domain.status !== "LIVE" && (
+                  <p className="mt-2 text-sm text-red-600">{domain.failure_reason}</p>
+                )}
+                {domain.status === "LIVE" && String(domain.ssl_status || "").toUpperCase() === "ACTIVE" && (
+                  <p className="mt-2 text-sm text-emerald-700">
+                    Domain is live with SSL. Add DNS records below if you want real public verification.
+                  </p>
+                )}
                 <div className="mt-3 space-y-1 text-xs text-muted">
                   {(domain.dns_records || []).slice(0, 3).map((r, i) => (
                     <p key={i}>
