@@ -152,6 +152,9 @@ class Settings(BaseSettings):
     WEBHOOK_SIGNATURE_TOLERANCE_SECONDS: int = 300
     # Week 4 Day 1 — dual-write webhook_deliveries outbox before Redis enqueue
     WEBHOOK_OUTBOX_ENABLED: bool = True
+    # Week 4 Day 2 — redrive stuck pending/queued/failed rows
+    WEBHOOK_OUTBOX_STALE_SECONDS: int = 120
+    WEBHOOK_OUTBOX_REDRIVE_BATCH: int = 50
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.

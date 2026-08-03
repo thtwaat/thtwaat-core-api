@@ -32,10 +32,12 @@ def heartbeat(r):
 
 
 def _handle_webhook_failure(payload: Dict[str, Any], exc: Exception) -> None:
-    """Retry with exponential backoff or dead-letter (Week 3 Day 2)."""
+    """Retry with exponential backoff or dead-letter (Week 3 Day 2 + W4 outbox ACK)."""
     from app.config.settings import settings
+    from app.database.database import SessionLocal
     from app.monitoring.queue import dead_letter, enqueue_delayed
     from app.webhooks.delivery import WebhookDeliveryError, backoff_seconds
+    from app.webhooks.outbox import ack_from_job_payload
 
     attempt = int(payload.get("attempt") or 1)
     max_attempts = int(getattr(settings, "WEBHOOK_MAX_ATTEMPTS", 5) or 5)
@@ -47,31 +49,46 @@ def _handle_webhook_failure(payload: Dict[str, Any], exc: Exception) -> None:
         retryable = bool(exc.retryable)
 
     reason = str(exc)
-    if (not retryable) or attempt >= max_attempts:
-        dead_letter(payload, reason=f"attempt={attempt}/{max_attempts}: {reason}")
-        logger.error(
-            "webhook_dead event=%s attempt=%s reason=%s",
+    db = SessionLocal()
+    try:
+        if (not retryable) or attempt >= max_attempts:
+            dead_letter(payload, reason=f"attempt={attempt}/{max_attempts}: {reason}")
+            ack_from_job_payload(db, payload, outcome="dead", reason=reason)
+            logger.error(
+                "webhook_dead event=%s delivery_id=%s attempt=%s reason=%s",
+                payload.get("event"),
+                payload.get("delivery_id"),
+                attempt,
+                reason,
+            )
+            return
+
+        next_attempt = attempt + 1
+        delay = backoff_seconds(attempt, base=base, cap=cap)
+        ready_at = time.time() + delay
+        retry_payload = dict(payload)
+        retry_payload["attempt"] = next_attempt
+        retry_payload["last_error"] = reason
+        enqueue_delayed(retry_payload, ready_at=ready_at)
+        next_at = datetime.fromtimestamp(ready_at, tz=timezone.utc)
+        ack_from_job_payload(
+            db,
+            payload,
+            outcome="failed",
+            reason=reason,
+            next_attempt_at=next_at,
+        )
+        logger.warning(
+            "webhook_retry event=%s delivery_id=%s attempt=%s next=%s delay=%.1fs reason=%s",
             payload.get("event"),
+            payload.get("delivery_id"),
             attempt,
+            next_attempt,
+            delay,
             reason,
         )
-        return
-
-    next_attempt = attempt + 1
-    delay = backoff_seconds(attempt, base=base, cap=cap)
-    ready_at = time.time() + delay
-    retry_payload = dict(payload)
-    retry_payload["attempt"] = next_attempt
-    retry_payload["last_error"] = reason
-    enqueue_delayed(retry_payload, ready_at=ready_at)
-    logger.warning(
-        "webhook_retry event=%s attempt=%s next=%s delay=%.1fs reason=%s",
-        payload.get("event"),
-        attempt,
-        next_attempt,
-        delay,
-        reason,
-    )
+    finally:
+        db.close()
 
 
 def process_job(payload: dict) -> None:
@@ -103,6 +120,7 @@ def process_job(payload: dict) -> None:
             reload_nginx()
         elif job_type == "webhook.dispatch":
             from app.webhooks.delivery import deliver_webhook, new_delivery_id
+            from app.webhooks.outbox import ack_from_job_payload
 
             url = payload.get("url")
             secret = payload.get("secret") or ""
@@ -117,7 +135,13 @@ def process_job(payload: dict) -> None:
                 "delivery_id": payload.get("delivery_id") or new_delivery_id(),
                 "attempt": int(payload.get("attempt") or 1),
             }
+            # Keep delivery_id on the job for failure ACK if missing
+            if not payload.get("delivery_id"):
+                payload["delivery_id"] = body["delivery_id"]
+
+            ack_from_job_payload(db, payload, outcome="attempt")
             status_code, _ = deliver_webhook(url, body, secret)
+            ack_from_job_payload(db, payload, outcome="delivered")
             logger.info(
                 "webhook_delivered event=%s delivery_id=%s status=%s attempt=%s",
                 event,
@@ -136,7 +160,9 @@ def main():
     signal.signal(signal.SIGINT, _stop)
 
     from app.config.settings import settings
+    from app.database.database import SessionLocal
     from app.monitoring.queue import promote_due_jobs
+    from app.webhooks.outbox import redrive_stuck_deliveries
     import redis
 
     r = redis.from_url(f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", decode_responses=True)
@@ -150,6 +176,17 @@ def main():
                 logger.info("promoted_delayed count=%s", promoted)
         except Exception as exc:  # noqa: BLE001
             logger.warning("promote_due_jobs error: %s", exc)
+
+        try:
+            db = SessionLocal()
+            try:
+                redriven = redrive_stuck_deliveries(db)
+                if redriven:
+                    logger.info("outbox_redrive count=%s", redriven)
+            finally:
+                db.close()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("outbox_redrive error: %s", exc)
 
         item = r.blpop("thtwaat:jobs", timeout=5)
         if not item:
