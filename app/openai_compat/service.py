@@ -65,11 +65,11 @@ class CompletionsService:
                 detail={
                     "error": {
                         "message": (
-                            "Streaming is not enabled yet. "
-                            "Set stream=false or omit stream."
+                            "Use the streaming path via the router with stream=true "
+                            "(internal: call stream_completion)."
                         ),
                         "type": "invalid_request_error",
-                        "code": "stream_not_supported",
+                        "code": "stream_use_sse_path",
                     }
                 },
             )
@@ -234,6 +234,146 @@ class CompletionsService:
             cache_status = "MISS"
 
         return response, cache_status
+
+    async def stream_completion(
+        self,
+        principal: CompletionsPrincipal,
+        body: ChatCompletionRequest,
+    ):
+        """
+        Week 3 Day 3 — async generator of SSE `data:` frames.
+        Persists log + usage + webhooks after the full text is produced.
+        """
+        from app.openai_compat.streaming import aiter_sse_completion, stub_stream_pieces
+
+        if body.n is not None and body.n != 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={
+                    "error": {
+                        "message": "Only n=1 is supported.",
+                        "type": "invalid_request_error",
+                        "code": "n_not_supported",
+                    }
+                },
+            )
+
+        started = time.perf_counter()
+        completion_id = f"chatcmpl_{uuid.uuid4().hex}"
+        mode = (settings.OPENAI_COMPAT_INFERENCE or "stub").strip().lower()
+        provider = "stub"
+        content = ""
+        prompt_tokens = 0
+        completion_tokens = 0
+        finish_reason = "stop"
+        pieces: List[str] = []
+
+        try:
+            if mode == "gateway":
+                content, prompt_tokens, completion_tokens, provider, finish_reason = (
+                    await self._via_gateway(principal, body)
+                )
+                from app.openai_compat.streaming import iter_text_pieces
+
+                pieces = list(iter_text_pieces(content))
+            else:
+                content, prompt_tokens, completion_tokens, pieces = stub_stream_pieces(
+                    body.messages, model=body.model
+                )
+                provider = "stub"
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            latency_ms = int((time.perf_counter() - started) * 1000)
+            self._persist_log(
+                principal=principal,
+                completion_id=completion_id,
+                body=body,
+                provider=provider,
+                content=None,
+                prompt_tokens=0,
+                completion_tokens=0,
+                finish_reason=None,
+                latency_ms=latency_ms,
+                status="failed",
+                error_detail=str(exc),
+            )
+            self._notify_completion(
+                principal=principal,
+                completion_id=completion_id,
+                body=body,
+                outcome="failed",
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=latency_ms,
+                error=str(exc),
+                provider=provider,
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error": {
+                        "message": f"Upstream inference failed: {exc}",
+                        "type": "api_error",
+                        "code": "upstream_error",
+                    }
+                },
+            ) from exc
+
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        self._persist_log(
+            principal=principal,
+            completion_id=completion_id,
+            body=body,
+            provider=provider,
+            content=content,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            finish_reason=finish_reason,
+            latency_ms=latency_ms,
+            status="succeeded",
+            error_detail=None,
+        )
+        try:
+            from app.openai_compat.usage import record_completion_usage
+
+            record_completion_usage(
+                self.db,
+                principal,
+                provider=provider,
+                model=body.model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                completion_id=completion_id,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning("usage hook failed (stream): %s", exc)
+
+        self._notify_completion(
+            principal=principal,
+            completion_id=completion_id,
+            body=body,
+            outcome="succeeded",
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+            error=None,
+            provider=provider,
+        )
+
+        async for frame in aiter_sse_completion(
+            completion_id=completion_id,
+            model=body.model,
+            pieces=pieces,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            provider=provider,
+        ):
+            yield frame
 
     def _notify_completion(
         self,

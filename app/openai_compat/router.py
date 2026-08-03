@@ -1,9 +1,10 @@
-"""OpenAI-compatible HTTP surface — root /v1 (Week 2 Days 1–4)."""
+"""OpenAI-compatible HTTP surface — root /v1 (Week 2–3)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, Header, Query, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
@@ -100,7 +101,7 @@ def retrieve_model(
 
 @router.post(
     "/chat/completions",
-    response_model=ChatCompletionResponse,
+    response_model=None,
     summary="Create chat completion (OpenAI-compatible)",
     responses={
         401: {
@@ -120,7 +121,7 @@ def retrieve_model(
             },
         },
         400: {
-            "description": "Unsupported option (e.g. stream=true) or invalid Idempotency-Key",
+            "description": "Invalid option (e.g. Idempotency-Key with stream=true)",
         },
         409: {
             "description": "Idempotency conflict (key reuse or in-progress)",
@@ -153,7 +154,7 @@ def retrieve_model(
     },
     openapi_extra={
         "security": [{"AgentAPIKey": []}],
-        "x-thtwaat-course": "semester-02/week-02/day-04",
+        "x-thtwaat-course": "semester-02/week-03/day-03",
         "parameters": [
             {
                 "name": "Idempotency-Key",
@@ -161,8 +162,9 @@ def retrieve_model(
                 "required": False,
                 "schema": {"type": "string", "maxLength": 256},
                 "description": (
-                    "Optional. Retries with the same key + body replay the stored response. "
-                    "Same key + different body → 409. Replays do not consume rate-limit budget."
+                    "Optional (non-stream only). Retries with the same key + body replay "
+                    "the stored response. Same key + different body → 409. "
+                    "Not supported with stream=true (Day 4)."
                 ),
             }
         ],
@@ -174,14 +176,44 @@ async def create_chat_completion(
     principal: CompletionsPrincipal = Depends(resolve_completions_principal),
     db: Session = Depends(get_db),
     idempotency_key: Optional[str] = Header(default=None, alias="Idempotency-Key"),
-) -> ChatCompletionResponse:
+) -> Union[ChatCompletionResponse, StreamingResponse]:
     """
     OpenAI SDK compatible completions.
 
-    Day 2: temperature=0 may hit Redis content cache (X-Cache).
-    Day 3: Idempotency-Key enables safe retries (Idempotent-Replayed).
-    Day 4: Tenant/plan Redis rate limits (Retry-After, X-RateLimit-*).
+    JSON when stream=false; SSE (`text/event-stream`) when stream=true (Week 3 Day 3).
     """
+    if body.stream and idempotency_key is not None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "error": {
+                    "message": (
+                        "Idempotency-Key is not supported with stream=true yet. "
+                        "Omit the header or set stream=false."
+                    ),
+                    "type": "invalid_request_error",
+                    "code": "idempotency_stream_unsupported",
+                }
+            },
+        )
+
+    limiter = OpenAICompatRateLimiter(db)
+    decision = limiter.enforce(principal.company_id, scope="completions")
+
+    if body.stream:
+        headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Cache": "BYPASS",
+        }
+        headers.update(OpenAICompatRateLimiter.header_map(decision))
+        return StreamingResponse(
+            CompletionsService(db).stream_completion(principal, body),
+            media_type="text/event-stream",
+            headers=headers,
+        )
+
     store = IdempotencyStore()
     key: Optional[str] = None
     request_hash: Optional[str] = None
@@ -211,10 +243,9 @@ async def create_chat_completion(
         if action == "replay" and record is not None and record.response is not None:
             response.headers["Idempotent-Replayed"] = "true"
             response.headers["X-Cache"] = "BYPASS"
+            limiter.apply_headers(response, decision)
             return ChatCompletionResponse.model_validate(record.response)
 
-    limiter = OpenAICompatRateLimiter(db)
-    decision = limiter.enforce(principal.company_id, scope="completions")
     limiter.apply_headers(response, decision)
 
     try:

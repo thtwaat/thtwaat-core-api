@@ -8,7 +8,7 @@
 |-----|--------|--------|
 | 1 | Architecture + `webhook.dispatch` job contract | Done |
 | 2 | Worker delivery + retries / dead-letter | Done |
-| 3 | SSE streaming (`stream=true`) | Locked |
+| 3 | SSE streaming (`stream=true`) | Done |
 | 4 | Streaming × idempotency / debugging | Locked |
 | 5 | Security (HMAC, replay) + interview drill | Locked |
 | 6 | Milestone build (usage flush + fan-out polish) | Locked |

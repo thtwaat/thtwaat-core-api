@@ -34,7 +34,7 @@ def test_stub_complete_includes_model_and_usage():
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_service_rejects_stream(monkeypatch):
+async def test_service_json_path_rejects_stream_flag(monkeypatch):
     monkeypatch.setattr(
         "app.openai_compat.service.settings.OPENAI_COMPAT_INFERENCE",
         "stub",
@@ -52,7 +52,7 @@ async def test_service_rejects_stream(monkeypatch):
     with pytest.raises(HTTPException) as exc:
         await svc.create_completion(principal, body)
     assert exc.value.status_code == 400
-    assert exc.value.detail["error"]["code"] == "stream_not_supported"
+    assert exc.value.detail["error"]["code"] == "stream_use_sse_path"
     svc.repo.create.assert_not_called()
 
 

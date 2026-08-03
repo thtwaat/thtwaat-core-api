@@ -57,6 +57,29 @@ class ChatCompletionResponse(BaseModel):
     system_fingerprint: Optional[str] = None
 
 
+class ChatCompletionChunkDelta(BaseModel):
+    role: Optional[Literal["assistant"]] = None
+    content: Optional[str] = None
+
+
+class ChatCompletionChunkChoice(BaseModel):
+    index: int = 0
+    delta: ChatCompletionChunkDelta
+    finish_reason: Optional[str] = None
+    logprobs: Optional[Any] = None
+
+
+class ChatCompletionChunk(BaseModel):
+    id: str
+    object: Literal["chat.completion.chunk"] = "chat.completion.chunk"
+    created: int
+    model: str
+    choices: List[ChatCompletionChunkChoice]
+    system_fingerprint: Optional[str] = None
+    # OpenAI optionally includes usage on the final chunk when stream_options.include_usage
+    usage: Optional[CompletionUsage] = None
+
+
 class ModelObject(BaseModel):
     id: str
     object: Literal["model"] = "model"
