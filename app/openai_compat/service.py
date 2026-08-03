@@ -86,6 +86,10 @@ class CompletionsService:
                 },
             )
 
+        from app.openai_compat.prompt_guard import assert_safe_completion_messages
+
+        assert_safe_completion_messages(body.messages)
+
         cacheable = self._response_cacheable(body)
         fp: Optional[str] = None
         if cacheable:
@@ -252,6 +256,10 @@ class CompletionsService:
                     }
                 },
             )
+
+        from app.openai_compat.prompt_guard import assert_safe_completion_messages
+
+        assert_safe_completion_messages(body.messages)
 
         started = time.perf_counter()
         completion_id = f"chatcmpl_{uuid.uuid4().hex}"

@@ -62,6 +62,6 @@ Lab tip: set to `2` and stop Ollama to observe **504** `upstream_timeout`.
 
 ## Tomorrow (Day 5)
 
-Security + interview (prompt injection / model exfil) — locked until approved.
+Security + interview (prompt injection / model exfil) — see [day-05.md](./day-05.md).
 
-**Stop here — await approval before Day 5.**
+**Day 4 complete.**

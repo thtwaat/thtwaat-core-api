@@ -145,6 +145,10 @@ class Settings(BaseSettings):
     INFERENCE_PROVIDER_PRIORITY: Optional[str] = None
     # Sem03 Week 1 Day 4 — upstream timeout (Ollama chat HTTP)
     INFERENCE_OLLAMA_TIMEOUT_SECONDS: float = 120.0
+    # Sem03 Week 1 Day 5 — prompt injection / model-exfil edge guard
+    INFERENCE_PROMPT_GUARD_ENABLED: bool = True
+    # block = 400 OpenAI-shaped error; log = allow but warn
+    INFERENCE_PROMPT_GUARD_MODE: str = "block"
     # Week 2 Day 2 — Redis caching for openai_compat
     OPENAI_COMPAT_CACHE_ENABLED: bool = True
     OPENAI_COMPAT_MODEL_CACHE_TTL_SECONDS: int = 300
