@@ -10,7 +10,9 @@ import type {
   Plan,
   PublishResult,
   Subscription,
-  UsageCurrent
+  UsageCurrent,
+  Webhook,
+  WebhookDeliveryList
 } from "@/lib/types";
 
 export const authApi = {
@@ -163,6 +165,45 @@ export const apiKeysApi = {
       }
     }),
   remove: (id: string) => api.v1(`/api-keys/${id}`, { method: "DELETE" })
+};
+
+export const webhooksApi = {
+  list: () => api.v1<Webhook[]>("/webhooks"),
+  create: (body: { url: string; event_types: string[] }) =>
+    api.v1<Webhook>("/webhooks", { method: "POST", body }),
+  update: (id: string, body: { url?: string; event_types?: string[]; is_active?: boolean }) =>
+    api.v1<Webhook>(`/webhooks/${id}`, { method: "PATCH", body }),
+  enable: (id: string) => api.v1<Webhook>(`/webhooks/${id}/enable`, { method: "POST" }),
+  disable: (id: string) => api.v1<Webhook>(`/webhooks/${id}/disable`, { method: "POST" }),
+  remove: (id: string) => api.v1(`/webhooks/${id}`, { method: "DELETE" }),
+  test: (id: string) =>
+    api.v1<{ status: string; message: string; delivery_id?: string }>(`/webhooks/${id}/test`, {
+      method: "POST"
+    }),
+  secret: (id: string) => api.v1<{ id: string; secret: string }>(`/webhooks/${id}/secret`),
+  deliveries: (params?: {
+    webhook_id?: string;
+    status?: string;
+    event?: string;
+    q?: string;
+    limit?: number;
+    offset?: number;
+  }) => {
+    const qs = new URLSearchParams();
+    if (params?.webhook_id) qs.set("webhook_id", params.webhook_id);
+    if (params?.status) qs.set("status", params.status);
+    if (params?.event) qs.set("event", params.event);
+    if (params?.q) qs.set("q", params.q);
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    if (params?.offset != null) qs.set("offset", String(params.offset));
+    const suffix = qs.toString() ? `?${qs}` : "";
+    return api.v1<WebhookDeliveryList>(`/webhooks/deliveries${suffix}`);
+  },
+  retryDelivery: (deliveryId: string) =>
+    api.v1<{ status: string; message: string; delivery_id: string }>(
+      `/webhooks/deliveries/${encodeURIComponent(deliveryId)}/retry`,
+      { method: "POST" }
+    )
 };
 
 export type TemplateCategory = {

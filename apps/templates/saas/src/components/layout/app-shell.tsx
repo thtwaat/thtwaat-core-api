@@ -16,11 +16,12 @@ import {
   Shield,
   Sparkles,
   Store,
+  Webhook,
   X
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { canAccessAdmin } from "@/lib/permissions";
+import { canAccessAdmin, canManageWebhooks } from "@/lib/permissions";
 import { site } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const baseNav = [
   { href: "/app/knowledge", label: "Knowledge", icon: Library },
   { href: "/app/templates", label: "Marketplace", icon: Store },
   { href: "/app/domains", label: "Domains", icon: Globe2 },
+  { href: "/app/webhooks", label: "Webhooks", icon: Webhook, requireWebhooks: true as const },
   { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/app/billing", label: "Billing", icon: CreditCard },
   { href: "/app/publish", label: "Publish", icon: Rocket },
@@ -45,9 +47,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
 
   const nav = useMemo(() => {
-    if (!canAccessAdmin(user?.role)) return baseNav;
-    const insertAt = baseNav.findIndex((i) => i.href === "/app/settings");
-    const withAdmin = [...baseNav];
+    const filtered = baseNav.filter((item) => {
+      if ("requireWebhooks" in item && item.requireWebhooks) {
+        return canManageWebhooks(user?.role);
+      }
+      return true;
+    });
+    if (!canAccessAdmin(user?.role)) return filtered;
+    const insertAt = filtered.findIndex((i) => i.href === "/app/settings");
+    const withAdmin = [...filtered];
     withAdmin.splice(insertAt < 0 ? withAdmin.length : insertAt, 0, {
       href: "/app/admin",
       label: "Admin",

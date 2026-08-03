@@ -141,3 +141,34 @@ export type Company = {
   brand_color?: string;
   logo_url?: string;
 };
+
+export type Webhook = {
+  id: string;
+  url: string;
+  event_types: string[];
+  is_active: boolean;
+  created_at: string;
+  secret?: string | null;
+};
+
+export type WebhookDelivery = {
+  id: string;
+  delivery_id: string;
+  webhook_id?: string | null;
+  event: string;
+  url: string;
+  status: string;
+  attempts: number;
+  last_error?: string | null;
+  next_attempt_at?: string | null;
+  delivered_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export type WebhookDeliveryList = {
+  total: number;
+  limit: number;
+  offset: number;
+  results: WebhookDelivery[];
+};

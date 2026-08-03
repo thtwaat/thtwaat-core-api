@@ -18,3 +18,8 @@ export function canPlatformAdmin(role?: string | null): boolean {
 export function canAccessAdmin(role?: string | null): boolean {
   return canManageTemplates(role) || canPlatformAdmin(role);
 }
+
+/** Webhook CRUD — aligned with developer/admin roles that manage integrations */
+export function canManageWebhooks(role?: string | null): boolean {
+  return canManageTemplates(role);
+}

@@ -57,3 +57,8 @@ export const companySchema = z.object({
   brand_color: z.string().optional(),
   logo_url: z.string().url().optional().or(z.literal(""))
 });
+
+export const webhookSchema = z.object({
+  url: z.string().url("Enter a valid HTTPS URL"),
+  event_types: z.array(z.string()).min(1, "Select at least one event")
+});
