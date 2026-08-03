@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional, Union
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, Header, Query, Response
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -121,7 +121,7 @@ def retrieve_model(
             },
         },
         400: {
-            "description": "Invalid option (e.g. Idempotency-Key with stream=true)",
+            "description": "Invalid Idempotency-Key or unsupported option",
         },
         409: {
             "description": "Idempotency conflict (key reuse or in-progress)",
@@ -154,7 +154,7 @@ def retrieve_model(
     },
     openapi_extra={
         "security": [{"AgentAPIKey": []}],
-        "x-thtwaat-course": "semester-02/week-03/day-03",
+        "x-thtwaat-course": "semester-02/week-03/day-04",
         "parameters": [
             {
                 "name": "Idempotency-Key",
@@ -162,9 +162,10 @@ def retrieve_model(
                 "required": False,
                 "schema": {"type": "string", "maxLength": 256},
                 "description": (
-                    "Optional (non-stream only). Retries with the same key + body replay "
-                    "the stored response. Same key + different body → 409. "
-                    "Not supported with stream=true (Day 4)."
+                    "Optional for JSON and SSE. Same key + body replays the stored "
+                    "completion (SSE re-streams from stored text). Same key + different "
+                    "body (including stream flag) → 409. In-progress → 409. Replays skip "
+                    "rate-limit consumption."
                 ),
             }
         ],
@@ -180,43 +181,13 @@ async def create_chat_completion(
     """
     OpenAI SDK compatible completions.
 
-    JSON when stream=false; SSE (`text/event-stream`) when stream=true (Week 3 Day 3).
+    JSON when stream=false; SSE when stream=true.
+    Week 3 Day 4: Idempotency-Key works for both; stream replays re-emit SSE.
     """
-    if body.stream and idempotency_key is not None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={
-                "error": {
-                    "message": (
-                        "Idempotency-Key is not supported with stream=true yet. "
-                        "Omit the header or set stream=false."
-                    ),
-                    "type": "invalid_request_error",
-                    "code": "idempotency_stream_unsupported",
-                }
-            },
-        )
-
-    limiter = OpenAICompatRateLimiter(db)
-    decision = limiter.enforce(principal.company_id, scope="completions")
-
-    if body.stream:
-        headers = {
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-            "X-Accel-Buffering": "no",
-            "X-Cache": "BYPASS",
-        }
-        headers.update(OpenAICompatRateLimiter.header_map(decision))
-        return StreamingResponse(
-            CompletionsService(db).stream_completion(principal, body),
-            media_type="text/event-stream",
-            headers=headers,
-        )
-
     store = IdempotencyStore()
     key: Optional[str] = None
     request_hash: Optional[str] = None
+    replay_record = None
 
     if idempotency_key is not None:
         key = validate_idempotency_key(idempotency_key)
@@ -241,12 +212,74 @@ async def create_chat_completion(
             request_hash=request_hash,
         )
         if action == "replay" and record is not None and record.response is not None:
-            response.headers["Idempotent-Replayed"] = "true"
-            response.headers["X-Cache"] = "BYPASS"
-            limiter.apply_headers(response, decision)
-            return ChatCompletionResponse.model_validate(record.response)
+            replay_record = record
 
-    limiter.apply_headers(response, decision)
+    # Replays do not consume rate-limit budget (Week 2 Day 4 contract).
+    limiter = OpenAICompatRateLimiter(db)
+    decision = None
+    if replay_record is None:
+        decision = limiter.enforce(principal.company_id, scope="completions")
+
+    def _sse_headers(*, replayed: bool) -> dict:
+        headers = {
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+            "X-Cache": "BYPASS",
+            "Idempotent-Replayed": "true" if replayed else "false",
+        }
+        if decision is not None:
+            headers.update(OpenAICompatRateLimiter.header_map(decision))
+        return headers
+
+    if body.stream:
+        from app.openai_compat.streaming import (
+            aiter_sse_from_material,
+            material_from_stored_response,
+        )
+
+        if replay_record is not None:
+            material = material_from_stored_response(replay_record.response or {})
+            return StreamingResponse(
+                aiter_sse_from_material(material),
+                media_type="text/event-stream",
+                headers=_sse_headers(replayed=True),
+            )
+
+        svc = CompletionsService(db)
+
+        async def _stream_and_store():
+            try:
+                material = await svc.build_stream_material(principal, body)
+            except Exception:
+                if key is not None:
+                    store.abandon(company_id=principal.company_id, idempotency_key=key)
+                raise
+            if key is not None and request_hash is not None:
+                store.complete(
+                    company_id=principal.company_id,
+                    idempotency_key=key,
+                    request_hash=request_hash,
+                    response=material.response,
+                    http_status=200,
+                )
+            async for frame in aiter_sse_from_material(material):
+                yield frame
+
+        return StreamingResponse(
+            _stream_and_store(),
+            media_type="text/event-stream",
+            headers=_sse_headers(replayed=False),
+        )
+
+    # JSON path
+    if replay_record is not None:
+        response.headers["Idempotent-Replayed"] = "true"
+        response.headers["X-Cache"] = "BYPASS"
+        return ChatCompletionResponse.model_validate(replay_record.response)
+
+    if decision is not None:
+        limiter.apply_headers(response, decision)
 
     try:
         result, cache_status = await CompletionsService(db).create_completion(principal, body)

@@ -235,16 +235,16 @@ class CompletionsService:
 
         return response, cache_status
 
-    async def stream_completion(
+    async def build_stream_material(
         self,
         principal: CompletionsPrincipal,
         body: ChatCompletionRequest,
     ):
         """
-        Week 3 Day 3 — async generator of SSE `data:` frames.
-        Persists log + usage + webhooks after the full text is produced.
+        Week 3 Day 4 — prepare full completion before SSE.
+        Idempotency can store `material.response` before the first byte is sent.
         """
-        from app.openai_compat.streaming import aiter_sse_completion, stub_stream_pieces
+        from app.openai_compat.streaming import StreamMaterial, stub_stream_pieces
 
         if body.n is not None and body.n != 1:
             raise HTTPException(
@@ -365,14 +365,47 @@ class CompletionsService:
             provider=provider,
         )
 
-        async for frame in aiter_sse_completion(
+        created = int(time.time())
+        response = ChatCompletionResponse(
+            id=completion_id,
+            created=created,
+            model=body.model,
+            choices=[
+                ChatCompletionChoice(
+                    index=0,
+                    message=ChatCompletionMessage(role="assistant", content=content),
+                    finish_reason=finish_reason,
+                )
+            ],
+            usage=CompletionUsage(
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                total_tokens=prompt_tokens + completion_tokens,
+            ),
+            system_fingerprint=f"thtwaat-{provider}",
+        )
+        return StreamMaterial(
             completion_id=completion_id,
             model=body.model,
+            content=content,
             pieces=pieces,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             provider=provider,
-        ):
+            finish_reason=finish_reason,
+            response=response.model_dump(),
+        )
+
+    async def stream_completion(
+        self,
+        principal: CompletionsPrincipal,
+        body: ChatCompletionRequest,
+    ):
+        """Yield SSE frames after material is prepared (no idempotency here)."""
+        from app.openai_compat.streaming import aiter_sse_from_material
+
+        material = await self.build_stream_material(principal, body)
+        async for frame in aiter_sse_from_material(material):
             yield frame
 
     def _notify_completion(

@@ -1,9 +1,10 @@
-"""OpenAI-compatible SSE helpers for chat.completion.chunk (Week 3 Day 3)."""
+"""OpenAI-compatible SSE helpers for chat.completion.chunk (Week 3 Day 3–4)."""
 from __future__ import annotations
 
 import json
 import time
-from typing import AsyncIterator, Iterator, List, Optional
+from dataclasses import dataclass
+from typing import Any, AsyncIterator, Dict, Iterator, List, Optional
 
 from app.openai_compat.schemas import (
     ChatCompletionChunk,
@@ -13,6 +14,21 @@ from app.openai_compat.schemas import (
     CompletionUsage,
 )
 from app.openai_compat.stub import stub_complete
+
+
+@dataclass
+class StreamMaterial:
+    """Fully prepared stream payload — safe to idempotency-store before SSE starts."""
+
+    completion_id: str
+    model: str
+    content: str
+    pieces: List[str]
+    prompt_tokens: int
+    completion_tokens: int
+    provider: str
+    finish_reason: str
+    response: Dict[str, Any]
 
 
 def format_sse(data: dict | str) -> str:
@@ -71,6 +87,35 @@ def stub_stream_pieces(messages: List[ChatMessage], *, model: str) -> tuple[str,
     return content, prompt_tokens, completion_tokens, pieces
 
 
+def material_from_stored_response(response: Dict[str, Any]) -> StreamMaterial:
+    """Rebuild StreamMaterial from an idempotent stored chat.completion JSON."""
+    choices = response.get("choices") or []
+    content = ""
+    finish_reason = "stop"
+    if choices:
+        msg = (choices[0] or {}).get("message") or {}
+        content = msg.get("content") or ""
+        finish_reason = choices[0].get("finish_reason") or "stop"
+    usage = response.get("usage") or {}
+    prompt_tokens = int(usage.get("prompt_tokens") or 0)
+    completion_tokens = int(usage.get("completion_tokens") or 0)
+    provider = "replay"
+    fp = response.get("system_fingerprint") or ""
+    if isinstance(fp, str) and fp.startswith("thtwaat-"):
+        provider = fp.replace("thtwaat-", "", 1) or "replay"
+    return StreamMaterial(
+        completion_id=str(response.get("id") or "chatcmpl_replay"),
+        model=str(response.get("model") or "unknown"),
+        content=content,
+        pieces=list(iter_text_pieces(content)),
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        provider=provider,
+        finish_reason=finish_reason,
+        response=response,
+    )
+
+
 async def aiter_sse_completion(
     *,
     completion_id: str,
@@ -85,7 +130,6 @@ async def aiter_sse_completion(
     created = int(time.time())
     fingerprint = f"thtwaat-{provider}"
 
-    # First chunk: role
     yield format_sse(
         chunk_payload(
             completion_id=completion_id,
@@ -128,3 +172,15 @@ async def aiter_sse_completion(
         )
     )
     yield format_sse("[DONE]")
+
+
+async def aiter_sse_from_material(material: StreamMaterial) -> AsyncIterator[str]:
+    async for frame in aiter_sse_completion(
+        completion_id=material.completion_id,
+        model=material.model,
+        pieces=material.pieces,
+        prompt_tokens=material.prompt_tokens,
+        completion_tokens=material.completion_tokens,
+        provider=material.provider,
+    ):
+        yield frame
