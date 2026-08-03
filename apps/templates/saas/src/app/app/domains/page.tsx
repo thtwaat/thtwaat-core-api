@@ -53,7 +53,7 @@ export default function DomainsPage() {
 
   const ssl = useMutation({
     mutationFn: (id: string) => domainsApi.sslRequest(id),
-    onSuccess: (data: { message?: string; ssl_status?: string }) => {
+    onSuccess: (data) => {
       toast.success(data?.message || "SSL certificate issued");
       qc.invalidateQueries({ queryKey: ["domains"] });
     },

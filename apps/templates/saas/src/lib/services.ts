@@ -73,7 +73,11 @@ export const domainsApi = {
   create: (body: Record<string, unknown>) => api.v1<Domain>("/domains", { method: "POST", body }),
   verify: (id: string) => api.v1(`/domains/${id}/verify`, { method: "POST" }),
   retry: (id: string) => api.v1(`/domains/${id}/retry`, { method: "POST" }),
-  sslRequest: (id: string) => api.v1(`/domains/${id}/ssl/request`, { method: "POST" }),
+  sslRequest: (id: string) =>
+    api.v1<{ message?: string; ssl_status?: string; status?: string; hostname?: string }>(
+      `/domains/${id}/ssl/request`,
+      { method: "POST" }
+    ),
   sslStatus: (id: string) => api.v1(`/domains/${id}/ssl/status`),
   remove: (id: string) => api.v1(`/domains/${id}`, { method: "DELETE" })
 };
