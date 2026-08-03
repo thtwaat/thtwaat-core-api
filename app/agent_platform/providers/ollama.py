@@ -1,6 +1,10 @@
 from app.agent_platform.providers.base import LLMProvider
 from app.agent_platform.schemas import UnifiedChatRequest, UnifiedChatResponse
 from app.agent_platform.registries.provider_registry import ProviderRegistry
+from app.openai_compat.inference_adapter import (
+    build_ollama_chat_payload,
+    extract_ollama_chat_fields,
+)
 
 import httpx
 
@@ -19,14 +23,12 @@ class OllamaProvider(LLMProvider):
             or "http://host.docker.internal:11434"
         ).rstrip("/")
 
-        payload = {
-            "model": model_name,
-            "messages": request.messages,
-            "stream": False,
-            "options": {
-                "temperature": request.temperature or 0.7,
-            }
-        }
+        payload = build_ollama_chat_payload(
+            model=model_name,
+            messages=request.messages,
+            temperature=request.temperature or 0.7,
+            stream=False,
+        )
         
         input_tokens = 0
         output_tokens = 0
@@ -38,12 +40,9 @@ class OllamaProvider(LLMProvider):
                 response = await client.post(f"{ollama_url}/api/chat", json=payload)
                 response.raise_for_status()
                 data = response.json()
-                
-                content = data.get("message", {}).get("content", "")
-                input_tokens = data.get("prompt_eval_count", 0)
-                output_tokens = data.get("eval_count", 0)
-                if data.get("done_reason"):
-                    finish_reason = data["done_reason"]
+                content, input_tokens, output_tokens, finish_reason = extract_ollama_chat_fields(
+                    data
+                )
                     
         except Exception as e:
             content = f"Ollama Provider Error: {type(e).__name__}: {e}"

@@ -87,7 +87,20 @@ def check_ai_providers() -> Dict[str, Any]:
         "ollama": bool(settings.OLLAMA_URL),
     }
     configured = sum(1 for v in providers.values() if v)
-    return {"ok": configured > 0, "configured": configured, "providers": providers}
+    out: Dict[str, Any] = {
+        "ok": configured > 0,
+        "configured": configured,
+        "providers": providers,
+    }
+    # Sem03 Day 1 — soft live probe (does not flip overall ai_providers.ok alone)
+    if settings.OLLAMA_URL:
+        try:
+            from app.openai_compat.inference_adapter import probe_ollama
+
+            out["ollama_live"] = probe_ollama(settings.OLLAMA_URL)
+        except Exception as exc:  # noqa: BLE001
+            out["ollama_live"] = {"ok": False, "error": str(exc)}
+    return out
 
 
 async def full_health(db: Session) -> Dict[str, Any]:

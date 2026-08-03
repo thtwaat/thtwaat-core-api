@@ -46,10 +46,10 @@
 
 ## Current position
 
-**→ Semester 02 — API Design & Data Engineering for AI Platforms** (4-week intensive)  
-**Current:** Week 3 Day 1 — Async edge (`webhook.dispatch`)
+**→ Semester 03 — Inference Engineering** (4-week intensive)  
+**Current:** Week 1 Day 1 — Ollama → OpenAI adapter  
 
-See: [`semester-02/week-03/day-01.md`](./semester-02/week-03/day-01.md)
+See: [`semester-03/week-01/day-01.md`](./semester-03/week-01/day-01.md)
 
-Previous: [`semester-01/`](./semester-01/) Foundations (available for review)
+Previous: [`semester-02/`](./semester-02/) API gateway (`sem02-v1.0.0`)
 
