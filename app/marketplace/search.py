@@ -9,7 +9,8 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.marketplace.models import MarketplaceTemplate
 
-# DB-owned GENERATED column (migration e1f2a3b4c5d6) — not mapped on the ORM model
+# DB-owned search_vector column (migration e1f2a3b4c5d6, trigger-maintained)
+# — not mapped on the ORM model
 _SEARCH_VECTOR = literal_column("marketplace_templates.search_vector")
 
 
