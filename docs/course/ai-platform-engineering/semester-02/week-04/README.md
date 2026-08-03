@@ -9,7 +9,7 @@
 |-----|--------|--------|
 | 1 | Architecture + durable webhook outbox contract | Done |
 | 2 | Worker claim / ACK / redrive from outbox | Done |
-| 3 | Concurrency smoke + gateway k6 scripts | Locked |
+| 3 | Concurrency smoke + gateway k6 scripts | Done |
 | 4 | Debugging: Redis fail modes + partner SSE notes | Locked |
 | 5 | Threat model + interview drill | Locked |
 | 6 | Milestone harden (checklist + gate tests) | Locked |

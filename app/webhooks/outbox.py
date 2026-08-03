@@ -30,8 +30,10 @@ JOB_TYPE_WEBHOOK_DISPATCH = "webhook.dispatch"
 
 
 def _ensure_orm_models() -> None:
-    """Webhook.company relationship needs Company registered (worker has no main.py)."""
-    import app.companies.model  # noqa: F401
+    """Worker/scheduler have no main.py — register relationship targets."""
+    from app.database.orm_bootstrap import register_orm_models
+
+    register_orm_models()
 
 
 def _utcnow() -> datetime:
