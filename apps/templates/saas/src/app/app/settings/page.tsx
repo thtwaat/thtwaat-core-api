@@ -76,7 +76,7 @@ export default function SettingsPage() {
   });
 
   const createKey = useMutation({
-    mutationFn: () => apiKeysApi.create({ name: "Dashboard key" }),
+    mutationFn: () => apiKeysApi.create({ name: "Dashboard key", app_label: "saas" }),
     onSuccess: () => {
       toast.success("API key created");
       qc.invalidateQueries({ queryKey: ["api-keys"] });
@@ -92,6 +92,9 @@ export default function SettingsPage() {
     },
     onError: (e: Error) => toast.error(e.message)
   });
+
+  const memberList = Array.isArray(members.data) ? members.data : [];
+  const keyList = Array.isArray(keys.data) ? keys.data : [];
 
   return (
     <div className="space-y-6">
@@ -159,18 +162,18 @@ export default function SettingsPage() {
             action={<Button size="sm" onClick={() => createKey.mutate()}>Create</Button>}
           />
           <div className="space-y-2">
-            {(keys.data || []).map((key) => (
+            {keyList.map((key) => (
               <div key={String(key.id)} className="flex items-center justify-between rounded-xl border border-line px-3 py-2 text-sm">
                 <div>
-                  <p className="font-medium">{String(key.name || key.prefix || key.id)}</p>
-                  <p className="text-xs text-muted">{key.is_active === false ? "disabled" : "active"}</p>
+                  <p className="font-medium">{String(key.name || key.masked_key || key.id)}</p>
+                  <p className="text-xs text-muted">{key.revoked_at ? "revoked" : "active"}</p>
                 </div>
                 <Button size="sm" variant="danger" onClick={() => deleteKey.mutate(String(key.id))}>
                   Delete
                 </Button>
               </div>
             ))}
-            {!keys.data?.length && <p className="text-sm text-muted">No platform API keys.</p>}
+            {!keyList.length && <p className="text-sm text-muted">No platform API keys.</p>}
           </div>
         </Card>
       </div>
@@ -178,7 +181,7 @@ export default function SettingsPage() {
       <Card>
         <CardHeader title="Members" />
         <div className="space-y-2">
-          {(members.data || []).map((member) => (
+          {memberList.map((member) => (
             <div key={String(member.id)} className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5 text-sm">
               <div>
                 <p className="font-medium">
@@ -189,6 +192,9 @@ export default function SettingsPage() {
               <Badge>{String(member.role || "member")}</Badge>
             </div>
           ))}
+          {!memberList.length && !members.isLoading && (
+            <p className="text-sm text-muted">No members found.</p>
+          )}
         </div>
       </Card>
     </div>

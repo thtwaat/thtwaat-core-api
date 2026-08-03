@@ -135,13 +135,29 @@ export const companiesApi = {
 export const usersApi = {
   create: (body: Record<string, unknown>) =>
     api.v1("/users/", { method: "POST", auth: false, body }),
-  list: () => api.v1<Array<Record<string, unknown>>>("/users"),
+  list: async () => {
+    const page = await api.v1<{
+      total: number;
+      page: number;
+      page_size: number;
+      results: Array<Record<string, unknown>>;
+    }>("/users/");
+    return page.results ?? [];
+  },
   update: (id: string, body: Record<string, unknown>) => api.v1(`/users/${id}`, { method: "PATCH", body })
 };
 
 export const apiKeysApi = {
   list: () => api.v1<Array<Record<string, unknown>>>("/api-keys"),
-  create: (body: { name?: string }) => api.v1("/api-keys", { method: "POST", body }),
+  create: (body: { name?: string; app_label?: string; scopes?: string[] }) =>
+    api.v1("/api-keys", {
+      method: "POST",
+      body: {
+        name: body.name || "Dashboard key",
+        app_label: body.app_label || "saas",
+        scopes: body.scopes || []
+      }
+    }),
   remove: (id: string) => api.v1(`/api-keys/${id}`, { method: "DELETE" })
 };
 
