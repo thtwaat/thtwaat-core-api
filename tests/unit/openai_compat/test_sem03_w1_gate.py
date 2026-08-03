@@ -161,12 +161,15 @@ def test_week1_docs_and_smoke_exist():
         "README.md",
         "SHIP_CHECKLIST.md",
         "INFERENCE_THREAT_MODEL.md",
+        "REVIEW.md",
+        "RETRO.md",
         "day-01.md",
         "day-02.md",
         "day-03.md",
         "day-04.md",
         "day-05.md",
         "day-06.md",
+        "day-07.md",
     ):
         assert (WEEK1 / name).is_file(), name
     assert (ROOT / "scripts" / "smoke_sem03_w1_inference.sh").is_file()

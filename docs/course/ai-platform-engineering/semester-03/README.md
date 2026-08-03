@@ -44,5 +44,5 @@ Daily cadence (same as Sem 02): Mon architecture → … → Sun review/tag.
 
 ## Week index
 
-- [Week 1](./week-01/README.md) — **you are here** → start [Day 1](./week-01/day-01.md)
+- [Week 1](./week-01/README.md) — **complete** (`sem03-w1-ollama-openai`) → [REVIEW](./week-01/REVIEW.md)
 - Week 2–4 — locked until prior week review passes

@@ -47,9 +47,10 @@
 ## Current position
 
 **→ Semester 03 — Inference Engineering** (4-week intensive)  
-**Current:** Week 1 Day 6 — Milestone build  
+**Current:** Week 1 **complete** — tag `sem03-w1-ollama-openai`  
+**Next:** Week 2 (catalog sync + true local streaming) — locked until approved  
 
-See: [`semester-03/week-01/day-06.md`](./semester-03/week-01/day-06.md)
+See: [`semester-03/week-01/REVIEW.md`](./semester-03/week-01/REVIEW.md) · [`RETRO.md`](./semester-03/week-01/RETRO.md)
 
 Previous: [`semester-02/`](./semester-02/) API gateway (`sem02-v1.0.0`)
 

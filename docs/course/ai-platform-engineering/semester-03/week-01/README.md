@@ -12,13 +12,16 @@
 | 4 | Debugging: timeouts, missing models, 502 mapping | Done |
 | 5 | Security + interview (prompt injection / model exfil) | Done |
 | 6 | Milestone build | Done |
-| 7 | Review + tag `sem03-w1-ollama-openai` | Locked |
+| 7 | Review + tag `sem03-w1-ollama-openai` | Done |
 
 ## Week goals
 
 1. One pure adapter module: Ollama `/api/chat` JSON ↔ OpenAI completion shape.
 2. Soft live probe for Ollama on `/health` (never blocks `/ready`).
 3. Clear ADR: Sem02 control plane stays; Sem03 owns the inference adapter.
+4. Registry + InferenceRouter + failure taxonomy + prompt guard behind `/v1`.
+
+**Milestone:** `sem03-w1-ollama-openai` — see [REVIEW.md](./REVIEW.md) / [RETRO.md](./RETRO.md)
 
 ## Non-goals this week
 

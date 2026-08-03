@@ -72,8 +72,6 @@ Checks `/live`, `/ready`, `/health`, models auth, prompt-guard 400, benign stub 
 
 ## Tomorrow (Day 7)
 
-REVIEW.md + RETRO.md + annotated tag:
+REVIEW + RETRO + tag `sem03-w1-ollama-openai` — see [day-07.md](./day-07.md).
 
-- `sem03-w1-ollama-openai`
-
-**Stop here — await approval before Day 7.**
+**Day 6 complete.**
