@@ -1,4 +1,4 @@
-"""Cached model catalog service for GET /v1/models (Week 2 Day 2)."""
+"""Cached model catalog service for GET /v1/models (Week 2 Day 2+6)."""
 from __future__ import annotations
 
 from typing import Literal, Tuple
@@ -19,7 +19,23 @@ class ModelsService:
         self.db = db
         self.cache = cache or OpenAICompatCache()
 
-    def list_models(self, company_id: UUID) -> Tuple[ModelsListResponse, CacheStatus]:
+    def list_models(
+        self,
+        company_id: UUID,
+        *,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> Tuple[ModelsListResponse, CacheStatus]:
+        limit = max(1, min(int(limit), 100))
+        offset = max(0, int(offset))
+
+        full, cache_status = self._load_full_list(company_id)
+        sliced = full.model_copy(
+            update={"data": list(full.data)[offset : offset + limit]}
+        )
+        return sliced, cache_status
+
+    def _load_full_list(self, company_id: UUID) -> Tuple[ModelsListResponse, CacheStatus]:
         if not self.cache.enabled:
             payload = build_models_payload(self.db, company_id)
             return ModelsListResponse.model_validate(payload), "BYPASS"
@@ -53,7 +69,6 @@ class ModelsService:
         if cached is not None:
             return ModelObject.model_validate(cached), "HIT"
 
-        # Prefer list cache to avoid rebuilding twice
         list_payload = self.cache.get_models_list(company_id)
         if list_payload is None:
             list_payload = build_models_payload(self.db, company_id)

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Header, Response
+from fastapi import APIRouter, Depends, Header, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
@@ -60,12 +60,16 @@ def list_models(
     response: Response,
     principal: CompletionsPrincipal = Depends(resolve_completions_principal),
     db: Session = Depends(get_db),
+    limit: int = Query(100, ge=1, le=100, description="Page size (1–100)"),
+    offset: int = Query(0, ge=0, description="Items to skip"),
 ) -> ModelsListResponse:
     limiter = OpenAICompatRateLimiter(db)
     decision = limiter.enforce(principal.company_id, scope="models")
     limiter.apply_headers(response, decision)
 
-    payload, cache_status = ModelsService(db).list_models(principal.company_id)
+    payload, cache_status = ModelsService(db).list_models(
+        principal.company_id, limit=limit, offset=offset
+    )
     response.headers["X-Cache"] = cache_status
     return payload
 

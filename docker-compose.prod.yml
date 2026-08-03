@@ -11,9 +11,11 @@
 name: thtwaat
 
 networks:
+  # Shared host network (create once if missing):
+  #   docker network create thtwaat_net
   thtwaat_net:
     name: thtwaat_net
-    driver: bridge
+    external: true
 
 services:
   nginx:
