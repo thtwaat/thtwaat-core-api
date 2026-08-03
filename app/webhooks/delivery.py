@@ -156,6 +156,13 @@ def deliver_webhook(
     POST signed JSON to the customer URL.
     Returns (status_code, body_snippet). Raises WebhookDeliveryError on failure.
     """
+    from app.webhooks.url_safety import UnsafeWebhookUrlError, assert_safe_webhook_url
+
+    try:
+        url = assert_safe_webhook_url(url)
+    except UnsafeWebhookUrlError as exc:
+        raise WebhookDeliveryError(str(exc), retryable=False) from exc
+
     # Ensure delivery id for customer-side idempotency
     if "delivery_id" not in payload:
         payload = {**payload, "delivery_id": new_delivery_id()}

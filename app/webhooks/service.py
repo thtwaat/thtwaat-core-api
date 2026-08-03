@@ -16,10 +16,17 @@ class WebhookService:
         return f"whsec_{secrets.token_hex(32)}"
 
     def create_webhook(self, company_id: str, data: WebhookCreate) -> dict:
+        from app.webhooks.url_safety import UnsafeWebhookUrlError, assert_safe_webhook_url
+
+        try:
+            safe_url = assert_safe_webhook_url(data.url)
+        except UnsafeWebhookUrlError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
         secret = self._generate_secret()
         db_obj = self.repo.create({
             "company_id": company_id,
-            "url": data.url,
+            "url": safe_url,
             "event_types": data.event_types,
             "secret": secret
         })

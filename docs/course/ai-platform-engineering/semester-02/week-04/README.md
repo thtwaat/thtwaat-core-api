@@ -11,7 +11,7 @@
 | 2 | Worker claim / ACK / redrive from outbox | Done |
 | 3 | Concurrency smoke + gateway k6 scripts | Done |
 | 4 | Debugging: Redis fail modes + partner SSE notes | Done |
-| 5 | Threat model + interview drill | Locked |
+| 5 | Threat model + interview drill | Done |
 | 6 | Milestone harden (checklist + gate tests) | Locked |
 | 7 | Review + tags `sem02-w4-gateway-ship` / `sem02-v1.0.0` | Locked |
 

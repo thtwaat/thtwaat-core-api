@@ -37,7 +37,12 @@ def test_backoff_grows_and_caps():
     assert backoff_seconds(20, base=2.0, cap=300.0) == 300.0
 
 
-def test_deliver_webhook_success():
+def test_deliver_webhook_success(monkeypatch):
+    monkeypatch.setattr(
+        "app.webhooks.url_safety.settings.WEBHOOK_URL_RESOLVE_DNS",
+        False,
+        raising=False,
+    )
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.text = "ok"
@@ -55,7 +60,12 @@ def test_deliver_webhook_success():
     assert "X-THTWAAT-Timestamp" in kwargs["headers"]
 
 
-def test_deliver_webhook_5xx_retryable():
+def test_deliver_webhook_5xx_retryable(monkeypatch):
+    monkeypatch.setattr(
+        "app.webhooks.url_safety.settings.WEBHOOK_URL_RESOLVE_DNS",
+        False,
+        raising=False,
+    )
     mock_resp = MagicMock()
     mock_resp.status_code = 503
     mock_resp.text = "unavailable"
@@ -66,7 +76,12 @@ def test_deliver_webhook_5xx_retryable():
     assert exc.value.status_code == 503
 
 
-def test_deliver_webhook_4xx_not_retryable():
+def test_deliver_webhook_4xx_not_retryable(monkeypatch):
+    monkeypatch.setattr(
+        "app.webhooks.url_safety.settings.WEBHOOK_URL_RESOLVE_DNS",
+        False,
+        raising=False,
+    )
     mock_resp = MagicMock()
     mock_resp.status_code = 400
     mock_resp.text = "bad"

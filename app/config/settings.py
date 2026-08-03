@@ -155,6 +155,10 @@ class Settings(BaseSettings):
     # Week 4 Day 2 — redrive stuck pending/queued/failed rows
     WEBHOOK_OUTBOX_STALE_SECONDS: int = 120
     WEBHOOK_OUTBOX_REDRIVE_BATCH: int = 50
+    # Week 4 Day 5 — block SSRF-ish webhook targets (localhost / private / link-local)
+    WEBHOOK_URL_SSRF_GUARD_ENABLED: bool = True
+    WEBHOOK_ALLOW_HTTP_URLS: bool = False
+    WEBHOOK_URL_RESOLVE_DNS: bool = True
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.
