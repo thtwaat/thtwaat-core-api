@@ -148,6 +148,8 @@ class Settings(BaseSettings):
     WEBHOOK_MAX_ATTEMPTS: int = 5
     WEBHOOK_BACKOFF_BASE_SECONDS: float = 2.0
     WEBHOOK_BACKOFF_CAP_SECONDS: float = 300.0
+    # Week 3 Day 5 — reject receiver timestamps older/newer than this window
+    WEBHOOK_SIGNATURE_TOLERANCE_SECONDS: int = 300
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.

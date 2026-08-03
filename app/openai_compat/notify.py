@@ -43,6 +43,7 @@ def enqueue_webhook_dispatch(
         pass
     try:
         from app.monitoring.queue import enqueue
+        from app.webhooks.delivery import new_delivery_id
 
         return enqueue(
             {
@@ -53,6 +54,8 @@ def enqueue_webhook_dispatch(
                 "secret": secret,
                 "event": event,
                 "data": data,
+                # Stable across retries so receivers can dedupe (Week 3 Day 5).
+                "delivery_id": new_delivery_id(),
             }
         )
     except Exception as exc:  # noqa: BLE001 — soft-fail

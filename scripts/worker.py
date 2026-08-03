@@ -102,7 +102,7 @@ def process_job(payload: dict) -> None:
 
             reload_nginx()
         elif job_type == "webhook.dispatch":
-            from app.webhooks.delivery import deliver_webhook
+            from app.webhooks.delivery import deliver_webhook, new_delivery_id
 
             url = payload.get("url")
             secret = payload.get("secret") or ""
@@ -114,12 +114,14 @@ def process_job(payload: dict) -> None:
                 "event": event,
                 "data": data,
                 "company_id": payload.get("company_id"),
+                "delivery_id": payload.get("delivery_id") or new_delivery_id(),
                 "attempt": int(payload.get("attempt") or 1),
             }
             status_code, _ = deliver_webhook(url, body, secret)
             logger.info(
-                "webhook_delivered event=%s status=%s attempt=%s",
+                "webhook_delivered event=%s delivery_id=%s status=%s attempt=%s",
                 event,
+                body.get("delivery_id"),
                 status_code,
                 payload.get("attempt") or 1,
             )

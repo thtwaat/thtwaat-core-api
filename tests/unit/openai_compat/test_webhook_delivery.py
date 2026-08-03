@@ -51,6 +51,8 @@ def test_deliver_webhook_success():
     assert body == "ok"
     kwargs = post.call_args.kwargs
     assert "X-THTWAAT-Signature" in kwargs["headers"]
+    assert kwargs["headers"]["X-THTWAAT-Signature"].startswith("v1=")
+    assert "X-THTWAAT-Timestamp" in kwargs["headers"]
 
 
 def test_deliver_webhook_5xx_retryable():
