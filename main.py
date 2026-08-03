@@ -180,6 +180,10 @@ app.include_router(conversation_router)
 from app.branding.public_router import router as branding_public_router
 app.include_router(branding_public_router)
 
+# OpenAI-compatible root /v1 (Semester 02 Week 2) — not under /api/v1
+from app.openai_compat.router import router as openai_compat_router
+app.include_router(openai_compat_router)
+
 from pathlib import Path
 from fastapi.responses import FileResponse, PlainTextResponse
 

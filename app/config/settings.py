@@ -126,6 +126,16 @@ class Settings(BaseSettings):
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
     OLLAMA_URL: Optional[str] = "http://localhost:11434"
+    # OpenAI-compatible /v1 surface: stub (CI) or gateway (live providers)
+    OPENAI_COMPAT_INFERENCE: str = "stub"
+    # Week 2 Day 2 — Redis caching for openai_compat
+    OPENAI_COMPAT_CACHE_ENABLED: bool = True
+    OPENAI_COMPAT_MODEL_CACHE_TTL_SECONDS: int = 300
+    OPENAI_COMPAT_RESPONSE_CACHE_TTL_SECONDS: int = 60
+    OPENAI_COMPAT_CACHE_RESPONSES: bool = True
+    # Week 2 Day 3 — Idempotency-Key for completions
+    OPENAI_COMPAT_IDEMPOTENCY_ENABLED: bool = True
+    OPENAI_COMPAT_IDEMPOTENCY_TTL_SECONDS: int = 86400
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.

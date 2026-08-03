@@ -16,6 +16,9 @@ _AGENT_API_KEY_PATHS = frozenset(
         ("POST", "/public/v1/chat"),
         ("POST", "/public/v1/chat/stream"),
         ("POST", "/public/v1/chat/legacy"),
+        ("POST", "/v1/chat/completions"),
+        ("GET", "/v1/models"),
+        ("GET", "/v1/models/{model_id}"),
     }
 )
 

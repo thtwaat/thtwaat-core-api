@@ -24,6 +24,7 @@ from app.auth.public_endpoints import (
 )
 from app.auth.service import AuthService
 from app.branding.public_router import router as branding_public_router
+from app.openai_compat.router import router as openai_compat_router
 from app.users.model import UserStatus
 
 
@@ -35,6 +36,7 @@ def _schema_app() -> FastAPI:
     app.include_router(knowledge_router)
     app.include_router(conversation_router)
     app.include_router(branding_public_router)
+    app.include_router(openai_compat_router)
 
     @app.get("/")
     def root():
