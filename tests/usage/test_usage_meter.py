@@ -89,6 +89,7 @@ def test_check_quota_raises_429_with_payload():
     assert detail["current_usage"] == 99
     assert detail["plan_limit"] == 100
     assert detail["upgrade_url"] == "/billing"
+    assert "limit reached" in detail["message"].lower()
     svc._emit_webhook.assert_called()
 
 

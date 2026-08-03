@@ -67,6 +67,43 @@ type RequestOptions = {
   formData?: FormData;
 };
 
+function formatApiErrorMessage(detail: unknown, status: number): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+
+  if (detail && typeof detail === "object") {
+    const root = detail as Record<string, unknown>;
+    const inner = (root.detail ?? root) as unknown;
+
+    if (typeof inner === "string" && inner.trim()) return inner;
+
+    if (Array.isArray(inner)) {
+      const parts = inner
+        .map((item) => {
+          if (!item || typeof item !== "object") return String(item);
+          const row = item as Record<string, unknown>;
+          return typeof row.msg === "string" ? row.msg : JSON.stringify(item);
+        })
+        .filter(Boolean);
+      if (parts.length) return parts.join("; ");
+    }
+
+    if (inner && typeof inner === "object") {
+      const row = inner as Record<string, unknown>;
+      if (typeof row.message === "string" && row.message.trim()) return row.message;
+      if (row.error === "quota_exceeded") {
+        const dim = String(row.dimension || "resource");
+        return (
+          `${dim.replace(/_/g, " ")} limit reached ` +
+          `(${row.current_usage ?? "?"}/${row.plan_limit ?? "?"}). Upgrade your plan.`
+        );
+      }
+      if (typeof row.detail === "string" && row.detail.trim()) return row.detail;
+    }
+  }
+
+  return `Request failed (${status})`;
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = "GET", body, auth = true, headers = {}, formData } = options;
   const finalHeaders: Record<string, string> = { ...headers };
@@ -101,11 +138,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     } catch {
       detail = await response.text();
     }
-    const message =
-      typeof detail === "object" && detail && "detail" in detail
-        ? String((detail as { detail: unknown }).detail)
-        : `Request failed (${response.status})`;
-    throw new ApiError(message, response.status, detail);
+    throw new ApiError(formatApiErrorMessage(detail, response.status), response.status, detail);
   }
 
   if (response.status === 204) return undefined as T;

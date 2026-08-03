@@ -49,7 +49,8 @@ DEFAULT_PLAN_LIMITS: Dict[str, Dict[str, int]] = {
         "max_messages": 100,
         "max_tokens": 50_000,
         "max_storage": 100 * 1024 * 1024,  # 100MB
-        "max_domains": 0,
+        # Allow one custom domain so Domains UI works on trial/free without upgrade.
+        "max_domains": 1,
         "max_team_members": 5,
         "max_api_keys": 1,
         "max_templates": 0,

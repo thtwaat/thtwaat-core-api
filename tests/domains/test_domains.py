@@ -49,7 +49,7 @@ def _auth(client, role: str = "admin"):
 
 
 def _enable_domains(db_session, company_id: str):
-    """Free plan max_domains=0 — bump to starter for tests."""
+    """Ensure meter allows domains (starter) for multi-domain test flows."""
     UsageService(db_session).apply_plan_limits(uuid.UUID(company_id), "starter", emit_upgraded=False)
 
 

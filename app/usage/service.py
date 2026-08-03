@@ -88,6 +88,21 @@ class UsageService:
 
         meter = self.repo.get_meter(company_id, start, period_type)
         if meter:
+            # Raise floor limits when product defaults increase (e.g. free max_domains 0→1)
+            # without clobbering higher custom/paid caps already on the meter.
+            key = resolve_plan_key(plan_key or meter.plan_key or self._plan_key_for_company(company_id))
+            defaults = limits_for_plan(key)
+            dirty = False
+            for field, floor in defaults.items():
+                if not hasattr(meter, field):
+                    continue
+                current = int(getattr(meter, field, 0) or 0)
+                if current < int(floor):
+                    setattr(meter, field, int(floor))
+                    dirty = True
+            if dirty:
+                meter.plan_key = key
+                self.repo.save_meter(meter)
             return meter
 
         key = plan_key or self._plan_key_for_company(company_id)
@@ -257,9 +272,15 @@ class UsageService:
             upgrade_url=UPGRADE_URL,
             plan=plan,
         )
+        payload = detail.model_dump()
+        # Human-readable message first so clients that stringify `detail` stay useful.
+        payload["message"] = (
+            f"{dimension.value.replace('_', ' ').title()} limit reached "
+            f"({current}/{limit}) on the {plan} plan. Upgrade at {UPGRADE_URL}."
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail=detail.model_dump(),
+            detail=payload,
         )
 
     def record(
