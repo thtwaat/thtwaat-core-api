@@ -150,6 +150,8 @@ class Settings(BaseSettings):
     WEBHOOK_BACKOFF_CAP_SECONDS: float = 300.0
     # Week 3 Day 5 — reject receiver timestamps older/newer than this window
     WEBHOOK_SIGNATURE_TOLERANCE_SECONDS: int = 300
+    # Week 4 Day 1 — dual-write webhook_deliveries outbox before Redis enqueue
+    WEBHOOK_OUTBOX_ENABLED: bool = True
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.

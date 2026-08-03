@@ -87,8 +87,8 @@ flowchart LR
 
 - [Week 1](./week-01/README.md) — done (`sem02-w1-api-core`)
 - [Week 2](./week-02/README.md) — done (`sem02-w2-completions`)
-- [Week 3](./week-03/README.md) — **you are here** → start [Day 1](./week-03/day-01.md)
-- Week 4 — unlocked after W3 review passes
+- [Week 3](./week-03/README.md) — done (`sem02-w3-async-edge`)
+- [Week 4](./week-04/README.md) — **you are here** → start [Day 1](./week-04/day-01.md)
 
 ---
 
