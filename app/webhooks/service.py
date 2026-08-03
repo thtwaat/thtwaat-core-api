@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 from fastapi import HTTPException, BackgroundTasks
 from app.webhooks.repository import WebhookRepository
 from app.webhooks.schema import WebhookCreate
-import requests  # Assuming requests is available
 
 class WebhookService:
     def __init__(self, db: Session):
@@ -55,18 +54,15 @@ class WebhookService:
         return f"sha256={h.hexdigest()}"
 
     def _dispatch_worker(self, url: str, payload: dict, secret: str):
+        """Sync dispatch used by BackgroundTasks / legacy callers."""
+        from app.webhooks.delivery import WebhookDeliveryError, deliver_webhook
+
         try:
-            payload_str = json.dumps(payload)
-            signature = self._sign_payload(payload_str, secret)
-            headers = {
-                "Content-Type": "application/json",
-                "X-THTWAAT-Signature": signature
-            }
-            # Fire and forget
-            requests.post(url, data=payload_str, headers=headers, timeout=5)
-        except Exception as e:
-            # In a real system, we'd log this or queue for retry
-            print(f"Webhook dispatch failed for {url}: {str(e)}")
+            deliver_webhook(url, payload, secret)
+        except WebhookDeliveryError as exc:
+            # Legacy path: log only (Week 3 worker path raises for retries).
+            logger = __import__("logging").getLogger(__name__)
+            logger.warning("webhook dispatch failed for %s: %s", url, exc)
 
     def dispatch_event(self, company_id: str, event_type: str, payload: dict, background_tasks: BackgroundTasks):
         """

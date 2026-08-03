@@ -6,8 +6,8 @@
 
 | Day | Topic | Status |
 |-----|--------|--------|
-| 1 | Architecture + `webhook.dispatch` job contract | In progress |
-| 2 | Worker delivery + retries / dead-letter | Locked |
+| 1 | Architecture + `webhook.dispatch` job contract | Done |
+| 2 | Worker delivery + retries / dead-letter | Done |
 | 3 | SSE streaming (`stream=true`) | Locked |
 | 4 | Streaming × idempotency / debugging | Locked |
 | 5 | Security (HMAC, replay) + interview drill | Locked |

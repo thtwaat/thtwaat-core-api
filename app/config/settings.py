@@ -144,6 +144,10 @@ class Settings(BaseSettings):
     OPENAI_COMPAT_RATE_LIMIT_RPD: Optional[int] = None
     # Week 3 Day 1 — enqueue completion.* webhooks via Redis worker
     OPENAI_COMPAT_WEBHOOKS_ENABLED: bool = True
+    # Week 3 Day 2 — delivery retries
+    WEBHOOK_MAX_ATTEMPTS: int = 5
+    WEBHOOK_BACKOFF_BASE_SECONDS: float = 2.0
+    WEBHOOK_BACKOFF_CAP_SECONDS: float = 300.0
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.

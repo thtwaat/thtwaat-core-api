@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Background worker — processes Redis job queue (ssl, nginx, backup tasks)."""
+"""Background worker — processes Redis job queue (ssl, nginx, backup, webhooks)."""
 from __future__ import annotations
 
 import json
@@ -9,6 +9,7 @@ import sys
 import time
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any, Dict
 
 # Ensure /app is importable when launched as `python scripts/worker.py`.
 _ROOT = Path(__file__).resolve().parents[1]
@@ -28,6 +29,49 @@ def _stop(*_args):
 
 def heartbeat(r):
     r.setex("thtwaat:worker:heartbeat", 60, datetime.now(timezone.utc).isoformat())
+
+
+def _handle_webhook_failure(payload: Dict[str, Any], exc: Exception) -> None:
+    """Retry with exponential backoff or dead-letter (Week 3 Day 2)."""
+    from app.config.settings import settings
+    from app.monitoring.queue import dead_letter, enqueue_delayed
+    from app.webhooks.delivery import WebhookDeliveryError, backoff_seconds
+
+    attempt = int(payload.get("attempt") or 1)
+    max_attempts = int(getattr(settings, "WEBHOOK_MAX_ATTEMPTS", 5) or 5)
+    base = float(getattr(settings, "WEBHOOK_BACKOFF_BASE_SECONDS", 2.0) or 2.0)
+    cap = float(getattr(settings, "WEBHOOK_BACKOFF_CAP_SECONDS", 300.0) or 300.0)
+
+    retryable = True
+    if isinstance(exc, WebhookDeliveryError):
+        retryable = bool(exc.retryable)
+
+    reason = str(exc)
+    if (not retryable) or attempt >= max_attempts:
+        dead_letter(payload, reason=f"attempt={attempt}/{max_attempts}: {reason}")
+        logger.error(
+            "webhook_dead event=%s attempt=%s reason=%s",
+            payload.get("event"),
+            attempt,
+            reason,
+        )
+        return
+
+    next_attempt = attempt + 1
+    delay = backoff_seconds(attempt, base=base, cap=cap)
+    ready_at = time.time() + delay
+    retry_payload = dict(payload)
+    retry_payload["attempt"] = next_attempt
+    retry_payload["last_error"] = reason
+    enqueue_delayed(retry_payload, ready_at=ready_at)
+    logger.warning(
+        "webhook_retry event=%s attempt=%s next=%s delay=%.1fs reason=%s",
+        payload.get("event"),
+        attempt,
+        next_attempt,
+        delay,
+        reason,
+    )
 
 
 def process_job(payload: dict) -> None:
@@ -58,7 +102,7 @@ def process_job(payload: dict) -> None:
 
             reload_nginx()
         elif job_type == "webhook.dispatch":
-            from app.webhooks.service import WebhookService
+            from app.webhooks.delivery import deliver_webhook
 
             url = payload.get("url")
             secret = payload.get("secret") or ""
@@ -66,8 +110,19 @@ def process_job(payload: dict) -> None:
             data = payload.get("data") or {}
             if not url:
                 raise ValueError("webhook.dispatch missing url")
-            body = {"event": event, "data": data, "company_id": payload.get("company_id")}
-            WebhookService(db)._dispatch_worker(url, body, secret)
+            body = {
+                "event": event,
+                "data": data,
+                "company_id": payload.get("company_id"),
+                "attempt": int(payload.get("attempt") or 1),
+            }
+            status_code, _ = deliver_webhook(url, body, secret)
+            logger.info(
+                "webhook_delivered event=%s status=%s attempt=%s",
+                event,
+                status_code,
+                payload.get("attempt") or 1,
+            )
         else:
             logger.warning("unknown job type=%s", job_type)
     finally:
@@ -79,6 +134,7 @@ def main():
     signal.signal(signal.SIGINT, _stop)
 
     from app.config.settings import settings
+    from app.monitoring.queue import promote_due_jobs
     import redis
 
     r = redis.from_url(f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", decode_responses=True)
@@ -86,19 +142,39 @@ def main():
 
     while _RUNNING:
         heartbeat(r)
+        try:
+            promoted = promote_due_jobs(limit=50)
+            if promoted:
+                logger.info("promoted_delayed count=%s", promoted)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("promote_due_jobs error: %s", exc)
+
         item = r.blpop("thtwaat:jobs", timeout=5)
         if not item:
             continue
         _, raw = item
         try:
             payload = json.loads(raw)
-            logger.info("job_start type=%s", payload.get("type"))
-            process_job(payload)
-            logger.info("job_done type=%s", payload.get("type"))
         except Exception as exc:
-            logger.exception("job_failed: %s", exc)
-            # requeue with delay marker
+            logger.exception("job_parse_failed: %s", exc)
             r.rpush("thtwaat:jobs:dead", raw)
+            continue
+
+        job_type = payload.get("type")
+        try:
+            logger.info("job_start type=%s attempt=%s", job_type, payload.get("attempt") or 1)
+            process_job(payload)
+            logger.info("job_done type=%s", job_type)
+        except Exception as exc:
+            logger.exception("job_failed type=%s: %s", job_type, exc)
+            if job_type == "webhook.dispatch":
+                try:
+                    _handle_webhook_failure(payload, exc)
+                except Exception as inner:  # noqa: BLE001
+                    logger.exception("webhook_retry_handler_failed: %s", inner)
+                    r.rpush("thtwaat:jobs:dead", raw)
+            else:
+                r.rpush("thtwaat:jobs:dead", raw)
         time.sleep(0.05)
 
     logger.info("worker stopped")
