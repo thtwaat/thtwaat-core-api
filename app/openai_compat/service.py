@@ -464,10 +464,9 @@ class CompletionsService:
         principal: CompletionsPrincipal,
         body: ChatCompletionRequest,
     ) -> tuple[str, int, int, str, str]:
-        from app.agent_platform.gateway.service import AIGatewayService
-        from app.agent_platform.schemas import UnifiedChatRequest
+        from app.openai_compat.providers.base import InferenceProviderError
+        from app.openai_compat.providers.routing import resolve_provider_for_request
 
-        provider = (body.provider or "openai").strip().lower()
         messages: List[Dict[str, Any]] = []
         for m in body.messages:
             payload: Dict[str, Any] = {"role": m.role, "content": m.content}
@@ -475,22 +474,41 @@ class CompletionsService:
                 payload["name"] = m.name
             messages.append(payload)
 
-        unified = UnifiedChatRequest(
-            company_id=str(principal.company_id),
-            agent_id=str(principal.agent_id) if principal.agent_id else None,
-            provider=provider,
+        provider_name, provider = resolve_provider_for_request(
+            provider=body.provider,
             model=body.model,
-            messages=messages,
-            temperature=body.temperature if body.temperature is not None else 0.7,
-            max_tokens=body.max_tokens,
         )
-        result = await AIGatewayService.process_request(unified, db=None)
-        finish = result.finish_reason or "stop"
+        try:
+            result = await provider.chat(  # type: ignore[union-attr]
+                model=body.model,
+                messages=messages,
+                temperature=body.temperature if body.temperature is not None else 0.7,
+                max_tokens=body.max_tokens,
+            )
+        except InferenceProviderError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={
+                    "error": {
+                        "message": f"Upstream inference failed: {exc}",
+                        "type": "api_error",
+                        "code": "upstream_error",
+                    }
+                },
+            ) from exc
+
+        choices = (result or {}).get("choices") or []
+        content = ""
+        finish = "stop"
+        if choices:
+            content = (choices[0].get("message") or {}).get("content") or ""
+            finish = choices[0].get("finish_reason") or "stop"
+        usage = (result or {}).get("usage") or {}
         return (
-            result.content or "",
-            int(result.input_tokens or 0),
-            int(result.output_tokens or 0),
-            result.provider or provider,
+            content,
+            int(usage.get("prompt_tokens") or 0),
+            int(usage.get("completion_tokens") or 0),
+            provider_name,
             finish,
         )
 

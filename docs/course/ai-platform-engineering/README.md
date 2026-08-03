@@ -47,9 +47,9 @@
 ## Current position
 
 **→ Semester 03 — Inference Engineering** (4-week intensive)  
-**Current:** Week 1 Day 1 — Ollama → OpenAI adapter  
+**Current:** Week 1 Day 2 — Provider registry & default routing  
 
-See: [`semester-03/week-01/day-01.md`](./semester-03/week-01/day-01.md)
+See: [`semester-03/week-01/day-02.md`](./semester-03/week-01/day-02.md)
 
 Previous: [`semester-02/`](./semester-02/) API gateway (`sem02-v1.0.0`)
 

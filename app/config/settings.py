@@ -128,6 +128,14 @@ class Settings(BaseSettings):
     OLLAMA_URL: Optional[str] = "http://localhost:11434"
     # OpenAI-compatible /v1 surface: stub (CI) or gateway (live providers)
     OPENAI_COMPAT_INFERENCE: str = "stub"
+    # Sem03 Week 1 Day 2 — inference provider registry / default routing
+    INFERENCE_DEFAULT_PROVIDER: str = "ollama"
+    INFERENCE_ENABLE_OLLAMA: bool = True
+    INFERENCE_ENABLE_OPENAI: bool = True
+    INFERENCE_ENABLE_GEMINI: bool = True
+    INFERENCE_ENABLE_ANTHROPIC: bool = True
+    INFERENCE_ENABLE_VLLM: bool = False
+    VLLM_BASE_URL: Optional[str] = None
     # Week 2 Day 2 — Redis caching for openai_compat
     OPENAI_COMPAT_CACHE_ENABLED: bool = True
     OPENAI_COMPAT_MODEL_CACHE_TTL_SECONDS: int = 300

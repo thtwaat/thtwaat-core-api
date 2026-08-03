@@ -25,7 +25,10 @@ class ChatCompletionRequest(BaseModel):
     # THTWAAT extension: force provider when using gateway mode
     provider: Optional[str] = Field(
         default=None,
-        description="Optional THTWAAT extension — openai|ollama|gemini|anthropic|openrouter",
+        description=(
+            "Optional THTWAAT extension — ollama|openai|gemini|anthropic|vllm. "
+            "When omitted, model→provider resolution applies (default preference: ollama)."
+        ),
     )
 
 

@@ -1,4 +1,4 @@
-"""Build OpenAI-shaped model metadata for /v1/models (cached on Day 2)."""
+"""Build OpenAI-shaped model metadata for /v1/models."""
 from __future__ import annotations
 
 import time
@@ -19,22 +19,18 @@ def _entry(model_id: str, owned_by: str, *, created: int | None = None) -> Dict[
     }
 
 
-def static_catalog() -> List[Dict[str, Any]]:
-    """Baseline catalog — always available (stub + common gateway ids)."""
+def stub_catalog() -> List[Dict[str, Any]]:
+    """CI / local stub ids — only when OPENAI_COMPAT_INFERENCE=stub."""
     created = 1_720_000_000
-    rows = [
+    return [
         _entry("thtwaat-stub-mini", "thtwaat", created=created),
         _entry("thtwaat-stub-fast", "thtwaat", created=created),
-        _entry("gpt-4o-mini", "openai", created=created),
-        _entry("gpt-4o", "openai", created=created),
-        _entry("gemini-1.5-flash", "google", created=created),
-        _entry("claude-3-5-sonnet", "anthropic", created=created),
     ]
-    mode = (settings.OPENAI_COMPAT_INFERENCE or "stub").strip().lower()
-    if mode == "stub":
-        # Prefer stub ids first in list order for DX
-        return rows
-    return rows
+
+
+def static_catalog() -> List[Dict[str, Any]]:
+    """Deprecated alias — prefer registry-backed build_models_payload."""
+    return stub_catalog()
 
 
 def company_db_models(db: Session, company_id: UUID) -> List[Dict[str, Any]]:
@@ -58,9 +54,27 @@ def company_db_models(db: Session, company_id: UUID) -> List[Dict[str, Any]]:
         return []
 
 
+def registry_catalog() -> List[Dict[str, Any]]:
+    """Models from enabled Sem03 inference providers only."""
+    from app.openai_compat.providers import ensure_providers_registered
+
+    registry = ensure_providers_registered()
+    out: List[Dict[str, Any]] = []
+    for item in registry.all_enabled_models():
+        public = {k: v for k, v in item.items() if not str(k).startswith("_")}
+        out.append(public)
+    return out
+
+
 def build_models_payload(db: Session, company_id: UUID) -> Dict[str, Any]:
     seen: dict[str, Dict[str, Any]] = {}
-    for item in [*static_catalog(), *company_db_models(db, company_id)]:
+    mode = (settings.OPENAI_COMPAT_INFERENCE or "stub").strip().lower()
+    rows: List[Dict[str, Any]] = []
+    if mode == "stub":
+        rows.extend(stub_catalog())
+    rows.extend(registry_catalog())
+    rows.extend(company_db_models(db, company_id))
+    for item in rows:
         seen[item["id"]] = item
     data = list(seen.values())
     data.sort(key=lambda x: x["id"])

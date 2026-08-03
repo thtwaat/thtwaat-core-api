@@ -92,7 +92,6 @@ def check_ai_providers() -> Dict[str, Any]:
         "configured": configured,
         "providers": providers,
     }
-    # Sem03 Day 1 — soft live probe (does not flip overall ai_providers.ok alone)
     if settings.OLLAMA_URL:
         try:
             from app.openai_compat.inference_adapter import probe_ollama
@@ -103,12 +102,26 @@ def check_ai_providers() -> Dict[str, Any]:
     return out
 
 
+async def check_inference_providers() -> Dict[str, Any]:
+    """Aggregate health for enabled Sem03 inference providers (fail-soft each)."""
+    try:
+        from app.openai_compat.providers import ensure_providers_registered
+
+        registry = ensure_providers_registered()
+        return await registry.aggregate_health()
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
 async def full_health(db: Session) -> Dict[str, Any]:
     db_c = check_database(db)
     redis_c = await check_redis()
     storage_c = check_storage()
     workers_c = check_workers()
     ai_c = check_ai_providers()
+    inference_c = await check_inference_providers()
+    ai_c["inference_providers"] = inference_c
+    # Overall health stays DB/Redis/storage — inference outage does not 503 the API
     critical_ok = db_c.get("ok") and redis_c.get("ok") and storage_c.get("ok")
     return {
         "status": "healthy" if critical_ok else "degraded",
@@ -118,5 +131,6 @@ async def full_health(db: Session) -> Dict[str, Any]:
             "storage": storage_c,
             "workers": workers_c,
             "ai_providers": ai_c,
+            "inference_providers": inference_c,
         },
     }

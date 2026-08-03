@@ -116,22 +116,38 @@ async def test_service_gateway_mode_delegates(monkeypatch):
         "app.openai_compat.usage.record_completion_usage",
         lambda *a, **k: {"recorded": False},
     )
+    monkeypatch.setattr(
+        "app.config.settings.settings.INFERENCE_ENABLE_OPENAI", True, raising=False
+    )
+    monkeypatch.setattr(
+        "app.config.settings.settings.OPENAI_API_KEY", "sk-test", raising=False
+    )
     db = MagicMock()
     svc = CompletionsService(db)
     svc.repo = MagicMock()
     svc.repo.create.side_effect = lambda row: row
 
-    fake = MagicMock(
-        content="live answer",
-        input_tokens=3,
-        output_tokens=5,
-        provider="openai",
-        finish_reason="stop",
-    )
+    fake_completion = {
+        "id": "chatcmpl_test",
+        "object": "chat.completion",
+        "created": 1,
+        "model": "gpt-4o-mini",
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": "live answer"},
+                "finish_reason": "stop",
+            }
+        ],
+        "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
+        "system_fingerprint": "thtwaat-openai",
+    }
+    provider = MagicMock()
+    provider.chat = AsyncMock(return_value=fake_completion)
     with patch(
-        "app.agent_platform.gateway.service.AIGatewayService.process_request",
-        new=AsyncMock(return_value=fake),
-    ) as mocked:
+        "app.openai_compat.providers.routing.resolve_provider_for_request",
+        return_value=("openai", provider),
+    ) as mocked_resolve:
         principal = CompletionsPrincipal(company_id=uuid.uuid4())
         body = ChatCompletionRequest(
             model="gpt-4o-mini",
@@ -140,7 +156,8 @@ async def test_service_gateway_mode_delegates(monkeypatch):
         )
         resp, _cache_status = await svc.create_completion(principal, body)
 
-    mocked.assert_awaited_once()
+    mocked_resolve.assert_called_once()
+    provider.chat.assert_awaited_once()
     assert resp.choices[0].message.content == "live answer"
     assert resp.usage.prompt_tokens == 3
     assert resp.usage.completion_tokens == 5
