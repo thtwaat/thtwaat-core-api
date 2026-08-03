@@ -68,6 +68,6 @@ INFERENCE_PROMPT_GUARD_MODE=block   # or log
 
 ## Tomorrow (Day 6)
 
-Milestone build toward `sem03-w1-ollama-openai` — locked until approved.
+Milestone build (ship checklist + gate + smoke) — see [day-06.md](./day-06.md).
 
-**Stop here — await approval before Day 6.**
+**Day 5 complete.**

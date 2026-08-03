@@ -47,9 +47,9 @@
 ## Current position
 
 **→ Semester 03 — Inference Engineering** (4-week intensive)  
-**Current:** Week 1 Day 5 — Security + interview (prompt injection / model exfil)  
+**Current:** Week 1 Day 6 — Milestone build  
 
-See: [`semester-03/week-01/day-05.md`](./semester-03/week-01/day-05.md)
+See: [`semester-03/week-01/day-06.md`](./semester-03/week-01/day-06.md)
 
 Previous: [`semester-02/`](./semester-02/) API gateway (`sem02-v1.0.0`)
 
