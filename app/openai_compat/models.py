@@ -8,6 +8,10 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 
 from app.models.base import Base, TimestampMixin
 
+# Ensure Company.relationship("User") resolves when mappers configure
+import app.users.model  # noqa: F401
+import app.companies.model  # noqa: F401
+
 
 class OpenAICompletionLog(Base, TimestampMixin):
     __tablename__ = "openai_completion_logs"

@@ -64,6 +64,10 @@ async def test_service_stub_persists_and_shapes_openai_response(monkeypatch):
         "stub",
         raising=False,
     )
+    monkeypatch.setattr(
+        "app.openai_compat.usage.record_completion_usage",
+        lambda *a, **k: {"recorded": False},
+    )
     db = MagicMock()
     svc = CompletionsService(db)
     captured = {}
@@ -107,6 +111,10 @@ async def test_service_gateway_mode_delegates(monkeypatch):
         "app.openai_compat.service.settings.OPENAI_COMPAT_INFERENCE",
         "gateway",
         raising=False,
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.usage.record_completion_usage",
+        lambda *a, **k: {"recorded": False},
     )
     db = MagicMock()
     svc = CompletionsService(db)
@@ -174,6 +182,15 @@ def test_route_stub_success(monkeypatch):
     monkeypatch.setattr(
         "app.openai_compat.service.settings.OPENAI_COMPAT_INFERENCE",
         "stub",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.rate_limit.resolve_plan_name",
+        lambda *_a, **_k: "free",
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.rate_limit.settings.OPENAI_COMPAT_RATE_LIMIT_ENABLED",
+        False,
         raising=False,
     )
     principal = CompletionsPrincipal(company_id=uuid.uuid4(), auth_kind="company_key")

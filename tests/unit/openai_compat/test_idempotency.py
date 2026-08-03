@@ -135,6 +135,15 @@ def test_route_idempotent_replay(fake_redis_client, monkeypatch):
         "stub",
         raising=False,
     )
+    monkeypatch.setattr(
+        "app.openai_compat.rate_limit.resolve_plan_name",
+        lambda *_a, **_k: "free",
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.rate_limit.settings.OPENAI_COMPAT_RATE_LIMIT_ENABLED",
+        False,
+        raising=False,
+    )
 
     app = FastAPI()
     app.include_router(openai_compat_router)
@@ -185,6 +194,15 @@ def test_route_idempotent_body_mismatch_409(fake_redis_client, monkeypatch):
     monkeypatch.setattr(
         "app.openai_compat.idempotency.settings.OPENAI_COMPAT_IDEMPOTENCY_ENABLED",
         True,
+        raising=False,
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.rate_limit.resolve_plan_name",
+        lambda *_a, **_k: "free",
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.rate_limit.settings.OPENAI_COMPAT_RATE_LIMIT_ENABLED",
+        False,
         raising=False,
     )
 

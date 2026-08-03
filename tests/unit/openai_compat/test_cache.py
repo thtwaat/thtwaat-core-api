@@ -110,6 +110,10 @@ async def test_completion_response_cache_temp_zero(fake_redis_client, monkeypatc
         True,
         raising=False,
     )
+    monkeypatch.setattr(
+        "app.openai_compat.usage.record_completion_usage",
+        lambda *a, **k: {"recorded": False},
+    )
 
     cache = OpenAICompatCache(client=fake_redis_client)
     svc = CompletionsService(MagicMock(), cache=cache)
@@ -143,6 +147,10 @@ async def test_completion_skips_cache_when_temperature_nonzero(fake_redis_client
         "app.openai_compat.cache.settings.OPENAI_COMPAT_CACHE_ENABLED",
         True,
         raising=False,
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.usage.record_completion_usage",
+        lambda *a, **k: {"recorded": False},
     )
 
     cache = OpenAICompatCache(client=fake_redis_client)
@@ -181,6 +189,10 @@ async def test_invalidate_responses(fake_redis_client, monkeypatch):
         True,
         raising=False,
     )
+    monkeypatch.setattr(
+        "app.openai_compat.usage.record_completion_usage",
+        lambda *a, **k: {"recorded": False},
+    )
 
     cache = OpenAICompatCache(client=fake_redis_client)
     svc = CompletionsService(MagicMock(), cache=cache)
@@ -208,6 +220,10 @@ def test_route_models_x_cache_header(fake_redis_client, monkeypatch):
     monkeypatch.setattr(
         "app.openai_compat.catalog.company_db_models",
         lambda *_a, **_k: [],
+    )
+    monkeypatch.setattr(
+        "app.openai_compat.rate_limit.resolve_plan_name",
+        lambda *_a, **_k: "free",
     )
 
     app = FastAPI()

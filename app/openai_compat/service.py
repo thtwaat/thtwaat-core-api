@@ -160,6 +160,27 @@ class CompletionsService:
             error_detail=None,
         )
 
+        # Day 5 — usage meter + cost (skip on cache HIT; gateway path meters here only)
+        try:
+            from app.openai_compat.usage import record_completion_usage
+
+            record_completion_usage(
+                self.db,
+                principal,
+                provider=provider,
+                model=body.model,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                completion_id=completion_id,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            # Soft-fail metering must not break completions
+            import logging
+
+            logging.getLogger(__name__).warning("usage hook failed: %s", exc)
+
         created = int(time.time())
         response = ChatCompletionResponse(
             id=completion_id,
@@ -216,7 +237,7 @@ class CompletionsService:
             temperature=body.temperature if body.temperature is not None else 0.7,
             max_tokens=body.max_tokens,
         )
-        result = await AIGatewayService.process_request(unified, db=self.db)
+        result = await AIGatewayService.process_request(unified, db=None)
         finish = result.finish_reason or "stop"
         return (
             result.content or "",

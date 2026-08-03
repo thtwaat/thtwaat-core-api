@@ -136,6 +136,12 @@ class Settings(BaseSettings):
     # Week 2 Day 3 — Idempotency-Key for completions
     OPENAI_COMPAT_IDEMPOTENCY_ENABLED: bool = True
     OPENAI_COMPAT_IDEMPOTENCY_TTL_SECONDS: int = 86400
+    # Week 2 Day 4 — tenant rate limits for openai_compat
+    OPENAI_COMPAT_RATE_LIMIT_ENABLED: bool = True
+    OPENAI_COMPAT_RATE_LIMIT_DEFAULT_PLAN: str = "free"
+    # Optional global overrides (apply to completions scope when set)
+    OPENAI_COMPAT_RATE_LIMIT_RPM: Optional[int] = None
+    OPENAI_COMPAT_RATE_LIMIT_RPD: Optional[int] = None
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.
