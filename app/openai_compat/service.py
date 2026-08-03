@@ -172,10 +172,11 @@ class CompletionsService:
         )
 
         # Day 5 — usage meter + cost (skip on cache HIT; gateway path meters here only)
+        usage_summary: Dict[str, Any] = {}
         try:
             from app.openai_compat.usage import record_completion_usage
 
-            record_completion_usage(
+            usage_summary = record_completion_usage(
                 self.db,
                 principal,
                 provider=provider,
@@ -202,6 +203,7 @@ class CompletionsService:
             latency_ms=latency_ms,
             error=None,
             provider=provider,
+            estimated_cost=usage_summary.get("estimated_cost"),
         )
 
         created = int(time.time())
@@ -337,7 +339,7 @@ class CompletionsService:
         try:
             from app.openai_compat.usage import record_completion_usage
 
-            record_completion_usage(
+            usage_summary = record_completion_usage(
                 self.db,
                 principal,
                 provider=provider,
@@ -352,6 +354,7 @@ class CompletionsService:
             import logging
 
             logging.getLogger(__name__).warning("usage hook failed (stream): %s", exc)
+            usage_summary = {}
 
         self._notify_completion(
             principal=principal,
@@ -363,6 +366,7 @@ class CompletionsService:
             latency_ms=latency_ms,
             error=None,
             provider=provider,
+            estimated_cost=usage_summary.get("estimated_cost") if usage_summary else None,
         )
 
         created = int(time.time())
@@ -420,6 +424,7 @@ class CompletionsService:
         latency_ms: int,
         error: Optional[str],
         provider: str,
+        estimated_cost: Optional[float] = None,
     ) -> None:
         """Week 3 Day 1 — enqueue completion webhooks (fail-open)."""
         if not getattr(settings, "OPENAI_COMPAT_WEBHOOKS_ENABLED", True):
@@ -446,6 +451,7 @@ class CompletionsService:
                 latency_ms=latency_ms,
                 error=error,
                 provider=provider,
+                estimated_cost=estimated_cost,
             )
             enqueue_completion_webhooks(self.db, principal.company_id, event, data)
         except Exception as exc:  # noqa: BLE001

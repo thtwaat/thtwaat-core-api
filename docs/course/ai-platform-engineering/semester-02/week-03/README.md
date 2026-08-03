@@ -11,7 +11,7 @@
 | 3 | SSE streaming (`stream=true`) | Done |
 | 4 | Streaming × idempotency / debugging | Done |
 | 5 | Security (HMAC, replay) + interview drill | Done |
-| 6 | Milestone build (usage flush + fan-out polish) | Locked |
+| 6 | Milestone build (usage flush + fan-out polish) | Done |
 | 7 | Review + tag `sem02-w3-async-edge` | Locked |
 
 ## Week goals

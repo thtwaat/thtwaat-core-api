@@ -19,6 +19,7 @@ def build_completion_event_data(
     latency_ms: Optional[int] = None,
     error: Optional[str] = None,
     provider: Optional[str] = None,
+    estimated_cost: Optional[float] = None,
 ) -> Dict[str, Any]:
     total = int(prompt_tokens) + int(completion_tokens)
     return {
@@ -31,6 +32,7 @@ def build_completion_event_data(
             "completion_tokens": int(completion_tokens),
             "total_tokens": total,
         },
+        "estimated_cost": estimated_cost,
         "latency_ms": latency_ms,
         "error": error,
     }
