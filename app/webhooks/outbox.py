@@ -29,6 +29,11 @@ logger = logging.getLogger(__name__)
 JOB_TYPE_WEBHOOK_DISPATCH = "webhook.dispatch"
 
 
+def _ensure_orm_models() -> None:
+    """Webhook.company relationship needs Company registered (worker has no main.py)."""
+    import app.companies.model  # noqa: F401
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
@@ -183,6 +188,7 @@ def ack_from_job_payload(
     delivery_id = payload.get("delivery_id")
     if not delivery_id:
         return
+    _ensure_orm_models()
     attempt = int(payload.get("attempt") or 1)
     try:
         if outcome == "delivered":
@@ -261,6 +267,7 @@ def build_redis_job_from_outbox(
     row: WebhookDelivery,
 ) -> Optional[Dict[str, Any]]:
     """Rebuild webhook.dispatch job; secret loaded from webhooks table."""
+    _ensure_orm_models()
     secret = ""
     if row.webhook_id is not None:
         wh = db.query(Webhook).filter(Webhook.id == row.webhook_id).first()
@@ -318,6 +325,7 @@ def redrive_stuck_deliveries(
     """Re-enqueue stuck outbox rows onto Redis. Returns count enqueued."""
     if not _outbox_enabled():
         return 0
+    _ensure_orm_models()
     batch = int(
         limit
         if limit is not None

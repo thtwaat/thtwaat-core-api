@@ -159,6 +159,11 @@ def main():
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
 
+    # Register ORM relationships before any Session/query (same need as scheduler).
+    # Webhook.company → "Company" fails if companies.model was never imported.
+    import app.companies.model  # noqa: F401
+    import app.webhooks.model  # noqa: F401
+
     from app.config.settings import settings
     from app.database.database import SessionLocal
     from app.monitoring.queue import promote_due_jobs
