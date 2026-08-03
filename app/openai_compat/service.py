@@ -464,8 +464,8 @@ class CompletionsService:
         principal: CompletionsPrincipal,
         body: ChatCompletionRequest,
     ) -> tuple[str, int, int, str, str]:
+        from app.openai_compat.inference_routing_service import InferenceRoutingService
         from app.openai_compat.providers.base import InferenceProviderError
-        from app.openai_compat.providers.routing import resolve_provider_for_request
 
         messages: List[Dict[str, Any]] = []
         for m in body.messages:
@@ -474,14 +474,12 @@ class CompletionsService:
                 payload["name"] = m.name
             messages.append(payload)
 
-        provider_name, provider = resolve_provider_for_request(
-            provider=body.provider,
-            model=body.model,
-        )
+        routing = InferenceRoutingService()
         try:
-            result = await provider.chat(  # type: ignore[union-attr]
+            result, decision = await routing.chat(
                 model=body.model,
                 messages=messages,
+                provider=body.provider,
                 temperature=body.temperature if body.temperature is not None else 0.7,
                 max_tokens=body.max_tokens,
             )
@@ -508,7 +506,7 @@ class CompletionsService:
             content,
             int(usage.get("prompt_tokens") or 0),
             int(usage.get("completion_tokens") or 0),
-            provider_name,
+            decision.provider_name,
             finish,
         )
 

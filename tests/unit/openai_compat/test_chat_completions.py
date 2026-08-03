@@ -142,12 +142,12 @@ async def test_service_gateway_mode_delegates(monkeypatch):
         "usage": {"prompt_tokens": 3, "completion_tokens": 5, "total_tokens": 8},
         "system_fingerprint": "thtwaat-openai",
     }
-    provider = MagicMock()
-    provider.chat = AsyncMock(return_value=fake_completion)
+    fake_decision = MagicMock()
+    fake_decision.provider_name = "openai"
     with patch(
-        "app.openai_compat.providers.routing.resolve_provider_for_request",
-        return_value=("openai", provider),
-    ) as mocked_resolve:
+        "app.openai_compat.inference_routing_service.InferenceRoutingService.chat",
+        new=AsyncMock(return_value=(fake_completion, fake_decision)),
+    ) as mocked_chat:
         principal = CompletionsPrincipal(company_id=uuid.uuid4())
         body = ChatCompletionRequest(
             model="gpt-4o-mini",
@@ -156,8 +156,7 @@ async def test_service_gateway_mode_delegates(monkeypatch):
         )
         resp, _cache_status = await svc.create_completion(principal, body)
 
-    mocked_resolve.assert_called_once()
-    provider.chat.assert_awaited_once()
+    mocked_chat.assert_awaited_once()
     assert resp.choices[0].message.content == "live answer"
     assert resp.usage.prompt_tokens == 3
     assert resp.usage.completion_tokens == 5

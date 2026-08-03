@@ -7,6 +7,7 @@ from app.openai_compat.providers.base import (
     ProviderConfigError,
     ProviderNotFoundError,
 )
+from app.openai_compat.providers.capabilities import ProviderCapability
 from app.openai_compat.providers.registry import InferenceProviderRegistry, get_registry
 from app.openai_compat.providers.routing import (
     resolve_provider_for_request,
@@ -18,12 +19,28 @@ __all__ = [
     "InferenceProviderError",
     "ProviderConfigError",
     "ProviderNotFoundError",
+    "ProviderCapability",
     "InferenceProviderRegistry",
+    "InferenceRouter",
+    "RoutingDecision",
     "get_registry",
     "resolve_provider_for_request",
     "resolve_provider_name",
     "ensure_providers_registered",
 ]
+
+
+def __getattr__(name: str):
+    # Lazy export — avoids circular import with inference_routing_repository
+    if name == "InferenceRouter":
+        from app.openai_compat.providers.inference_router import InferenceRouter
+
+        return InferenceRouter
+    if name == "RoutingDecision":
+        from app.openai_compat.providers.inference_router import RoutingDecision
+
+        return RoutingDecision
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 def ensure_providers_registered() -> InferenceProviderRegistry:

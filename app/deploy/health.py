@@ -106,9 +106,12 @@ async def check_inference_providers() -> Dict[str, Any]:
     """Aggregate health for enabled Sem03 inference providers (fail-soft each)."""
     try:
         from app.openai_compat.providers import ensure_providers_registered
+        from app.openai_compat.providers.metrics import get_routing_metrics
 
         registry = ensure_providers_registered()
-        return await registry.aggregate_health()
+        out = await registry.aggregate_health()
+        out["routing_metrics"] = get_routing_metrics().snapshot()
+        return out
     except Exception as exc:  # noqa: BLE001
         return {"ok": False, "error": str(exc)}
 

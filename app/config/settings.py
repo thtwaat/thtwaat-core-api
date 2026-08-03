@@ -136,6 +136,13 @@ class Settings(BaseSettings):
     INFERENCE_ENABLE_ANTHROPIC: bool = True
     INFERENCE_ENABLE_VLLM: bool = False
     VLLM_BASE_URL: Optional[str] = None
+    # Sem03 Week 1 Day 3 — inference router policies / health cache
+    # Policies: default | cheapest | fastest | highest_quality | preferred_provider
+    INFERENCE_ROUTING_POLICY: str = "default"
+    INFERENCE_FALLBACK_PROVIDER: Optional[str] = "openai"
+    INFERENCE_HEALTH_CACHE_TTL_SECONDS: int = 30
+    # Optional comma list override for provider priority (first = highest)
+    INFERENCE_PROVIDER_PRIORITY: Optional[str] = None
     # Week 2 Day 2 — Redis caching for openai_compat
     OPENAI_COMPAT_CACHE_ENABLED: bool = True
     OPENAI_COMPAT_MODEL_CACHE_TTL_SECONDS: int = 300

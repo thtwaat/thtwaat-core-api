@@ -55,6 +55,6 @@ Disabled providers do **not** appear in `GET /v1/models`.
 
 ## Tomorrow (Day 3)
 
-Lab: local Ollama compose + smoke against registry-routed gateway.
+Production-grade InferenceRouter (policies, health-aware routing) — see [day-03.md](./day-03.md).
 
-**Stop here — await approval before Day 3.**
+**Day 2 complete.**

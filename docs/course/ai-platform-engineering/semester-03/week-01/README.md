@@ -8,7 +8,7 @@
 |-----|--------|--------|
 | 1 | Architecture + Ollama↔OpenAI adapter contract | Done |
 | 2 | Provider registry & default routing | Done |
-| 3 | Lab: local Ollama compose + smoke | Locked |
+| 3 | Production-grade InferenceRouter | Done |
 | 4 | Debugging: timeouts, missing models, 502 mapping | Locked |
 | 5 | Security + interview (prompt injection / model exfil) | Locked |
 | 6 | Milestone build | Locked |
