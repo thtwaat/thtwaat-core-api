@@ -100,12 +100,15 @@ def test_week4_docs_exist():
     for name in (
         "THREAT_MODEL.md",
         "SHIP_CHECKLIST.md",
+        "REVIEW.md",
+        "RETRO.md",
         "day-01.md",
         "day-02.md",
         "day-03.md",
         "day-04.md",
         "day-05.md",
         "day-06.md",
+        "day-07.md",
     ):
         assert (week4 / name).is_file(), name
     assert (ROOT / "docs" / "partners" / "openai-compat-sse.md").is_file()
