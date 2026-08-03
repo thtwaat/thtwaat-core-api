@@ -5,9 +5,10 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException
 
 from app.config.settings import settings
+from app.openai_compat.errors import model_not_found, no_healthy_provider, unknown_provider
 from app.openai_compat.inference_routing_repository import (
     InferenceRoutingRepository,
     ProviderProfile,
@@ -54,46 +55,15 @@ class RoutingDecision:
 
 
 def _model_not_found(model_id: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail={
-            "error": {
-                "message": f"The model '{model_id}' does not exist",
-                "type": "invalid_request_error",
-                "code": "model_not_found",
-            }
-        },
-    )
+    return model_not_found(model_id)
 
 
 def _unknown_provider(name: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={
-            "error": {
-                "message": f"Unknown or disabled provider '{name}'",
-                "type": "invalid_request_error",
-                "code": "unknown_provider",
-            }
-        },
-    )
+    return unknown_provider(name)
 
 
 def _no_healthy_provider(model_id: str, skipped: Sequence[str]) -> HTTPException:
-    skipped_s = ", ".join(skipped) if skipped else "(none)"
-    return HTTPException(
-        status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-        detail={
-            "error": {
-                "message": (
-                    f"No healthy provider available for model '{model_id}' "
-                    f"(skipped unhealthy: {skipped_s})"
-                ),
-                "type": "api_error",
-                "code": "no_healthy_provider",
-            }
-        },
-    )
+    return no_healthy_provider(model_id, list(skipped))
 
 
 class InferenceRouter:

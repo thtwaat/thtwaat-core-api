@@ -70,6 +70,6 @@ Architecture stays **repository + service** — no policy logic in FastAPI route
 
 ## Tomorrow (Day 4)
 
-Lab / debugging path (timeouts, missing models, 502 mapping) — locked until approved.
+Debugging: timeouts, missing models, 502/504 mapping — see [day-04.md](./day-04.md).
 
-**Stop here — await approval before Day 4.**
+**Day 3 complete.**

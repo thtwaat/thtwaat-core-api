@@ -47,9 +47,9 @@
 ## Current position
 
 **→ Semester 03 — Inference Engineering** (4-week intensive)  
-**Current:** Week 1 Day 3 — Production-grade InferenceRouter  
+**Current:** Week 1 Day 4 — Debugging: timeouts, missing models, 502 mapping  
 
-See: [`semester-03/week-01/day-03.md`](./semester-03/week-01/day-03.md)
+See: [`semester-03/week-01/day-04.md`](./semester-03/week-01/day-04.md)
 
 Previous: [`semester-02/`](./semester-02/) API gateway (`sem02-v1.0.0`)
 

@@ -1,4 +1,4 @@
-"""Inference provider interface (Semester 03 Week 1 Day 2)."""
+"""Inference provider interface (Semester 03 Week 1 Day 2+)."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -15,6 +15,29 @@ class ProviderNotFoundError(InferenceProviderError):
 
 class ProviderConfigError(InferenceProviderError):
     """Provider is enabled but missing required configuration."""
+
+
+class ProviderTimeoutError(InferenceProviderError):
+    """Upstream provider exceeded the configured timeout."""
+
+    def __init__(self, message: str, *, provider: str | None = None) -> None:
+        super().__init__(message)
+        self.provider = provider
+
+
+class ProviderUpstreamError(InferenceProviderError):
+    """Upstream provider returned a transport / HTTP failure."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        provider: str | None = None,
+        status_code: int | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.provider = provider
+        self.status_code = status_code
 
 
 class InferenceProvider(ABC):

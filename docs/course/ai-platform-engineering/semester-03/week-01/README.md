@@ -9,7 +9,7 @@
 | 1 | Architecture + Ollama↔OpenAI adapter contract | Done |
 | 2 | Provider registry & default routing | Done |
 | 3 | Production-grade InferenceRouter | Done |
-| 4 | Debugging: timeouts, missing models, 502 mapping | Locked |
+| 4 | Debugging: timeouts, missing models, 502 mapping | Done |
 | 5 | Security + interview (prompt injection / model exfil) | Locked |
 | 6 | Milestone build | Locked |
 | 7 | Review + tag `sem03-w1-ollama-openai` | Locked |

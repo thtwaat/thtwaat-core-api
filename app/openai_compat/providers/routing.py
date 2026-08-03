@@ -3,9 +3,8 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from fastapi import HTTPException, status
-
 from app.config.settings import settings
+from app.openai_compat.errors import model_not_found, unknown_provider
 from app.openai_compat.providers.base import ProviderNotFoundError
 from app.openai_compat.providers.registry import get_registry
 
@@ -21,30 +20,12 @@ def resolve_provider_name(explicit: Optional[str]) -> str:
     return str(explicit).strip().lower()
 
 
-def _model_not_found(model_id: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail={
-            "error": {
-                "message": f"The model '{model_id}' does not exist",
-                "type": "invalid_request_error",
-                "code": "model_not_found",
-            }
-        },
-    )
+def _model_not_found(model_id: str):
+    return model_not_found(model_id)
 
 
-def _unknown_provider(name: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail={
-            "error": {
-                "message": f"Unknown or disabled provider '{name}'",
-                "type": "invalid_request_error",
-                "code": "unknown_provider",
-            }
-        },
-    )
+def _unknown_provider(name: str):
+    return unknown_provider(name)
 
 
 def resolve_provider_for_request(

@@ -1,4 +1,4 @@
-"""Ollama inference provider (Sem03 W1 D2)."""
+"""Ollama inference provider (Sem03 W1 D2+)."""
 from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Sequence, Union
@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence, Union
 import httpx
 
 from app.config.settings import settings
+from app.openai_compat.errors import wrap_httpx_error
 from app.openai_compat.inference_adapter import (
     build_ollama_chat_payload,
     ollama_chat_to_openai_completion,
@@ -27,6 +28,14 @@ class OllamaInferenceProvider(InferenceProvider):
         if not url:
             raise ProviderConfigError("OLLAMA_URL is not configured")
         return url
+
+    def _timeout_seconds(self) -> float:
+        raw = getattr(settings, "INFERENCE_OLLAMA_TIMEOUT_SECONDS", None)
+        try:
+            value = float(raw if raw is not None else 120.0)
+        except (TypeError, ValueError):
+            value = 120.0
+        return max(1.0, value)
 
     def models(self) -> List[Dict[str, Any]]:
         return [
@@ -64,10 +73,14 @@ class OllamaInferenceProvider(InferenceProvider):
         )
         if max_tokens is not None:
             payload.setdefault("options", {})["num_predict"] = int(max_tokens)
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            resp = await client.post(f"{base}/api/chat", json=payload)
-            resp.raise_for_status()
-            data = resp.json()
+        timeout = self._timeout_seconds()
+        try:
+            async with httpx.AsyncClient(timeout=timeout) as client:
+                resp = await client.post(f"{base}/api/chat", json=payload)
+                resp.raise_for_status()
+                data = resp.json()
+        except (httpx.HTTPError, TimeoutError) as exc:
+            raise wrap_httpx_error(exc, provider=self.name) from exc
         return ollama_chat_to_openai_completion(data, model=model)
 
     async def embeddings(

@@ -117,7 +117,9 @@ class CompletionsService:
                 provider = "stub"
         except HTTPException:
             raise
-        except Exception as exc:  # noqa: BLE001 — map provider failures to OpenAI-shaped 502
+        except Exception as exc:  # noqa: BLE001 — map provider failures to OpenAI-shaped errors
+            from app.openai_compat.errors import map_provider_exception
+
             status_label = "failed"
             error_detail = str(exc)
             latency_ms = int((time.perf_counter() - started) * 1000)
@@ -145,16 +147,7 @@ class CompletionsService:
                 error=error_detail,
                 provider=provider,
             )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "error": {
-                        "message": f"Upstream inference failed: {exc}",
-                        "type": "api_error",
-                        "code": "upstream_error",
-                    }
-                },
-            ) from exc
+            raise map_provider_exception(exc) from exc
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         self._persist_log(
@@ -286,6 +279,8 @@ class CompletionsService:
         except HTTPException:
             raise
         except Exception as exc:  # noqa: BLE001
+            from app.openai_compat.errors import map_provider_exception
+
             latency_ms = int((time.perf_counter() - started) * 1000)
             self._persist_log(
                 principal=principal,
@@ -311,16 +306,7 @@ class CompletionsService:
                 error=str(exc),
                 provider=provider,
             )
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "error": {
-                        "message": f"Upstream inference failed: {exc}",
-                        "type": "api_error",
-                        "code": "upstream_error",
-                    }
-                },
-            ) from exc
+            raise map_provider_exception(exc) from exc
 
         latency_ms = int((time.perf_counter() - started) * 1000)
         self._persist_log(
@@ -465,7 +451,6 @@ class CompletionsService:
         body: ChatCompletionRequest,
     ) -> tuple[str, int, int, str, str]:
         from app.openai_compat.inference_routing_service import InferenceRoutingService
-        from app.openai_compat.providers.base import InferenceProviderError
 
         messages: List[Dict[str, Any]] = []
         for m in body.messages:
@@ -483,17 +468,12 @@ class CompletionsService:
                 temperature=body.temperature if body.temperature is not None else 0.7,
                 max_tokens=body.max_tokens,
             )
-        except InferenceProviderError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_502_BAD_GATEWAY,
-                detail={
-                    "error": {
-                        "message": f"Upstream inference failed: {exc}",
-                        "type": "api_error",
-                        "code": "upstream_error",
-                    }
-                },
-            ) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            from app.openai_compat.errors import map_provider_exception
+
+            raise map_provider_exception(exc) from exc
 
         choices = (result or {}).get("choices") or []
         content = ""

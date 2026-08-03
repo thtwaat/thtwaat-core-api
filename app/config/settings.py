@@ -143,6 +143,8 @@ class Settings(BaseSettings):
     INFERENCE_HEALTH_CACHE_TTL_SECONDS: int = 30
     # Optional comma list override for provider priority (first = highest)
     INFERENCE_PROVIDER_PRIORITY: Optional[str] = None
+    # Sem03 Week 1 Day 4 — upstream timeout (Ollama chat HTTP)
+    INFERENCE_OLLAMA_TIMEOUT_SECONDS: float = 120.0
     # Week 2 Day 2 — Redis caching for openai_compat
     OPENAI_COMPAT_CACHE_ENABLED: bool = True
     OPENAI_COMPAT_MODEL_CACHE_TTL_SECONDS: int = 300

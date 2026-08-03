@@ -6,6 +6,8 @@ from app.openai_compat.providers.base import (
     InferenceProviderError,
     ProviderConfigError,
     ProviderNotFoundError,
+    ProviderTimeoutError,
+    ProviderUpstreamError,
 )
 from app.openai_compat.providers.capabilities import ProviderCapability
 from app.openai_compat.providers.registry import InferenceProviderRegistry, get_registry
@@ -19,6 +21,8 @@ __all__ = [
     "InferenceProviderError",
     "ProviderConfigError",
     "ProviderNotFoundError",
+    "ProviderTimeoutError",
+    "ProviderUpstreamError",
     "ProviderCapability",
     "InferenceProviderRegistry",
     "InferenceRouter",
