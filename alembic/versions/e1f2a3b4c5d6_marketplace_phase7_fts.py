@@ -21,12 +21,14 @@ COLUMN = "search_vector"
 INDEX = "ix_marketplace_templates_search_vector"
 
 # Weighted document: name/slug (A), industry/description (B), tags (C)
+# Cast config to regconfig so Postgres treats to_tsvector as IMMUTABLE
+# (required for GENERATED ALWAYS AS … STORED). Plain 'english' text is STABLE.
 GENERATED_EXPR = """(
-  setweight(to_tsvector('english', coalesce(name, '')), 'A') ||
-  setweight(to_tsvector('english', coalesce(slug, '')), 'A') ||
-  setweight(to_tsvector('english', coalesce(industry, '')), 'B') ||
-  setweight(to_tsvector('english', coalesce(description, '')), 'B') ||
-  setweight(to_tsvector('english', coalesce(array_to_string(tags, ' '), '')), 'C')
+  setweight(to_tsvector('english'::regconfig, coalesce(name, '')), 'A') ||
+  setweight(to_tsvector('english'::regconfig, coalesce(slug, '')), 'A') ||
+  setweight(to_tsvector('english'::regconfig, coalesce(industry, '')), 'B') ||
+  setweight(to_tsvector('english'::regconfig, coalesce(description, '')), 'B') ||
+  setweight(to_tsvector('english'::regconfig, coalesce(array_to_string(tags, ' '), '')), 'C')
 )"""
 
 
