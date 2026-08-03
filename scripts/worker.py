@@ -57,6 +57,17 @@ def process_job(payload: dict) -> None:
             from app.ssl.nginx_gen import reload_nginx
 
             reload_nginx()
+        elif job_type == "webhook.dispatch":
+            from app.webhooks.service import WebhookService
+
+            url = payload.get("url")
+            secret = payload.get("secret") or ""
+            event = payload.get("event") or "unknown"
+            data = payload.get("data") or {}
+            if not url:
+                raise ValueError("webhook.dispatch missing url")
+            body = {"event": event, "data": data, "company_id": payload.get("company_id")}
+            WebhookService(db)._dispatch_worker(url, body, secret)
         else:
             logger.warning("unknown job type=%s", job_type)
     finally:

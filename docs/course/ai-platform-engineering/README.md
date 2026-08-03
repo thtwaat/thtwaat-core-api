@@ -46,9 +46,10 @@
 
 ## Current position
 
-**→ Semester 02 — API Design & Data Engineering for AI Platforms** (4-week intensive)
+**→ Semester 02 — API Design & Data Engineering for AI Platforms** (4-week intensive)  
+**Current:** Week 3 Day 1 — Async edge (`webhook.dispatch`)
 
-See: [`semester-02/README.md`](./semester-02/README.md) · Start: [`week-01/day-01.md`](./semester-02/week-01/day-01.md)
+See: [`semester-02/week-03/day-01.md`](./semester-02/week-03/day-01.md)
 
 Previous: [`semester-01/`](./semester-01/) Foundations (available for review)
 

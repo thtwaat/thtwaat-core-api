@@ -142,6 +142,8 @@ class Settings(BaseSettings):
     # Optional global overrides (apply to completions scope when set)
     OPENAI_COMPAT_RATE_LIMIT_RPM: Optional[int] = None
     OPENAI_COMPAT_RATE_LIMIT_RPD: Optional[int] = None
+    # Week 3 Day 1 — enqueue completion.* webhooks via Redis worker
+    OPENAI_COMPAT_WEBHOOKS_ENABLED: bool = True
 
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.

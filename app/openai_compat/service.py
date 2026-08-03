@@ -134,6 +134,17 @@ class CompletionsService:
                 status=status_label,
                 error_detail=error_detail,
             )
+            self._notify_completion(
+                principal=principal,
+                completion_id=completion_id,
+                body=body,
+                outcome="failed",
+                prompt_tokens=0,
+                completion_tokens=0,
+                latency_ms=latency_ms,
+                error=error_detail,
+                provider=provider,
+            )
             raise HTTPException(
                 status_code=status.HTTP_502_BAD_GATEWAY,
                 detail={
@@ -181,6 +192,18 @@ class CompletionsService:
 
             logging.getLogger(__name__).warning("usage hook failed: %s", exc)
 
+        self._notify_completion(
+            principal=principal,
+            completion_id=completion_id,
+            body=body,
+            outcome="succeeded",
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            latency_ms=latency_ms,
+            error=None,
+            provider=provider,
+        )
+
         created = int(time.time())
         response = ChatCompletionResponse(
             id=completion_id,
@@ -211,6 +234,51 @@ class CompletionsService:
             cache_status = "MISS"
 
         return response, cache_status
+
+    def _notify_completion(
+        self,
+        *,
+        principal: CompletionsPrincipal,
+        completion_id: str,
+        body: ChatCompletionRequest,
+        outcome: str,
+        prompt_tokens: int,
+        completion_tokens: int,
+        latency_ms: int,
+        error: Optional[str],
+        provider: str,
+    ) -> None:
+        """Week 3 Day 1 — enqueue completion webhooks (fail-open)."""
+        if not getattr(settings, "OPENAI_COMPAT_WEBHOOKS_ENABLED", True):
+            return
+        try:
+            from app.openai_compat.events import (
+                EVENT_COMPLETION_FAILED,
+                EVENT_COMPLETION_SUCCEEDED,
+                build_completion_event_data,
+            )
+            from app.openai_compat.notify import enqueue_completion_webhooks
+
+            event = (
+                EVENT_COMPLETION_SUCCEEDED
+                if outcome == "succeeded"
+                else EVENT_COMPLETION_FAILED
+            )
+            data = build_completion_event_data(
+                completion_id=completion_id,
+                model=body.model,
+                status=outcome,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                latency_ms=latency_ms,
+                error=error,
+                provider=provider,
+            )
+            enqueue_completion_webhooks(self.db, principal.company_id, event, data)
+        except Exception as exc:  # noqa: BLE001
+            import logging
+
+            logging.getLogger(__name__).warning("completion webhook notify failed: %s", exc)
 
     async def _via_gateway(
         self,

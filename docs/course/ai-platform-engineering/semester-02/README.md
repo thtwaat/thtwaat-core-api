@@ -85,9 +85,9 @@ flowchart LR
 
 ## Week index
 
-- [Week 1](./week-01/README.md) — **you are here** → start [Day 1](./week-01/day-01.md)
-- Week 2 — unlocked after W1 review passes
-- Week 3 — unlocked after W2 review passes
+- [Week 1](./week-01/README.md) — done (`sem02-w1-api-core`)
+- [Week 2](./week-02/README.md) — done (`sem02-w2-completions`)
+- [Week 3](./week-03/README.md) — **you are here** → start [Day 1](./week-03/day-01.md)
 - Week 4 — unlocked after W3 review passes
 
 ---
