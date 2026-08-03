@@ -53,8 +53,8 @@ export default function DomainsPage() {
 
   const ssl = useMutation({
     mutationFn: (id: string) => domainsApi.sslRequest(id),
-    onSuccess: () => {
-      toast.success("SSL requested");
+    onSuccess: (data: { message?: string; ssl_status?: string }) => {
+      toast.success(data?.message || "SSL certificate issued");
       qc.invalidateQueries({ queryKey: ["domains"] });
     },
     onError: (e: Error) => toast.error(e.message)
@@ -68,6 +68,8 @@ export default function DomainsPage() {
     },
     onError: (e: Error) => toast.error(e.message)
   });
+
+  const list = Array.isArray(domains.data) ? domains.data : [];
 
   return (
     <div className="space-y-6">
@@ -93,12 +95,14 @@ export default function DomainsPage() {
         </form>
       </Card>
 
-      {!domains.data?.length && !domains.isLoading && (
+      {!list.length && !domains.isLoading && (
         <EmptyState title="No domains yet" description="Add a hostname to begin DNS verification." />
       )}
 
       <div className="grid gap-4">
-        {(domains.data || []).map((domain) => (
+        {list.map((domain) => {
+          const pendingDns = ["PENDING", "DNS_PENDING", "FAILED"].includes(String(domain.status));
+          return (
           <Card key={domain.id}>
             <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
@@ -110,6 +114,11 @@ export default function DomainsPage() {
                   <Badge>SSL {domain.ssl_status}</Badge>
                 </div>
                 <p className="mt-2 text-xs text-muted">Added {formatDate(domain.created_at)}</p>
+                {pendingDns && (
+                  <p className="mt-2 text-sm text-amber-700">
+                    Add the DNS records below, then click Verify (or Request SSL to verify + issue in one step).
+                  </p>
+                )}
                 {domain.failure_reason && <p className="mt-2 text-sm text-red-600">{domain.failure_reason}</p>}
                 <div className="mt-3 space-y-1 text-xs text-muted">
                   {(domain.dns_records || []).slice(0, 3).map((r, i) => (
@@ -123,12 +132,15 @@ export default function DomainsPage() {
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant="secondary" onClick={() => verify.mutate(domain.id)}>Verify</Button>
                 <Button size="sm" variant="secondary" onClick={() => retry.mutate(domain.id)}>Retry</Button>
-                <Button size="sm" onClick={() => ssl.mutate(domain.id)}>Request SSL</Button>
+                <Button size="sm" disabled={ssl.isPending} onClick={() => ssl.mutate(domain.id)}>
+                  Request SSL
+                </Button>
                 <Button size="sm" variant="danger" onClick={() => remove.mutate(domain.id)}>Delete</Button>
               </div>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

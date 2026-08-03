@@ -483,6 +483,44 @@ class DomainService:
     def request_ssl(self, domain_id: UUID, company_id: UUID, user_id: UUID) -> SslRequestResponse:
         from app.ssl.manager import SslManager
 
+        domain = self.repo.get_for_company(domain_id, company_id)
+        if not domain:
+            raise HTTPException(status_code=404, detail="Domain not found")
+
+        needs_dns = domain.verified_at is None and domain.status not in (
+            DomainStatus.VERIFIED,
+            DomainStatus.SSL_PENDING,
+            DomainStatus.LIVE,
+        )
+        if needs_dns:
+            # One-click: verify DNS first, then issue SSL.
+            verified = self.verify(domain_id, company_id, user_id)
+            if not verified.verified:
+                mode = (getattr(settings, "SSL_MODE", None) or "simulate").lower()
+                if mode != "simulate":
+                    raise HTTPException(
+                        status_code=400,
+                        detail=(
+                            verified.message
+                            or "Add the DNS records shown below, click Verify, then Request SSL."
+                        ),
+                    )
+                # Lab/simulate: allow SSL without live DNS so dashboards stay usable.
+                domain = self.repo.get_for_company(domain_id, company_id)
+                domain.status = DomainStatus.SSL_PENDING
+                domain.verified_at = datetime.now(timezone.utc)
+                domain.ssl_status = SslStatus.PENDING.value
+                domain.failure_reason = (
+                    f"DNS not confirmed yet; continuing under SSL_MODE=simulate. "
+                    f"({verified.message})"
+                )
+                self.repo.save(domain)
+                logger.warning(
+                    "ssl_request_simulate_skip_dns domain_id=%s hostname=%s",
+                    domain_id,
+                    domain.hostname,
+                )
+
         result = SslManager(self.db).request(domain_id, company_id, user_id)
         invalidate_cors_cache()
         self._emit_webhook(company_id, "domain.ssl_active", {
@@ -495,7 +533,7 @@ class DomainService:
             hostname=result["hostname"],
             status=result.get("domain_status") or DomainStatus.LIVE.value,
             ssl_status=result["ssl_status"],
-            message="SSL certificate issued and nginx vhost generated.",
+            message=result.get("message") or "SSL certificate issued and nginx vhost generated.",
         )
 
     def renew_ssl(self, domain_id: UUID, company_id: UUID, user_id: UUID) -> dict:

@@ -106,7 +106,10 @@ class SslManager:
         ):
             raise HTTPException(
                 status_code=400,
-                detail="Domain must be DNS-verified before requesting SSL",
+                detail=(
+                    "Domain must be DNS-verified before requesting SSL. "
+                    "Add the TXT/CNAME records, click Verify, then try again."
+                ),
             )
 
         if challenge == "dns-01" or wildcard:
