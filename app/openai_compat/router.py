@@ -275,9 +275,10 @@ async def create_chat_completion(
                         resolve_stream_provider_chain,
                     )
 
-                    provider_chain = await resolve_stream_provider_chain(
+                    resolved = await resolve_stream_provider_chain(
                         model=body.model, provider=body.provider
                     )
+                    provider_chain = resolved
                     async for frame in engine.aiter_sse(
                         model=body.model,
                         messages=body.messages,

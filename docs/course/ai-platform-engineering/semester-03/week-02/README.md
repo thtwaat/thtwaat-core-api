@@ -7,7 +7,7 @@
 |-----|--------|--------|
 | 1 | Production streaming engine (OpenAI-compatible SSE) | Done |
 | 2 | Production streaming reliability (routing, fallback, timeouts) | Done |
-| 3 | Locked | Locked |
+| 3 | Health-aware provider fallback & intelligent routing | Done |
 | 4 | Locked | Locked |
 | 5 | Locked | Locked |
 | 6 | Locked | Locked |
@@ -23,4 +23,4 @@
 
 - Voice / image modalities  
 - Parallel fan-out streaming  
-- Retry / circuit breaker (later)
+- Full circuit-breaker product (Day 3 uses health-cache TTL cooldown only)

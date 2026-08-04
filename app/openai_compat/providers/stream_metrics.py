@@ -1,4 +1,4 @@
-"""In-process streaming metrics (Sem03 W2 D1 + D2 reliability)."""
+"""In-process streaming metrics (Sem03 W2 D1–D3 reliability + health)."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -22,6 +22,9 @@ class StreamRunMetrics:
     request_id: Optional[str] = None
     tenant_id: Optional[str] = None
     outcome: str = "completed"  # started|completed|cancelled|failed
+    # Day 3 — health-aware routing
+    health_skipped: int = 0
+    skipped_unhealthy: List[str] = field(default_factory=list)
 
 
 class StreamingMetrics:
@@ -35,6 +38,8 @@ class StreamingMetrics:
         self.stream_cancelled: int = 0
         self.stream_failed: int = 0
         self.fallback_used: int = 0
+        self.health_skipped: int = 0
+        self.stream_providers_unhealthy: int = 0
         self.provider_latency_ms: List[float] = []
         self.cancels: int = 0
         self.errors: Dict[str, int] = defaultdict(int)
@@ -50,6 +55,8 @@ class StreamingMetrics:
         self.stream_cancelled = 0
         self.stream_failed = 0
         self.fallback_used = 0
+        self.health_skipped = 0
+        self.stream_providers_unhealthy = 0
         self.provider_latency_ms.clear()
         self.cancels = 0
         self.errors.clear()
@@ -57,6 +64,14 @@ class StreamingMetrics:
 
     def mark_started(self) -> None:
         self.stream_started += 1
+
+    def record_health_skipped(self, count: int) -> None:
+        self.health_skipped += max(0, int(count))
+
+    def mark_provider_unhealthy(self, provider: str = "") -> None:
+        self.stream_providers_unhealthy += 1
+        if provider:
+            self.errors[f"unhealthy:{provider}"] += 1
 
     def record(self, run: StreamRunMetrics) -> None:
         self.runs.append(run)
@@ -92,6 +107,8 @@ class StreamingMetrics:
             "stream_cancelled": self.stream_cancelled,
             "stream_failed": self.stream_failed,
             "fallback_used": self.fallback_used,
+            "health_skipped": self.health_skipped,
+            "stream_providers_unhealthy": self.stream_providers_unhealthy,
             "tokens_streamed": self.streamed_tokens_total,
             "provider_latency_ms": {
                 "count": len(self.provider_latency_ms),

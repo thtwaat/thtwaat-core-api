@@ -133,6 +133,6 @@ Router passes `tenant_id=company_id` and optional `request_id`.
 
 ## Tomorrow (Day 3)
 
-Locked until approved.
+Health-aware stream fallback & intelligent routing — see [day-03.md](./day-03.md).
 
 **Stop here — Day 2 complete.**

@@ -1,7 +1,8 @@
-"""Production streaming engine — reliability (Sem03 W2 D2).
+"""Production streaming engine — reliability + health (Sem03 W2 D2–D3).
 
 Features:
 - provider routing (auto|ollama|openai|gemini|anthropic)
+- health-aware skip + TTL cooldown (health cache)
 - fallback before first token only
 - connect / first-token / idle timeouts
 - backpressure (max queued SSE frames)
@@ -13,7 +14,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, AsyncIterator, Dict, List, Optional, Sequence
+from typing import Any, AsyncIterator, Dict, List, Optional, Sequence, Union
 
 from fastapi import Request
 
@@ -24,6 +25,7 @@ from app.openai_compat.providers.base import (
     ProviderTimeoutError,
     ProviderUpstreamError,
 )
+from app.openai_compat.providers.health_cache import get_health_cache
 from app.openai_compat.providers.stream_factory import get_streaming_adapter, stream_enabled
 from app.openai_compat.providers.stream_metrics import (
     StreamRunMetrics,
@@ -38,6 +40,25 @@ from app.openai_compat.schemas import ChatCompletionChunkDelta, CompletionUsage
 from app.openai_compat.streaming import chunk_payload, format_sse
 
 logger = logging.getLogger(__name__)
+
+
+def _mark_provider_unhealthy(provider: str, cause: BaseException) -> None:
+    """Circuit-breaker style cooldown via shared health cache TTL."""
+    ttl = float(getattr(settings, "INFERENCE_HEALTH_CACHE_TTL_SECONDS", 30) or 30)
+    cache = get_health_cache()
+    cache.set_ttl(ttl)
+    cache.put(
+        provider,
+        {"ok": False, "error": str(cause), "source": "stream_pre_token"},
+    )
+    get_streaming_metrics().mark_provider_unhealthy(provider)
+
+
+def _mark_provider_healthy(provider: str) -> None:
+    ttl = float(getattr(settings, "INFERENCE_HEALTH_CACHE_TTL_SECONDS", 30) or 30)
+    cache = get_health_cache()
+    cache.set_ttl(ttl)
+    cache.put(provider, {"ok": True, "source": "stream_success"})
 
 
 class StreamPreTokenError(Exception):
@@ -111,7 +132,7 @@ class StreamEngine:
         model: str,
         messages: Sequence[Any],
         provider_name: str | None = None,
-        provider_chain: Optional[Sequence[str]] = None,
+        provider_chain: Optional[Union[Sequence[str], Any]] = None,
         temperature: Optional[float] = 0.7,
         max_tokens: Optional[int] = None,
         request: Optional[Request] = None,
@@ -164,17 +185,36 @@ class StreamEngine:
                 raise map_provider_exception(exc.cause) from exc.cause
 
         if provider_chain:
-            chain = [p.strip().lower() for p in provider_chain if p and str(p).strip()]
+            from app.openai_compat.stream_routing import StreamProviderChain
+
+            if isinstance(provider_chain, StreamProviderChain):
+                skipped_unhealthy = list(provider_chain.skipped_unhealthy)
+                chain = list(provider_chain.providers)
+            else:
+                skipped_unhealthy = []
+                chain = [p.strip().lower() for p in provider_chain if p and str(p).strip()]
         elif provider_name:
             from app.openai_compat.stream_routing import resolve_stream_provider_chain
 
-            chain = await resolve_stream_provider_chain(
+            resolved = await resolve_stream_provider_chain(
                 model=model, provider=provider_name
             )
+            chain = list(resolved.providers)
+            skipped_unhealthy = list(resolved.skipped_unhealthy)
         else:
             from app.openai_compat.stream_routing import resolve_stream_provider_chain
 
-            chain = await resolve_stream_provider_chain(model=model, provider="auto")
+            resolved = await resolve_stream_provider_chain(model=model, provider="auto")
+            chain = list(resolved.providers)
+            skipped_unhealthy = list(resolved.skipped_unhealthy)
+
+        if skipped_unhealthy:
+            metrics.record_health_skipped(len(skipped_unhealthy))
+            logger.info(
+                "openai_compat.stream_health_skip request_id=%s skipped=%s",
+                req_id,
+                ",".join(skipped_unhealthy),
+            )
 
         if not chain:
             chain = ["ollama"]
@@ -204,11 +244,14 @@ class StreamEngine:
                     tenant_id=tenant_id,
                     fallback_used=fallback_used,
                     providers_tried=providers_tried,
+                    health_skipped=len(skipped_unhealthy),
+                    skipped_unhealthy=skipped_unhealthy,
                 ):
                     yield frame
                 return
             except StreamPreTokenError as exc:
                 last_exc = exc.cause
+                _mark_provider_unhealthy(pname, exc.cause)
                 logger.warning(
                     "openai_compat.stream_fallback provider=%s request_id=%s err=%s",
                     pname,
@@ -228,6 +271,8 @@ class StreamEngine:
             request_id=req_id,
             tenant_id=str(tenant_id) if tenant_id is not None else None,
             outcome="failed",
+            health_skipped=len(skipped_unhealthy),
+            skipped_unhealthy=list(skipped_unhealthy),
         )
         metrics.record(run)
         self._log_stream(
@@ -265,8 +310,11 @@ class StreamEngine:
         tenant_id: Optional[str],
         fallback_used: bool,
         providers_tried: List[str],
+        health_skipped: int = 0,
+        skipped_unhealthy: Optional[List[str]] = None,
     ) -> AsyncIterator[str]:
         fingerprint = f"thtwaat-{adapter.name}"
+        skipped_unhealthy = list(skipped_unhealthy or [])
         connect_timeout = _setting_float("STREAM_CONNECT_TIMEOUT", 10.0)
         first_token_timeout = _setting_float("STREAM_FIRST_TOKEN_TIMEOUT", 30.0)
         idle_timeout = _setting_float("STREAM_IDLE_TIMEOUT", 60.0)
@@ -495,8 +543,12 @@ class StreamEngine:
                 request_id=request_id,
                 tenant_id=str(tenant_id) if tenant_id is not None else None,
                 outcome=outcome,
+                health_skipped=health_skipped,
+                skipped_unhealthy=list(skipped_unhealthy),
             )
             get_streaming_metrics().record(run)
+            if outcome == "completed" and not cancelled and not error_code:
+                _mark_provider_healthy(adapter.name)
             self._log_stream(
                 request_id=request_id,
                 tenant_id=tenant_id,
@@ -666,8 +718,8 @@ async def resolve_stream_provider_name(
     model: str,
     provider: Optional[str],
 ) -> str:
-    """Primary provider for a stream request (chain[0])."""
+    """Primary provider for a stream request (chain.providers[0])."""
     from app.openai_compat.stream_routing import resolve_stream_provider_chain
 
     chain = await resolve_stream_provider_chain(model=model, provider=provider)
-    return chain[0]
+    return chain.providers[0]

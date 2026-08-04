@@ -116,10 +116,18 @@ async def test_fallback_order_explicit_provider_first(monkeypatch):
         "ollama,openai,gemini,anthropic",
         raising=False,
     )
+
+    async def _all_healthy(names, **kwargs):
+        return list(names), []
+
+    monkeypatch.setattr(
+        "app.openai_compat.stream_routing.filter_healthy_stream_providers",
+        _all_healthy,
+    )
     chain = await resolve_stream_provider_chain(model="gpt-4o-mini", provider="openai")
-    assert chain[0] == "openai"
-    assert "ollama" in chain
-    assert chain == stream_fallback_order() or chain[0] == "openai"
+    assert chain.providers[0] == "openai"
+    assert "ollama" in chain.providers
+    assert chain.providers[0] == "openai"
 
 
 @pytest.mark.unit
