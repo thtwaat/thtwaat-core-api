@@ -25,6 +25,10 @@ class PublisherUpsert(BaseModel):
     bio: Optional[str] = None
     website: Optional[str] = Field(None, max_length=500)
     logo_url: Optional[str] = Field(None, max_length=500)
+    banner_url: Optional[str] = Field(None, max_length=500)
+    github_url: Optional[str] = Field(None, max_length=500)
+    linkedin_url: Optional[str] = Field(None, max_length=500)
+    twitter_url: Optional[str] = Field(None, max_length=500)
 
 
 class PublisherResponse(BaseModel):
@@ -35,12 +39,46 @@ class PublisherResponse(BaseModel):
     bio: Optional[str] = None
     website: Optional[str] = None
     logo_url: Optional[str] = None
+    banner_url: Optional[str] = None
+    github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    followers_count: int = 0
+    following_count: int = 0
     is_verified: bool
     status: PublisherStatus
     revenue_share_bps: int
     created_at: datetime
+    # Additive public profile aggregates (optional for private endpoints)
+    templates_count: Optional[int] = None
+    published_count: Optional[int] = None
+    average_rating: Optional[float] = None
+    total_installs: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class PublisherPublicProfile(BaseModel):
+    """Public publisher page — additive, no private company fields."""
+
+    id: UUID
+    display_name: str
+    slug: str
+    bio: Optional[str] = None
+    website: Optional[str] = None
+    logo_url: Optional[str] = None
+    banner_url: Optional[str] = None
+    github_url: Optional[str] = None
+    linkedin_url: Optional[str] = None
+    twitter_url: Optional[str] = None
+    is_verified: bool
+    followers_count: int = 0
+    following_count: int = 0
+    templates_count: int = 0
+    published_count: int = 0
+    average_rating: float = 0.0
+    total_installs: int = 0
+    listings: List["ListingResponse"] = Field(default_factory=list)
 
 
 # ── Listings ──────────────────────────────────────────────────────────────────
@@ -52,6 +90,8 @@ class ListingCreate(BaseModel):
     long_description: str = ""
     screenshots: List[str] = Field(default_factory=list, max_length=20)
     demo_url: Optional[str] = None
+    cover_url: Optional[str] = Field(None, max_length=500)
+    logo_url: Optional[str] = Field(None, max_length=500)
     supported_languages: List[str] = Field(default_factory=lambda: ["en"])
     knowledge_requirements: Optional[str] = None
     categories: List[str] = Field(default_factory=list)
@@ -59,6 +99,10 @@ class ListingCreate(BaseModel):
     pricing_model: PricingModel = PricingModel.FREE
     price_amount: Decimal = Decimal("0")
     currency: str = Field("USD", min_length=3, max_length=3)
+    pricing_tier: Optional[str] = Field(
+        None,
+        description="UI badge: free|pro|enterprise — stored in default_config.store.pricing_tier",
+    )
     source_agent_id: Optional[UUID] = None
     marketplace_category: str = Field(
         default="helpdesk",
@@ -68,6 +112,7 @@ class ListingCreate(BaseModel):
     version: str = "1.0.0"
     release_notes: Optional[str] = "Initial release"
     submit_for_review: bool = False
+    as_private: bool = False
 
     @field_validator("price_amount")
     @classmethod
@@ -83,6 +128,8 @@ class ListingUpdate(BaseModel):
     long_description: Optional[str] = None
     screenshots: Optional[List[str]] = None
     demo_url: Optional[str] = None
+    cover_url: Optional[str] = Field(None, max_length=500)
+    logo_url: Optional[str] = Field(None, max_length=500)
     supported_languages: Optional[List[str]] = None
     knowledge_requirements: Optional[str] = None
     categories: Optional[List[str]] = None
@@ -92,6 +139,14 @@ class ListingUpdate(BaseModel):
     currency: Optional[str] = Field(None, min_length=3, max_length=3)
     source_agent_id: Optional[UUID] = None
     release_notes: Optional[str] = None
+    default_config: Optional[Dict[str, Any]] = None
+
+
+class ListingStatusUpdate(BaseModel):
+    status: ListingStatus = Field(
+        ...,
+        description="Publisher-controlled: draft|private|archived (submit uses /submit)",
+    )
 
 
 class ListingVersionCreate(BaseModel):
@@ -113,6 +168,8 @@ class ListingResponse(BaseModel):
     long_description: str
     screenshots: List[str] = Field(default_factory=list)
     demo_url: Optional[str] = None
+    cover_url: Optional[str] = None
+    logo_url: Optional[str] = None
     supported_languages: List[str] = Field(default_factory=list)
     knowledge_requirements: Optional[str] = None
     categories: List[str] = Field(default_factory=list)
@@ -195,9 +252,35 @@ class ReviewResponse(BaseModel):
     rating: int
     title: Optional[str] = None
     body: Optional[str] = None
+    publisher_reply: Optional[str] = None
+    publisher_replied_at: Optional[datetime] = None
+    helpful_count: int = 0
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ReviewReplyRequest(BaseModel):
+    reply: str = Field(..., min_length=1, max_length=5000)
+
+
+class PublisherAiGenerateRequest(BaseModel):
+    kind: str = Field(
+        ...,
+        pattern="^(summary|tags|documentation|screenshots_description|seo_description)$",
+    )
+    title: str = Field(..., min_length=1, max_length=255)
+    short_description: str = ""
+    long_description: str = ""
+    categories: List[str] = Field(default_factory=list)
+    tags: List[str] = Field(default_factory=list)
+    language: str = "en"
+
+
+class PublisherAiGenerateResponse(BaseModel):
+    kind: str
+    result: str
+    tags: List[str] = Field(default_factory=list)
 
 
 # ── Analytics / revenue ───────────────────────────────────────────────────────
@@ -205,7 +288,13 @@ class ReviewResponse(BaseModel):
 class PublisherAnalytics(BaseModel):
     listings: int
     published_listings: int
+    draft_listings: int = 0
+    pending_review_listings: int = 0
+    private_listings: int = 0
+    rejected_listings: int = 0
+    archived_listings: int = 0
     total_installs: int
+    active_installs: int = 0
     total_downloads: int
     average_rating: float
     review_count: int
@@ -213,7 +302,15 @@ class PublisherAnalytics(BaseModel):
     gross_revenue: float
     publisher_revenue: float
     platform_fees: float
+    monthly_growth_pct: float = 0.0
     currency: str = "USD"
+    # Timeseries / breakdown (additive)
+    daily_installs: List[Dict[str, Any]] = Field(default_factory=list)
+    monthly_installs: List[Dict[str, Any]] = Field(default_factory=list)
+    countries: List[Dict[str, Any]] = Field(default_factory=list)
+    devices: List[Dict[str, Any]] = Field(default_factory=list)
+    conversion_rate: float = 0.0
+    retention_rate: float = 0.0
 
 
 class StoreAdminStats(BaseModel):
@@ -255,3 +352,4 @@ class AbuseResolveRequest(BaseModel):
 
 
 ListingDetailResponse.model_rebuild()
+PublisherPublicProfile.model_rebuild()

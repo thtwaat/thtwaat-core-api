@@ -14,13 +14,18 @@ from app.agent_store.schemas import (
     ListingCreate,
     ListingDetailResponse,
     ListingResponse,
+    ListingStatusUpdate,
     ListingUpdate,
     ListingVersionCreate,
     ModerateListingRequest,
+    PublisherAiGenerateRequest,
+    PublisherAiGenerateResponse,
     PublisherAnalytics,
+    PublisherPublicProfile,
     PublisherResponse,
     PublisherUpsert,
     ReviewCreate,
+    ReviewReplyRequest,
     ReviewResponse,
     StoreAdminStats,
     StoreInstallRequest,
@@ -279,6 +284,87 @@ def publisher_analytics(
     service: AgentStoreService = Depends(get_agent_store_service),
 ):
     return service.publisher_analytics(UUID(str(user.company_id)))
+
+
+@router.post(
+    "/publisher/listings/{listing_id}/duplicate",
+    response_model=ListingResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def duplicate_listing(
+    listing_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.duplicate_listing(
+        UUID(str(user.company_id)),
+        listing_id,
+        UUID(str(user.id)),
+    )
+
+
+@router.post("/publisher/listings/{listing_id}/status", response_model=ListingResponse)
+def set_listing_status(
+    listing_id: UUID,
+    payload: ListingStatusUpdate,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.set_listing_status(UUID(str(user.company_id)), listing_id, payload)
+
+
+@router.delete("/publisher/listings/{listing_id}", response_model=ListingResponse)
+def archive_listing(
+    listing_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.archive_listing(UUID(str(user.company_id)), listing_id)
+
+
+@router.get("/publisher/reviews", response_model=List[ReviewResponse])
+def publisher_reviews(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.list_publisher_reviews(UUID(str(user.company_id)))
+
+
+@router.post("/publisher/reviews/{review_id}/reply", response_model=ReviewResponse)
+def reply_review(
+    review_id: UUID,
+    payload: ReviewReplyRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.reply_to_review(UUID(str(user.company_id)), review_id, payload)
+
+
+@router.post("/publisher/ai/generate", response_model=PublisherAiGenerateResponse)
+def publisher_ai_generate(
+    payload: PublisherAiGenerateRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.generate_listing_copy(payload)
+
+
+@router.get("/publishers/{slug}", response_model=PublisherPublicProfile)
+def public_publisher_profile(
+    slug: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.get_publisher_public(slug)
+
+
+@router.post("/reviews/{review_id}/helpful", response_model=ReviewResponse)
+def mark_review_helpful(
+    review_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    return service.mark_review_helpful(review_id)
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────

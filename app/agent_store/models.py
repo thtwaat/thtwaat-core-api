@@ -30,10 +30,12 @@ class PublisherStatus(str, enum.Enum):
 
 class ListingStatus(str, enum.Enum):
     DRAFT = "draft"
+    PRIVATE = "private"
     PENDING_REVIEW = "pending_review"
     PUBLISHED = "published"
     SUSPENDED = "suspended"
     REJECTED = "rejected"
+    ARCHIVED = "archived"
 
 
 class PricingModel(str, enum.Enum):
@@ -69,6 +71,12 @@ class AgentStorePublisher(Base, TimestampMixin):
     bio = Column(Text, nullable=True)
     website = Column(String(500), nullable=True)
     logo_url = Column(String(500), nullable=True)
+    banner_url = Column(String(500), nullable=True)
+    github_url = Column(String(500), nullable=True)
+    linkedin_url = Column(String(500), nullable=True)
+    twitter_url = Column(String(500), nullable=True)
+    followers_count = Column(Integer, nullable=False, default=0)
+    following_count = Column(Integer, nullable=False, default=0)
     is_verified = Column(Boolean, nullable=False, default=False)
     status = Column(
         SAEnum(
@@ -113,6 +121,8 @@ class AgentStoreListing(Base, TimestampMixin):
     long_description = Column(Text, nullable=False, default="")
     screenshots = Column(JSONB, nullable=False, default=list)
     demo_url = Column(String(500), nullable=True)
+    cover_url = Column(String(500), nullable=True)
+    logo_url = Column(String(500), nullable=True)
     supported_languages = Column(JSONB, nullable=False, default=list)
     knowledge_requirements = Column(Text, nullable=True)
     categories = Column(JSONB, nullable=False, default=list)
@@ -175,6 +185,9 @@ class AgentStoreReview(Base, TimestampMixin):
     title = Column(String(200), nullable=True)
     body = Column(Text, nullable=True)
     is_visible = Column(Boolean, nullable=False, default=True)
+    publisher_reply = Column(Text, nullable=True)
+    publisher_replied_at = Column(DateTime(timezone=True), nullable=True)
+    helpful_count = Column(Integer, nullable=False, default=0)
 
 
 class AgentStorePurchase(Base, TimestampMixin):

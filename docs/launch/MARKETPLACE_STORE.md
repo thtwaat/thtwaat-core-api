@@ -44,3 +44,18 @@ Route: `/app/templates/[slug]`
 - Additive API fields on `TemplateResponse` (permissions, feature_cards, docs sections, …)
 - `GET /api/v1/marketplace/templates/{id_or_slug}/reviews` bridges agent-store reviews when a listing exists
 - Detail copy prefers `default_config.store` / `default_config` without breaking older rows
+
+## Publisher Portal (Phase 4)
+
+SaaS routes under `/app/publisher/*` and public profile `/app/publishers/[slug]`.
+
+Backend (additive on `/api/v1/agent-store`):
+
+- Publisher dashboard metrics via `GET /publisher/analytics` (draft/pending/revenue/growth/active installs + timeseries)
+- Listing duplicate / soft-delete (archive) / status (`draft|private|archived`)
+- Public `GET /publishers/{slug}`
+- Review reply + helpful
+- AI listing helpers `POST /publisher/ai/generate`
+- Admin moderation: approve / reject / suspend / feature / unfeature / verify
+
+Migration: `j4d5e6f7a8b9_publisher_portal` (additive columns + enum values only).

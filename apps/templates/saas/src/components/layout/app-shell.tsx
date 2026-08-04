@@ -18,12 +18,13 @@ import {
   Shield,
   Sparkles,
   Store,
+  Upload,
   Webhook,
   X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { canAccessAdmin, canManageWebhooks, canViewProviders } from "@/lib/permissions";
+import { canAccessAdmin, canManageTemplates, canManageWebhooks, canViewProviders } from "@/lib/permissions";
 import { site } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api";
@@ -37,6 +38,7 @@ const baseNav = [
   { href: "/app/agents", label: "Agents", icon: Bot },
   { href: "/app/knowledge", label: "Knowledge", icon: Library },
   { href: "/app/templates", label: "Marketplace", icon: Store },
+  { href: "/app/publisher", label: "Publisher", icon: Upload, requireTemplates: true as const },
   { href: "/app/providers", label: "AI Providers", icon: Cpu, requireProviders: true as const },
   { href: "/app/domains", label: "Domains", icon: Globe2 },
   { href: "/app/webhooks", label: "Webhooks", icon: Webhook, requireWebhooks: true as const },
@@ -60,6 +62,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       }
       if ("requireProviders" in item && item.requireProviders) {
         return canViewProviders(user?.role);
+      }
+      if ("requireTemplates" in item && item.requireTemplates) {
+        return canManageTemplates(user?.role);
       }
       return true;
     });

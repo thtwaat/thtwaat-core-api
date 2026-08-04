@@ -737,15 +737,33 @@ export type AgentListing = {
   slug: string;
   title: string;
   short_description: string;
+  long_description?: string;
+  screenshots?: string[];
+  demo_url?: string | null;
+  cover_url?: string | null;
+  logo_url?: string | null;
+  supported_languages?: string[];
+  knowledge_requirements?: string | null;
+  categories?: string[];
+  tags?: string[];
   status: string;
   is_featured: boolean;
   is_verified_badge: boolean;
+  publisher_id?: string;
   publisher_name?: string | null;
+  publisher_verified?: boolean;
   pricing_model: string;
   price_amount: string | number;
+  currency?: string;
   current_version: string;
+  release_notes?: string | null;
   install_count: number;
+  download_count?: number;
+  rating_avg?: string | number;
+  rating_count?: number;
+  published_at?: string | null;
   created_at: string;
+  updated_at?: string;
 };
 
 export type AbuseReport = {
@@ -755,6 +773,113 @@ export type AbuseReport = {
   details?: string | null;
   status: string;
   created_at: string;
+};
+
+export type PublisherProfile = {
+  id: string;
+  company_id: string;
+  display_name: string;
+  slug: string;
+  bio?: string | null;
+  website?: string | null;
+  logo_url?: string | null;
+  banner_url?: string | null;
+  github_url?: string | null;
+  linkedin_url?: string | null;
+  twitter_url?: string | null;
+  followers_count?: number;
+  following_count?: number;
+  is_verified: boolean;
+  status: string;
+  revenue_share_bps: number;
+  created_at: string;
+};
+
+export type PublisherPublicProfile = {
+  id: string;
+  display_name: string;
+  slug: string;
+  bio?: string | null;
+  website?: string | null;
+  logo_url?: string | null;
+  banner_url?: string | null;
+  github_url?: string | null;
+  linkedin_url?: string | null;
+  twitter_url?: string | null;
+  is_verified: boolean;
+  followers_count: number;
+  following_count: number;
+  templates_count: number;
+  published_count: number;
+  average_rating: number;
+  total_installs: number;
+  listings: AgentListing[];
+};
+
+export type PublisherAnalytics = {
+  listings: number;
+  published_listings: number;
+  draft_listings?: number;
+  pending_review_listings?: number;
+  private_listings?: number;
+  rejected_listings?: number;
+  archived_listings?: number;
+  total_installs: number;
+  active_installs?: number;
+  total_downloads: number;
+  average_rating: number;
+  review_count: number;
+  completed_purchases: number;
+  gross_revenue: number;
+  publisher_revenue: number;
+  platform_fees: number;
+  monthly_growth_pct?: number;
+  currency: string;
+  daily_installs?: Array<{ date: string; count: number }>;
+  monthly_installs?: Array<{ month: string; count: number }>;
+  countries?: Array<{ country: string; count: number }>;
+  devices?: Array<{ device: string; count: number }>;
+  conversion_rate?: number;
+  retention_rate?: number;
+};
+
+export type AgentStoreReview = {
+  id: string;
+  listing_id: string;
+  company_id: string;
+  user_id: string;
+  rating: number;
+  title?: string | null;
+  body?: string | null;
+  publisher_reply?: string | null;
+  publisher_replied_at?: string | null;
+  helpful_count?: number;
+  created_at: string;
+};
+
+export type ListingCreateBody = {
+  title: string;
+  slug: string;
+  short_description?: string;
+  long_description?: string;
+  screenshots?: string[];
+  demo_url?: string | null;
+  cover_url?: string | null;
+  logo_url?: string | null;
+  supported_languages?: string[];
+  knowledge_requirements?: string | null;
+  categories?: string[];
+  tags?: string[];
+  pricing_model?: string;
+  price_amount?: number | string;
+  currency?: string;
+  pricing_tier?: string | null;
+  marketplace_category?: string;
+  default_config?: Record<string, unknown>;
+  version?: string;
+  release_notes?: string | null;
+  submit_for_review?: boolean;
+  as_private?: boolean;
 };
 
 export const agentStoreApi = {
@@ -774,6 +899,65 @@ export const agentStoreApi = {
   },
   resolveAbuse: (reportId: string, body: { status: string; resolution_notes?: string }) =>
     api.v1<AbuseReport>(`/agent-store/admin/abuse-reports/${reportId}/resolve`, {
+      method: "POST",
+      body
+    }),
+
+  // Publisher portal
+  getMe: () => api.v1<PublisherProfile>("/agent-store/publisher/me"),
+  upsertMe: (body: {
+    display_name: string;
+    slug: string;
+    bio?: string | null;
+    website?: string | null;
+    logo_url?: string | null;
+    banner_url?: string | null;
+    github_url?: string | null;
+    linkedin_url?: string | null;
+    twitter_url?: string | null;
+  }) => api.v1<PublisherProfile>("/agent-store/publisher/me", { method: "PUT", body }),
+  myListings: () => api.v1<AgentListing[]>("/agent-store/publisher/listings"),
+  createListing: (body: ListingCreateBody) =>
+    api.v1<AgentListing>("/agent-store/publisher/listings", { method: "POST", body }),
+  updateListing: (id: string, body: Partial<ListingCreateBody>) =>
+    api.v1<AgentListing>(`/agent-store/publisher/listings/${id}`, { method: "PATCH", body }),
+  submitListing: (id: string) =>
+    api.v1<AgentListing>(`/agent-store/publisher/listings/${id}/submit`, { method: "POST" }),
+  duplicateListing: (id: string) =>
+    api.v1<AgentListing>(`/agent-store/publisher/listings/${id}/duplicate`, { method: "POST" }),
+  setListingStatus: (id: string, status: string) =>
+    api.v1<AgentListing>(`/agent-store/publisher/listings/${id}/status`, {
+      method: "POST",
+      body: { status }
+    }),
+  archiveListing: (id: string) =>
+    api.v1<AgentListing>(`/agent-store/publisher/listings/${id}`, { method: "DELETE" }),
+  analytics: () => api.v1<PublisherAnalytics>("/agent-store/publisher/analytics"),
+  reviews: () => api.v1<AgentStoreReview[]>("/agent-store/publisher/reviews"),
+  replyReview: (reviewId: string, reply: string) =>
+    api.v1<AgentStoreReview>(`/agent-store/publisher/reviews/${reviewId}/reply`, {
+      method: "POST",
+      body: { reply }
+    }),
+  aiGenerate: (body: {
+    kind: string;
+    title: string;
+    short_description?: string;
+    long_description?: string;
+    categories?: string[];
+    tags?: string[];
+    language?: string;
+  }) =>
+    api.v1<{ kind: string; result: string; tags: string[] }>("/agent-store/publisher/ai/generate", {
+      method: "POST",
+      body
+    }),
+  publicPublisher: (slug: string) =>
+    api.v1<PublisherPublicProfile>(`/agent-store/publishers/${slug}`),
+  markReviewHelpful: (reviewId: string) =>
+    api.v1<AgentStoreReview>(`/agent-store/reviews/${reviewId}/helpful`, { method: "POST" }),
+  reportAbuse: (listingId: string, body: { reason: string; details?: string }) =>
+    api.v1<AbuseReport>(`/agent-store/listings/${listingId}/abuse-reports`, {
       method: "POST",
       body
     })

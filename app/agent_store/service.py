@@ -33,20 +33,25 @@ from app.agent_store.schemas import (
     ListingCreate,
     ListingDetailResponse,
     ListingResponse,
+    ListingStatusUpdate,
     ListingUpdate,
     ListingVersionCreate,
     ModerateListingRequest,
+    PublisherAiGenerateRequest,
+    PublisherAiGenerateResponse,
     PublisherAnalytics,
+    PublisherPublicProfile,
     PublisherResponse,
     PublisherUpsert,
     ReviewCreate,
+    ReviewReplyRequest,
     ReviewResponse,
     StoreAdminStats,
     StoreInstallRequest,
     StoreInstallResponse,
     StorefrontResponse,
 )
-from app.marketplace.schemas import InstallRequest, TemplateCreate, TemplateVersionCreate
+from app.marketplace.schemas import InstallRequest, TemplateCreate, TemplateUpdate, TemplateVersionCreate
 from app.marketplace.service import MarketplaceService
 from app.notifications.events import NotificationEventBus
 from app.payments.model import Gateway, PaymentMethod, PaymentStatus
@@ -86,6 +91,10 @@ class AgentStoreService:
             existing.bio = payload.bio
             existing.website = payload.website
             existing.logo_url = payload.logo_url
+            existing.banner_url = payload.banner_url
+            existing.github_url = payload.github_url
+            existing.linkedin_url = payload.linkedin_url
+            existing.twitter_url = payload.twitter_url
             pub = existing
         else:
             pub = AgentStorePublisher(
@@ -95,6 +104,10 @@ class AgentStoreService:
                 bio=payload.bio,
                 website=payload.website,
                 logo_url=payload.logo_url,
+                banner_url=payload.banner_url,
+                github_url=payload.github_url,
+                linkedin_url=payload.linkedin_url,
+                twitter_url=payload.twitter_url,
                 status=PublisherStatus.ACTIVE,
             )
             self.db.add(pub)
@@ -123,6 +136,10 @@ class AgentStoreService:
         if payload.pricing_model != PricingModel.FREE and payload.price_amount <= 0:
             raise HTTPException(status_code=400, detail="Paid listings require price_amount > 0")
 
+        store_meta: dict = {}
+        if payload.pricing_tier:
+            store_meta["pricing_tier"] = payload.pricing_tier
+
         # Underlying installable template — reuse Marketplace create (no duplicate install logic)
         template = self.marketplace.create_template(
             TemplateCreate(
@@ -144,11 +161,19 @@ class AgentStoreService:
                     "agent_store": True,
                     "listing_slug": payload.slug,
                     "source_agent_id": str(payload.source_agent_id) if payload.source_agent_id else None,
+                    **({"store": store_meta} if store_meta else {}),
                 },
                 changelog=payload.release_notes or "Initial release",
                 publish=False,
             )
         )
+
+        if payload.submit_for_review:
+            initial_status = ListingStatus.PENDING_REVIEW
+        elif payload.as_private:
+            initial_status = ListingStatus.PRIVATE
+        else:
+            initial_status = ListingStatus.DRAFT
 
         listing = AgentStoreListing(
             publisher_id=pub.id,
@@ -160,6 +185,8 @@ class AgentStoreService:
             long_description=payload.long_description,
             screenshots=payload.screenshots or [],
             demo_url=payload.demo_url,
+            cover_url=payload.cover_url,
+            logo_url=payload.logo_url,
             supported_languages=payload.supported_languages or ["en"],
             knowledge_requirements=payload.knowledge_requirements,
             categories=payload.categories or [],
@@ -167,7 +194,7 @@ class AgentStoreService:
             pricing_model=payload.pricing_model,
             price_amount=payload.price_amount,
             currency=payload.currency.upper(),
-            status=ListingStatus.PENDING_REVIEW if payload.submit_for_review else ListingStatus.DRAFT,
+            status=initial_status,
             current_version=payload.version,
             release_notes=payload.release_notes,
             is_verified_badge=bool(pub.is_verified),
@@ -192,6 +219,7 @@ class AgentStoreService:
     ) -> ListingResponse:
         listing = self._owned_listing(company_id, listing_id)
         data = payload.model_dump(exclude_unset=True)
+        default_config = data.pop("default_config", None)
         if "pricing_model" in data and data["pricing_model"] != PricingModel.FREE:
             amount = data.get("price_amount", listing.price_amount)
             if amount is not None and Decimal(str(amount)) <= 0:
@@ -200,13 +228,27 @@ class AgentStoreService:
             data["currency"] = data["currency"].upper()
         for key, value in data.items():
             setattr(listing, key, value)
+        if default_config is not None:
+            try:
+                tpl = self.marketplace.get_template(listing.template_id)
+                merged = {**(tpl.default_config or {}), **default_config, "agent_store": True}
+                self.marketplace.update_template(
+                    listing.template_id,
+                    TemplateUpdate(default_config=merged),
+                )
+            except Exception:
+                pass
         self.db.commit()
         self.db.refresh(listing)
         return self._listing_response(listing, company_id=company_id)
 
     def submit_listing(self, company_id: UUID, listing_id: UUID, user_id: UUID) -> ListingResponse:
         listing = self._owned_listing(company_id, listing_id)
-        if listing.status not in (ListingStatus.DRAFT, ListingStatus.REJECTED):
+        if listing.status not in (
+            ListingStatus.DRAFT,
+            ListingStatus.PRIVATE,
+            ListingStatus.REJECTED,
+        ):
             raise HTTPException(status_code=400, detail="Listing cannot be submitted from current status")
         listing.status = ListingStatus.PENDING_REVIEW
         listing.moderation_notes = None
@@ -220,6 +262,77 @@ class AgentStoreService:
             data={"listing_title": listing.title, "listing_id": str(listing.id)},
         )
         return self._listing_response(listing, company_id=company_id)
+
+    def set_listing_status(
+        self, company_id: UUID, listing_id: UUID, payload: ListingStatusUpdate
+    ) -> ListingResponse:
+        listing = self._owned_listing(company_id, listing_id)
+        allowed = {ListingStatus.DRAFT, ListingStatus.PRIVATE, ListingStatus.ARCHIVED}
+        if payload.status not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail="Use /submit for review, or status must be draft|private|archived",
+            )
+        if listing.status == ListingStatus.PUBLISHED and payload.status == ListingStatus.ARCHIVED:
+            listing.status = ListingStatus.ARCHIVED
+            listing.is_featured = False
+        elif listing.status in (
+            ListingStatus.DRAFT,
+            ListingStatus.PRIVATE,
+            ListingStatus.REJECTED,
+            ListingStatus.ARCHIVED,
+        ):
+            listing.status = payload.status
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Cannot set status from {listing.status.value}",
+            )
+        self.db.commit()
+        self.db.refresh(listing)
+        return self._listing_response(listing, company_id=company_id)
+
+    def archive_listing(self, company_id: UUID, listing_id: UUID) -> ListingResponse:
+        return self.set_listing_status(
+            company_id, listing_id, ListingStatusUpdate(status=ListingStatus.ARCHIVED)
+        )
+
+    def duplicate_listing(
+        self, company_id: UUID, listing_id: UUID, user_id: UUID
+    ) -> ListingResponse:
+        src = self._owned_listing(company_id, listing_id)
+        base_slug = f"{src.slug}-copy"
+        slug = base_slug
+        n = 2
+        while self.db.query(AgentStoreListing).filter(AgentStoreListing.slug == slug).first():
+            slug = f"{base_slug}-{n}"
+            n += 1
+        return self.create_listing(
+            company_id,
+            user_id,
+            ListingCreate(
+                title=f"{src.title} (Copy)",
+                slug=slug,
+                short_description=src.short_description or "",
+                long_description=src.long_description or "",
+                screenshots=list(src.screenshots or []),
+                demo_url=src.demo_url,
+                cover_url=getattr(src, "cover_url", None),
+                logo_url=getattr(src, "logo_url", None),
+                supported_languages=list(src.supported_languages or ["en"]),
+                knowledge_requirements=src.knowledge_requirements,
+                categories=list(src.categories or []),
+                tags=list(src.tags or []),
+                pricing_model=src.pricing_model,
+                price_amount=Decimal(str(src.price_amount or 0)),
+                currency=src.currency or "USD",
+                source_agent_id=src.source_agent_id,
+                version="1.0.0",
+                release_notes="Duplicated listing",
+                submit_for_review=False,
+                as_private=False,
+            ),
+        )
 
     def add_listing_version(
         self, company_id: UUID, listing_id: UUID, payload: ListingVersionCreate
@@ -258,6 +371,10 @@ class AgentStoreService:
         return [self._listing_response(r, company_id=company_id) for r in rows]
 
     def publisher_analytics(self, company_id: UUID) -> PublisherAnalytics:
+        from datetime import timedelta
+
+        from app.marketplace.models import InstallStatus, MarketplaceTemplateInstallation
+
         pub = self._require_publisher(company_id)
         listings = (
             self.db.query(AgentStoreListing)
@@ -265,6 +382,7 @@ class AgentStoreService:
             .all()
         )
         listing_ids = [l.id for l in listings]
+        template_ids = [l.template_id for l in listings]
         purchases = []
         if listing_ids:
             purchases = (
@@ -279,22 +397,256 @@ class AgentStoreService:
         publisher_rev = sum(Decimal(str(p.publisher_share)) for p in purchases)
         platform = sum(Decimal(str(p.platform_share)) for p in purchases)
         published = sum(1 for l in listings if l.status == ListingStatus.PUBLISHED)
+        draft = sum(1 for l in listings if l.status == ListingStatus.DRAFT)
+        pending = sum(1 for l in listings if l.status == ListingStatus.PENDING_REVIEW)
+        private = sum(1 for l in listings if l.status == ListingStatus.PRIVATE)
+        rejected = sum(1 for l in listings if l.status == ListingStatus.REJECTED)
+        archived = sum(1 for l in listings if l.status == ListingStatus.ARCHIVED)
         rating_count = sum(l.rating_count for l in listings)
         rating_sum = sum(float(l.rating_avg) * l.rating_count for l in listings)
         avg = (rating_sum / rating_count) if rating_count else 0.0
+        total_installs = sum(l.install_count for l in listings)
+        total_downloads = sum(l.download_count for l in listings)
+
+        active_installs = 0
+        if template_ids:
+            active_statuses = [
+                InstallStatus.READY,
+                InstallStatus.PUBLISHED,
+                InstallStatus.UPDATE_AVAILABLE,
+            ]
+            active_installs = int(
+                self.db.query(func.count(MarketplaceTemplateInstallation.id))
+                .filter(
+                    MarketplaceTemplateInstallation.template_id.in_(template_ids),
+                    MarketplaceTemplateInstallation.status.in_(active_statuses),
+                )
+                .scalar()
+                or 0
+            )
+
+        now = _now()
+        month_ago = now - timedelta(days=30)
+        two_months_ago = now - timedelta(days=60)
+        recent_purchases = [p for p in purchases if p.created_at and p.created_at >= month_ago]
+        prior_purchases = [
+            p for p in purchases if p.created_at and two_months_ago <= p.created_at < month_ago
+        ]
+        recent_rev = float(sum(Decimal(str(p.publisher_share)) for p in recent_purchases))
+        prior_rev = float(sum(Decimal(str(p.publisher_share)) for p in prior_purchases))
+        if prior_rev > 0:
+            monthly_growth = round(((recent_rev - prior_rev) / prior_rev) * 100, 1)
+        elif recent_rev > 0:
+            monthly_growth = 100.0
+        else:
+            monthly_growth = 0.0
+
+        # Daily / monthly install buckets from installation timestamps
+        daily_map: dict = {}
+        monthly_map: dict = {}
+        if template_ids:
+            installs = (
+                self.db.query(MarketplaceTemplateInstallation)
+                .filter(MarketplaceTemplateInstallation.template_id.in_(template_ids))
+                .all()
+            )
+            for inst in installs:
+                if not inst.created_at:
+                    continue
+                d = inst.created_at.date().isoformat()
+                m = inst.created_at.strftime("%Y-%m")
+                daily_map[d] = daily_map.get(d, 0) + 1
+                monthly_map[m] = monthly_map.get(m, 0) + 1
+
+        daily_installs = [
+            {"date": k, "count": v} for k, v in sorted(daily_map.items())[-30:]
+        ]
+        monthly_installs = [
+            {"month": k, "count": v} for k, v in sorted(monthly_map.items())[-12:]
+        ]
+
+        views_proxy = max(total_downloads, total_installs, 1)
+        conversion = round((total_installs / views_proxy) * 100, 2) if views_proxy else 0.0
+        retention = (
+            round((active_installs / total_installs) * 100, 2) if total_installs else 0.0
+        )
+
         return PublisherAnalytics(
             listings=len(listings),
             published_listings=published,
-            total_installs=sum(l.install_count for l in listings),
-            total_downloads=sum(l.download_count for l in listings),
+            draft_listings=draft,
+            pending_review_listings=pending,
+            private_listings=private,
+            rejected_listings=rejected,
+            archived_listings=archived,
+            total_installs=total_installs,
+            active_installs=active_installs,
+            total_downloads=total_downloads,
             average_rating=round(avg, 2),
             review_count=rating_count,
             completed_purchases=len(purchases),
             gross_revenue=float(gross),
             publisher_revenue=float(publisher_rev),
             platform_fees=float(platform),
+            monthly_growth_pct=monthly_growth,
             currency=(listings[0].currency if listings else "USD"),
+            daily_installs=daily_installs,
+            monthly_installs=monthly_installs,
+            countries=[{"country": "Unknown", "count": total_installs}] if total_installs else [],
+            devices=[{"device": "web", "count": total_installs}] if total_installs else [],
+            conversion_rate=conversion,
+            retention_rate=retention,
         )
+
+    def get_publisher_public(self, slug: str) -> PublisherPublicProfile:
+        pub = (
+            self.db.query(AgentStorePublisher)
+            .filter(AgentStorePublisher.slug == slug)
+            .first()
+        )
+        if not pub or pub.status == PublisherStatus.SUSPENDED:
+            raise HTTPException(status_code=404, detail="Publisher not found")
+        published = (
+            self.db.query(AgentStoreListing)
+            .filter(
+                AgentStoreListing.publisher_id == pub.id,
+                AgentStoreListing.status == ListingStatus.PUBLISHED,
+            )
+            .order_by(AgentStoreListing.install_count.desc())
+            .all()
+        )
+        all_listings = (
+            self.db.query(AgentStoreListing)
+            .filter(AgentStoreListing.publisher_id == pub.id)
+            .all()
+        )
+        rating_count = sum(l.rating_count for l in published)
+        rating_sum = sum(float(l.rating_avg) * l.rating_count for l in published)
+        avg = (rating_sum / rating_count) if rating_count else 0.0
+        return PublisherPublicProfile(
+            id=pub.id,
+            display_name=pub.display_name,
+            slug=pub.slug,
+            bio=pub.bio,
+            website=pub.website,
+            logo_url=pub.logo_url,
+            banner_url=getattr(pub, "banner_url", None),
+            github_url=getattr(pub, "github_url", None),
+            linkedin_url=getattr(pub, "linkedin_url", None),
+            twitter_url=getattr(pub, "twitter_url", None),
+            is_verified=bool(pub.is_verified),
+            followers_count=int(getattr(pub, "followers_count", 0) or 0),
+            following_count=int(getattr(pub, "following_count", 0) or 0),
+            templates_count=len(all_listings),
+            published_count=len(published),
+            average_rating=round(avg, 2),
+            total_installs=sum(l.install_count for l in published),
+            listings=[self._listing_response(l) for l in published],
+        )
+
+    def list_publisher_reviews(self, company_id: UUID) -> List[ReviewResponse]:
+        pub = self._require_publisher(company_id)
+        listing_ids = [
+            r.id
+            for r in self.db.query(AgentStoreListing.id)
+            .filter(AgentStoreListing.publisher_id == pub.id)
+            .all()
+        ]
+        if not listing_ids:
+            return []
+        rows = (
+            self.db.query(AgentStoreReview)
+            .filter(
+                AgentStoreReview.listing_id.in_(listing_ids),
+                AgentStoreReview.is_visible.is_(True),
+            )
+            .order_by(AgentStoreReview.created_at.desc())
+            .limit(200)
+            .all()
+        )
+        return [ReviewResponse.model_validate(r) for r in rows]
+
+    def reply_to_review(
+        self, company_id: UUID, review_id: UUID, payload: ReviewReplyRequest
+    ) -> ReviewResponse:
+        pub = self._require_publisher(company_id)
+        review = self.db.get(AgentStoreReview, review_id)
+        if not review:
+            raise HTTPException(status_code=404, detail="Review not found")
+        listing = self.db.get(AgentStoreListing, review.listing_id)
+        if not listing or listing.publisher_id != pub.id:
+            raise HTTPException(status_code=404, detail="Review not found")
+        review.publisher_reply = payload.reply.strip()
+        review.publisher_replied_at = _now()
+        self.db.commit()
+        self.db.refresh(review)
+        return ReviewResponse.model_validate(review)
+
+    def mark_review_helpful(self, review_id: UUID) -> ReviewResponse:
+        review = self.db.get(AgentStoreReview, review_id)
+        if not review or not review.is_visible:
+            raise HTTPException(status_code=404, detail="Review not found")
+        review.helpful_count = int(review.helpful_count or 0) + 1
+        self.db.commit()
+        self.db.refresh(review)
+        return ReviewResponse.model_validate(review)
+
+    def generate_listing_copy(
+        self, payload: PublisherAiGenerateRequest
+    ) -> PublisherAiGenerateResponse:
+        title = payload.title.strip()
+        short = (payload.short_description or "").strip()
+        long = (payload.long_description or "").strip()
+        cats = payload.categories or []
+        existing_tags = payload.tags or []
+        kind = payload.kind
+
+        if kind == "summary":
+            base = short or long or title
+            result = (
+                f"{title} helps teams automate workflows"
+                + (f" across {', '.join(cats)}" if cats else "")
+                + f". {base[:280]}".strip()
+            )
+            return PublisherAiGenerateResponse(kind=kind, result=result[:500])
+
+        if kind == "tags":
+            words = set()
+            for token in (title + " " + short).lower().replace("-", " ").split():
+                clean = "".join(c for c in token if c.isalnum())
+                if len(clean) >= 3:
+                    words.add(clean)
+            tags = list(dict.fromkeys([*existing_tags, *cats, *sorted(words)[:8]]))[:12]
+            return PublisherAiGenerateResponse(kind=kind, result=", ".join(tags), tags=tags)
+
+        if kind == "documentation":
+            result = (
+                f"# {title}\n\n"
+                f"## Overview\n{short or long or 'Production-ready marketplace template.'}\n\n"
+                f"## Getting started\n1. Install from the THTWAAT Marketplace.\n"
+                f"2. Configure environment variables and knowledge sources.\n"
+                f"3. Publish your agent and share the widget or API.\n\n"
+                f"## Categories\n{', '.join(cats) or 'general'}\n"
+            )
+            return PublisherAiGenerateResponse(kind=kind, result=result)
+
+        if kind == "screenshots_description":
+            result = (
+                f"Screenshot gallery for {title}: dashboard overview, configuration panel, "
+                f"and live chat or agent conversation view"
+                + (f" tailored for {', '.join(cats)}" if cats else "")
+                + "."
+            )
+            return PublisherAiGenerateResponse(kind=kind, result=result)
+
+        # seo_description
+        result = (
+            f"{title} — {short or 'AI SaaS template on THTWAAT Marketplace'}. "
+            f"Install in minutes. "
+            + (f"Categories: {', '.join(cats)}. " if cats else "")
+            + "Compatible with THTWAAT Cloud."
+        )
+        return PublisherAiGenerateResponse(kind=kind, result=result[:160])
 
     # ── Catalog / discovery ───────────────────────────────────────────────────
 
@@ -920,6 +1272,8 @@ class AgentStoreService:
             long_description=listing.long_description or "",
             screenshots=listing.screenshots or [],
             demo_url=listing.demo_url,
+            cover_url=getattr(listing, "cover_url", None),
+            logo_url=getattr(listing, "logo_url", None),
             supported_languages=listing.supported_languages or [],
             knowledge_requirements=listing.knowledge_requirements,
             categories=listing.categories or [],

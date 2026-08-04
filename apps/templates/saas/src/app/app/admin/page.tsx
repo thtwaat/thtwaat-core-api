@@ -530,8 +530,17 @@ function StorePanel() {
                 <Button size="sm" variant="secondary" onClick={() => moderateMut.mutate({ id: l.id, action: "reject" })}>
                   Reject
                 </Button>
+                <Button size="sm" variant="ghost" onClick={() => moderateMut.mutate({ id: l.id, action: "suspend" })}>
+                  Suspend
+                </Button>
                 <Button size="sm" variant="ghost" onClick={() => moderateMut.mutate({ id: l.id, action: "feature" })}>
                   Feature
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => moderateMut.mutate({ id: l.id, action: "unfeature" })}>
+                  Unfeature
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => moderateMut.mutate({ id: l.id, action: "verify" })}>
+                  Verify publisher
                 </Button>
               </div>
             </Card>
