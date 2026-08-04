@@ -142,14 +142,14 @@ Query: `q`, `category`, `featured`, `kind`, `pricing_tier`, `sort`, `limit`, `of
 |-------|------|
 | 1 | Schema gaps + favorites + architecture |
 | 2 | Paginated CRUD + PUT/DELETE + install aliases + tests |
-## Phase 3 (SaaS UI) — done
+## Phase 3 (SaaS UI) — done (Store Home v1 refresh)
 
 Route: `/app/templates` (nav label Marketplace).
 
-Tabs: Browse · Featured · Favorites · Installed · Updates  
-+ search, category chips, kind filter, template detail dialog, install/update confirm dialogs.  
-Client: `marketplaceApi.listPage`, `favorites`, `favorite`, `unfavorite`.
-## Phase 4 (prompt seeds) — done
+Tabs: Store Home · Browse · Featured · Favorites · Installed · Updates  
+Store Home: hero search, category grid, collections strip, horizontal rails from `GET /marketplace/home`.  
+Detail: `/app/templates/[slug]` (Overview / Features / Docs / Versions / Reviews / Related).  
+Client: `marketplaceApi.home`, `collections`, `listPage`, `favorites`, install/favorite APIs.## Phase 4 (prompt seeds) — done
 
 100 production prompt/agent templates as JSON:
 
@@ -216,12 +216,43 @@ Marketplace install / catalog analytics:
 - SaaS `/app/analytics` marketplace cards/charts; Admin → Analytics tab
 - FE: `marketplaceApi.analytics` / `adminAnalytics`
 
+## Store Home v1 — done
+
+Additive storefront consolidation (no third catalog):
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/marketplace/home` | Rails: featured, newest, trending, top_rated, most_installed, editors_choice, continue_using, recently_installed, recently_viewed + categories + collections |
+| `GET` | `/marketplace/collections` | Public collection summaries |
+| `GET` | `/marketplace/collections/{slug}` | Collection detail + template items |
+| `GET/POST/PATCH/DELETE` | `/marketplace/admin/collections` | Platform registry CRUD (`templates:manage`) |
+
+Schema (additive Alembic `i3c4d5e6f7a8`):
+
+- Template media/trust columns: `banner_url`, `screenshots`, `video_url`, `live_demo_url`, `discount_percent`, `estimated_install_minutes`, `compatibility`, `is_editors_choice`
+- `marketplace_category_meta` — icon / featured / popularity without enum churn
+- `marketplace_collections` + `marketplace_collection_items`
+- `marketplace_template_events` — recently viewed
+- Expanded `template_category_enum` verticals (insurance, devops, productivity, …)
+
+`TemplateResponse` enrichment (null-safe): ratings/publisher bridged from `agent_store` listings when present; `pricing_badge`, `download_count` alias.
+
+SaaS:
+
+- `/app/templates` — Store Home rails + category grid + collections strip; keeps Browse / Featured / Favorites / Installed / Updates
+- `/app/templates/[slug]` — Overview / Features / Docs / Versions / Reviews / Related
+
+Seeds: `app/marketplace/seed_store_home.py` (wired from `seed_marketplace_catalog`).
+
+Launch notes: `docs/launch/MARKETPLACE_STORE.md`.
+
 | 10 | Audit / docs / deploy |
 
 ## Design decisions
 
 1. **Single install engine** — `MarketplaceService` only (enforced by agent_store tests).
-2. **Categories** — extend PG enum `template_category_enum` rather than free-string (keeps filters typed).
+2. **Categories** — extend PG enum `template_category_enum` rather than free-string (keeps filters typed); long-tail meta via `marketplace_category_meta`.
 3. **Prompt payloads** — JSONB `default_config` / version `config` avoids wide sparse columns.
 4. **Favorites** — tenant + user scoped; not global likes.
 5. **Soft delete** — `status=archived`; hard DELETE avoided to protect install FKs.
+6. **Store Home** — compose rails from marketplace + agent_store; never invent a third catalog.
