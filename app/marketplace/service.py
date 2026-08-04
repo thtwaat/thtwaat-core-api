@@ -249,7 +249,10 @@ class MarketplaceService:
             )
             self.repo.commit()
         self._warm_bridge([template.id])
-        return self._template_response(template, install)
+        favorited = False
+        if company_id and user_id:
+            favorited = bool(self.repo.get_favorite(company_id, user_id, template.id))
+        return self._template_response(template, install, favorited=favorited)
 
     def home(
         self,
@@ -1154,6 +1157,74 @@ class MarketplaceService:
             compatibility=getattr(template, "compatibility", None),
             is_editors_choice=bool(getattr(template, "is_editors_choice", False)),
             pricing_badge=badge,
+            **self._detail_fields(template, bridge),
+        )
+
+    def _detail_fields(
+        self, template: MarketplaceTemplate, bridge: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        from app.marketplace.detail_enrichment import enrich_detail_fields
+
+        return enrich_detail_fields(template, bridge)
+
+    def list_template_reviews(
+        self, template_id_or_slug: str, *, limit: int = 50
+    ):
+        from collections import Counter
+
+        from app.marketplace.schemas import TemplateReviewItem, TemplateReviewsResponse
+
+        template = self._resolve_template(template_id_or_slug)
+        self._warm_bridge([template.id])
+        bridge = self._bridge_for(template.id)
+        listing_id = bridge.get("listing_id")
+        distribution = {str(i): 0 for i in range(1, 6)}
+        items: List[TemplateReviewItem] = []
+        rating_avg = bridge.get("rating_avg")
+        review_count = int(bridge.get("review_count") or 0)
+
+        if listing_id:
+            try:
+                from app.agent_store.models import AgentStoreReview
+
+                rows = (
+                    self.db.query(AgentStoreReview)
+                    .filter(AgentStoreReview.listing_id == listing_id)
+                    .order_by(AgentStoreReview.created_at.desc())
+                    .limit(limit)
+                    .all()
+                )
+                counts = Counter(int(r.rating) for r in rows)
+                for star in range(1, 6):
+                    distribution[str(star)] = int(counts.get(star, 0))
+                # Prefer full listing stats when available
+                if review_count == 0 and rows:
+                    review_count = len(rows)
+                items = [
+                    TemplateReviewItem(
+                        id=r.id,
+                        listing_id=r.listing_id,
+                        company_id=r.company_id,
+                        user_id=r.user_id,
+                        rating=int(r.rating),
+                        title=r.title,
+                        body=r.body,
+                        created_at=r.created_at,
+                        verified_install=True,
+                        helpful_count=0,
+                    )
+                    for r in rows
+                ]
+            except Exception:
+                items = []
+
+        return TemplateReviewsResponse(
+            template_id=template.id,
+            listing_id=listing_id,
+            rating_avg=rating_avg,
+            review_count=review_count,
+            distribution=distribution,
+            items=items,
         )
 
     @staticmethod
@@ -1202,11 +1273,13 @@ class MarketplaceService:
         found: Dict[UUID, Dict[str, Any]] = {}
         for listing, publisher, company in rows:
             found[listing.template_id] = {
+                "listing_id": listing.id,
                 "rating_avg": float(listing.rating_avg or 0) if listing.rating_count else None,
                 "review_count": int(listing.rating_count or 0) or None,
                 "download_count": int(listing.download_count or listing.install_count or 0),
                 "demo_url": listing.demo_url,
                 "screenshots": list(listing.screenshots or []),
+                "supported_languages": list(listing.supported_languages or []),
                 "verified_publisher": bool(
                     (publisher and publisher.is_verified) or listing.is_verified_badge
                 ),
@@ -1215,6 +1288,8 @@ class MarketplaceService:
                     (publisher.display_name if publisher else None)
                     or (company.name if company else None)
                 ),
+                "publisher_bio": publisher.bio if publisher else None,
+                "publisher_website": publisher.website if publisher else None,
                 "install_count": int(listing.install_count or 0),
             }
         for tid in missing:

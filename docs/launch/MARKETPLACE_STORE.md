@@ -35,6 +35,12 @@ const detail = await marketplaceApi.get("ai-saas-starter"); // records a view ev
 
 Install / favorite / update / rollback paths are unchanged.
 
-## Compatibility
+## Template detail (Phase 3)
 
-Old clients may ignore new JSON fields. Existing `/marketplace/dashboard`, `/templates`, and install routes remain stable.
+Route: `/app/templates/[slug]`
+
+- Hero + sticky install sidebar
+- Tabs: Overview, Features, Screenshots, Demo Video, Documentation, Reviews, Versions, Release Notes, Related, Permissions, Requirements
+- Additive API fields on `TemplateResponse` (permissions, feature_cards, docs sections, …)
+- `GET /api/v1/marketplace/templates/{id_or_slug}/reviews` bridges agent-store reviews when a listing exists
+- Detail copy prefers `default_config.store` / `default_config` without breaking older rows

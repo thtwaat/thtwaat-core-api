@@ -26,6 +26,7 @@ from app.marketplace.schemas import (
     TemplateCreate,
     TemplateListPage,
     TemplateResponse,
+    TemplateReviewsResponse,
     TemplateUpdate,
     TemplateVersionCreate,
     TemplateVersionResponse,
@@ -166,6 +167,20 @@ def get_template(
         user_id=UUID(str(user.id)),
         record_view=True,
     )
+
+
+@router.get(
+    "/templates/{template_id_or_slug}/reviews",
+    response_model=TemplateReviewsResponse,
+)
+def list_template_reviews(
+    template_id_or_slug: str,
+    limit: int = Query(default=50, ge=1, le=100),
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Additive: bridge agent-store reviews for a marketplace template."""
+    return service.list_template_reviews(template_id_or_slug, limit=limit)
 
 
 # ── Collections ───────────────────────────────────────────────────────────────

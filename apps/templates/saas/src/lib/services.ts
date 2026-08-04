@@ -401,6 +401,28 @@ export type TemplateItem = {
   compatibility?: string | null;
   is_editors_choice?: boolean;
   pricing_badge?: string | null;
+  listing_id?: string | null;
+  what_it_does?: string | null;
+  best_for?: string[];
+  use_cases?: string[];
+  industries?: string[];
+  languages?: string[];
+  license?: string | null;
+  permissions?: string[];
+  feature_cards?: Array<{ key: string; title: string; description: string }>;
+  docs_markdown?: string | null;
+  quick_start?: string | null;
+  installation_docs?: string | null;
+  configuration_docs?: string | null;
+  examples_docs?: string | null;
+  support_url?: string | null;
+  website_url?: string | null;
+  docs_url?: string | null;
+  min_platform_version?: string | null;
+  supported_providers?: string[];
+  dependencies?: string[];
+  publisher_bio?: string | null;
+  publisher_website?: string | null;
 };
 
 export type TemplateVersion = {
@@ -414,6 +436,28 @@ export type TemplateVersion = {
   published_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type TemplateReviewItem = {
+  id: string;
+  listing_id: string;
+  company_id: string;
+  user_id: string;
+  rating: number;
+  title?: string | null;
+  body?: string | null;
+  created_at: string;
+  verified_install?: boolean;
+  helpful_count?: number;
+};
+
+export type TemplateReviewsPayload = {
+  template_id: string;
+  listing_id?: string | null;
+  rating_avg?: number | null;
+  review_count: number;
+  distribution: Record<string, number>;
+  items: TemplateReviewItem[];
 };
 
 export type Installation = {
@@ -592,6 +636,10 @@ export const marketplaceApi = {
       { method: "POST" }
     ),
   get: (idOrSlug: string) => api.v1<TemplateItem>(`/marketplace/templates/${idOrSlug}`),
+  reviews: (idOrSlug: string, limit = 50) =>
+    api.v1<TemplateReviewsPayload>(
+      `/marketplace/templates/${encodeURIComponent(idOrSlug)}/reviews?limit=${limit}`
+    ),
   versions: (idOrSlug: string) =>
     api.v1<TemplateVersion[]>(`/marketplace/templates/${encodeURIComponent(idOrSlug)}/versions`),
   getVersion: (idOrSlug: string, versionRef: string) =>

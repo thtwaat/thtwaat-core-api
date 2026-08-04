@@ -148,8 +148,53 @@ class TemplateResponse(BaseModel):
     compatibility: Optional[str] = None
     is_editors_choice: bool = False
     pricing_badge: Optional[str] = None
+    # Phase 3 detail enrichment (additive / null-safe)
+    listing_id: Optional[UUID] = None
+    what_it_does: Optional[str] = None
+    best_for: List[str] = Field(default_factory=list)
+    use_cases: List[str] = Field(default_factory=list)
+    industries: List[str] = Field(default_factory=list)
+    languages: List[str] = Field(default_factory=list)
+    license: Optional[str] = None
+    permissions: List[str] = Field(default_factory=list)
+    feature_cards: List[Dict[str, str]] = Field(default_factory=list)
+    docs_markdown: Optional[str] = None
+    quick_start: Optional[str] = None
+    installation_docs: Optional[str] = None
+    configuration_docs: Optional[str] = None
+    examples_docs: Optional[str] = None
+    support_url: Optional[str] = None
+    website_url: Optional[str] = None
+    docs_url: Optional[str] = None
+    min_platform_version: Optional[str] = None
+    supported_providers: List[str] = Field(default_factory=list)
+    dependencies: List[str] = Field(default_factory=list)
+    publisher_bio: Optional[str] = None
+    publisher_website: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class TemplateReviewItem(BaseModel):
+    id: UUID
+    listing_id: UUID
+    company_id: UUID
+    user_id: UUID
+    rating: int
+    title: Optional[str] = None
+    body: Optional[str] = None
+    created_at: datetime
+    verified_install: bool = False
+    helpful_count: int = 0
+
+
+class TemplateReviewsResponse(BaseModel):
+    template_id: UUID
+    listing_id: Optional[UUID] = None
+    rating_avg: Optional[float] = None
+    review_count: int = 0
+    distribution: Dict[str, int] = Field(default_factory=dict)
+    items: List[TemplateReviewItem] = Field(default_factory=list)
 
 
 class TemplateVersionResponse(BaseModel):
