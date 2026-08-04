@@ -1,10 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   type Installation,
+  type MarketplaceCollection,
   type TemplateItem,
   type UpdateNotification,
   marketplaceApi
@@ -15,7 +18,7 @@ import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type TabKey = "browse" | "featured" | "favorites" | "installed" | "updates";
+type TabKey = "home" | "browse" | "featured" | "favorites" | "installed" | "updates";
 
 const CATEGORY_LABEL: Record<string, string> = {
   website: "Website",
@@ -37,7 +40,23 @@ const CATEGORY_LABEL: Record<string, string> = {
   research: "Research",
   ai_agents: "AI Agents",
   business: "Business",
-  analytics: "Analytics"
+  analytics: "Analytics",
+  insurance: "Insurance",
+  government: "Government",
+  travel: "Travel",
+  retail: "Retail",
+  manufacturing: "Manufacturing",
+  sales: "Sales",
+  erp: "ERP",
+  bi: "BI",
+  devops: "DevOps",
+  security: "Security",
+  news: "News",
+  media: "Media",
+  startup: "Startup",
+  productivity: "Productivity",
+  automation: "Automation",
+  multilingual: "Multilingual"
 };
 
 function statusTone(status: string): "success" | "warn" | "neutral" | "brand" {
@@ -53,7 +72,8 @@ function statusTone(status: string): "success" | "warn" | "neutral" | "brand" {
   }
 }
 
-function priceLabel(price: string | number | undefined, tier?: string) {
+function priceLabel(price: string | number | undefined, tier?: string, badge?: string | null) {
+  if (badge) return badge;
   const n = Number(price ?? 0);
   if (!(n > 0)) return tier && tier !== "free" ? tier : "Free";
   return `$${n}`;
@@ -107,22 +127,24 @@ function DialogShell({
 
 function TemplateCard({
   template,
-  onOpen,
   onInstall,
   onToggleFavorite,
+  onCompare,
+  compareSelected,
   installing,
   favoriting
 }: {
   template: TemplateItem;
-  onOpen: (t: TemplateItem) => void;
   onInstall: (t: TemplateItem) => void;
   onToggleFavorite: (t: TemplateItem) => void;
+  onCompare?: (t: TemplateItem) => void;
+  compareSelected?: boolean;
   installing: boolean;
   favoriting: boolean;
 }) {
   return (
-    <Card className="flex flex-col">
-      <button type="button" className="text-left" onClick={() => onOpen(template)}>
+    <Card className="flex min-w-[260px] max-w-sm flex-col snap-start">
+      <Link href={`/app/templates/${template.slug}`} className="text-left">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line bg-canvas text-sm font-semibold uppercase text-brand">
             {(template.category || "t").slice(0, 2)}
@@ -130,9 +152,15 @@ function TemplateCard({
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h3 className="font-semibold text-ink">{template.name}</h3>
+              {(template.pricing_badge || template.pricing_tier) && (
+                <Badge tone="neutral">
+                  {priceLabel(template.price, template.pricing_tier, template.pricing_badge)}
+                </Badge>
+              )}
               {template.is_featured && <Badge tone="brand">Featured</Badge>}
+              {template.is_editors_choice && <Badge tone="brand">Editor</Badge>}
+              {template.verified_publisher && <Badge tone="success">Verified</Badge>}
               {template.installed && <Badge tone="success">Installed</Badge>}
-              {template.update_available && <Badge tone="warn">Update</Badge>}
             </div>
             <p className="mt-1 text-xs capitalize text-muted">
               {CATEGORY_LABEL[template.category] || template.category}
@@ -141,41 +169,86 @@ function TemplateCard({
           </div>
         </div>
         <p className="mt-3 line-clamp-2 text-sm text-muted">{template.description}</p>
-      </button>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {(template.tags || []).slice(0, 4).map((tag) => (
-          <span
-            key={tag}
-            className="rounded-full border border-line bg-canvas px-2 py-0.5 text-xs text-muted"
-          >
-            {tag}
+      </Link>
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
+        {template.rating_avg != null && template.review_count ? (
+          <span>
+            ★ {template.rating_avg.toFixed(1)} ({template.review_count})
           </span>
-        ))}
+        ) : null}
+        <span>
+          {template.install_count} install{template.install_count !== 1 ? "s" : ""}
+        </span>
       </div>
-      <div className="mt-4 flex items-center justify-between gap-2">
-        <span className="text-sm font-semibold">{priceLabel(template.price, template.pricing_tier)}</span>
-        <div className="flex flex-wrap gap-2">
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Link
+          href={`/app/templates/${template.slug}`}
+          className="inline-flex h-8 items-center justify-center rounded-lg border border-line bg-panel px-3 text-sm font-medium text-ink hover:bg-canvas"
+        >
+          Preview
+        </Link>
+        <Button
+          size="sm"
+          variant="secondary"
+          disabled={favoriting}
+          onClick={() => onToggleFavorite(template)}
+        >
+          {template.is_favorited ? "Unfavorite" : "Favorite"}
+        </Button>
+        {onCompare && (
           <Button
             size="sm"
-            variant="secondary"
-            disabled={favoriting}
-            onClick={() => onToggleFavorite(template)}
+            variant={compareSelected ? "default" : "secondary"}
+            onClick={() => onCompare(template)}
           >
-            {template.is_favorited ? "Unfavorite" : "Favorite"}
+            {compareSelected ? "Compared" : "Compare"}
           </Button>
-          {template.installed ? (
-            <Badge tone="success">Installed</Badge>
-          ) : (
-            <Button size="sm" disabled={installing} onClick={() => onInstall(template)}>
-              Install
-            </Button>
-          )}
-        </div>
+        )}
+        {template.installed ? (
+          <Badge tone="success">Installed</Badge>
+        ) : (
+          <Button size="sm" disabled={installing} onClick={() => onInstall(template)}>
+            Install
+          </Button>
+        )}
       </div>
-      <p className="mt-2 text-xs text-muted">
-        {template.install_count} install{template.install_count !== 1 ? "s" : ""}
-      </p>
     </Card>
+  );
+}
+
+function Rail({
+  title,
+  items,
+  ...cardProps
+}: {
+  title: string;
+  items: TemplateItem[];
+  onInstall: (t: TemplateItem) => void;
+  onToggleFavorite: (t: TemplateItem) => void;
+  onCompare?: (t: TemplateItem) => void;
+  compareIds: Set<string>;
+  installing: boolean;
+  favoriting: boolean;
+}) {
+  if (!items.length) return null;
+  return (
+    <section className="space-y-3">
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
+      <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+        {items.map((template) => (
+          <TemplateCard
+            key={template.id}
+            template={template}
+            installing={cardProps.installing}
+            favoriting={cardProps.favoriting}
+            onInstall={cardProps.onInstall}
+            onToggleFavorite={cardProps.onToggleFavorite}
+            onCompare={cardProps.onCompare}
+            compareSelected={cardProps.compareIds.has(template.id)}
+          />
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -195,7 +268,16 @@ function InstallCard({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h3 className="font-semibold">{install.template_name || install.template_slug}</h3>
+            <Link
+              href={
+                install.template_slug
+                  ? `/app/templates/${install.template_slug}`
+                  : "/app/templates"
+              }
+              className="font-semibold text-ink hover:underline"
+            >
+              {install.template_name || install.template_slug}
+            </Link>
             <Badge tone={statusTone(install.status)}>{install.status}</Badge>
             {install.update_available && (
               <Badge tone="warn">→ {install.latest_available_version}</Badge>
@@ -229,32 +311,34 @@ function InstallCard({
 }
 
 export default function MarketplacePage() {
+  const router = useRouter();
   const qc = useQueryClient();
-  const [activeTab, setActiveTab] = useState<TabKey>("browse");
+  const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [kindFilter, setKindFilter] = useState("");
-  const [detail, setDetail] = useState<TemplateItem | null>(null);
   const [installTarget, setInstallTarget] = useState<TemplateItem | null>(null);
   const [updateTarget, setUpdateTarget] = useState<Installation | UpdateNotification | null>(null);
+  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
+  const [collectionFocus, setCollectionFocus] = useState<MarketplaceCollection | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
     return () => window.clearTimeout(t);
   }, [search]);
 
-  const dash = useQuery({ queryKey: ["mkt-dashboard"], queryFn: marketplaceApi.dashboard });
+  const home = useQuery({ queryKey: ["mkt-home"], queryFn: marketplaceApi.home });
   const templates = useQuery({
     queryKey: ["mkt-templates", debouncedSearch, selectedCategory, kindFilter, activeTab],
-    enabled: activeTab === "browse" || activeTab === "featured",
+    enabled: activeTab === "browse" || activeTab === "featured" || Boolean(debouncedSearch),
     queryFn: () =>
       marketplaceApi.listPage({
         q: debouncedSearch || undefined,
         category: selectedCategory || undefined,
         kind: kindFilter || undefined,
         featured: activeTab === "featured" ? true : undefined,
-        sort: activeTab === "featured" ? "featured" : "newest",
+        sort: activeTab === "featured" ? "featured" : debouncedSearch ? "relevance" : "newest",
         limit: 48
       })
   });
@@ -264,24 +348,18 @@ export default function MarketplacePage() {
   });
   const installed = useQuery({ queryKey: ["mkt-installed"], queryFn: marketplaceApi.installed });
   const updates = useQuery({ queryKey: ["mkt-updates"], queryFn: marketplaceApi.updates });
-  const detailQuery = useQuery({
-    queryKey: ["mkt-template", detail?.slug],
-    enabled: Boolean(detail?.slug),
-    queryFn: () => marketplaceApi.get(detail!.slug)
-  });
-  const versionsQuery = useQuery({
-    queryKey: ["mkt-versions", detail?.slug],
-    enabled: Boolean(detail?.slug),
-    queryFn: () => marketplaceApi.versions(detail!.slug)
+  const collectionDetail = useQuery({
+    queryKey: ["mkt-collection", collectionFocus?.slug],
+    enabled: Boolean(collectionFocus?.slug),
+    queryFn: () => marketplaceApi.collection(collectionFocus!.slug)
   });
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["mkt-templates"] });
     qc.invalidateQueries({ queryKey: ["mkt-installed"] });
-    qc.invalidateQueries({ queryKey: ["mkt-dashboard"] });
+    qc.invalidateQueries({ queryKey: ["mkt-home"] });
     qc.invalidateQueries({ queryKey: ["mkt-updates"] });
     qc.invalidateQueries({ queryKey: ["mkt-favorites"] });
-    if (detail?.slug) qc.invalidateQueries({ queryKey: ["mkt-template", detail.slug] });
   };
 
   const install = useMutation({
@@ -290,7 +368,6 @@ export default function MarketplacePage() {
       toast.success(`${data.template_name || data.template_slug} installed`);
       if (data.api_key) toast.message(`API key (copy now): ${data.api_key}`);
       setInstallTarget(null);
-      setDetail(null);
       invalidateAll();
     },
     onError: (e: Error) => toast.error(e.message)
@@ -335,24 +412,69 @@ export default function MarketplacePage() {
     onSuccess: (t) => {
       toast.message(t.is_favorited ? "Added to favorites" : "Removed from favorites");
       invalidateAll();
-      if (detail && (detail.slug === t.slug || detail.id === t.id)) {
-        setDetail({ ...detail, is_favorited: Boolean(t.is_favorited) });
-      }
     },
     onError: (e: Error) => toast.error(e.message)
   });
 
-  const categories = dash.data?.categories || [];
-  const browseItems = useMemo(() => {
-    if (activeTab === "featured" && !debouncedSearch && !selectedCategory && !kindFilter) {
-      return dash.data?.featured || templates.data?.items || [];
-    }
-    return templates.data?.items || [];
-  }, [activeTab, debouncedSearch, selectedCategory, kindFilter, dash.data?.featured, templates.data?.items]);
+  const categories = home.data?.categories || [];
+  const featuredCategories = useMemo(
+    () =>
+      categories.filter((c) => c.is_featured || (c.count || 0) > 0).slice(0, 16),
+    [categories]
+  );
 
-  const activeDetail = detailQuery.data || detail;
+  const shareTemplate = async (t: TemplateItem) => {
+    const url = `${window.location.origin}/app/templates/${t.slug}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: t.name, text: t.description, url });
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copied");
+      }
+    } catch {
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success("Link copied");
+      } catch {
+        toast.message(url);
+      }
+    }
+  };
+
+  const toggleCompare = (t: TemplateItem) => {
+    setCompareIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(t.id)) next.delete(t.id);
+      else if (next.size < 3) next.add(t.id);
+      else toast.message("Compare up to 3 templates");
+      return next;
+    });
+  };
+
+  const compareItems = useMemo(() => {
+    const pool = [
+      ...(home.data?.featured || []),
+      ...(home.data?.newest || []),
+      ...(home.data?.trending || []),
+      ...(templates.data?.items || []),
+      ...(favorites.data || [])
+    ];
+    const byId = new Map(pool.map((t) => [t.id, t]));
+    return [...compareIds].map((id) => byId.get(id)).filter(Boolean) as TemplateItem[];
+  }, [compareIds, home.data, templates.data, favorites.data]);
+
+  const cardProps = {
+    installing: install.isPending,
+    favoriting: favorite.isPending,
+    onInstall: setInstallTarget,
+    onToggleFavorite: (t: TemplateItem) => favorite.mutate(t),
+    onCompare: toggleCompare,
+    compareIds
+  };
 
   const tabs: Array<{ key: TabKey; label: string }> = [
+    { key: "home", label: "Store Home" },
     { key: "browse", label: "Browse" },
     { key: "featured", label: "Featured" },
     { key: "favorites", label: `Favorites (${favorites.data?.length || 0})` },
@@ -360,20 +482,45 @@ export default function MarketplacePage() {
     { key: "updates", label: `Updates (${updates.data?.length || 0})` }
   ];
 
+  const showSearchResults = Boolean(debouncedSearch) && activeTab === "home";
+
   return (
     <div className="space-y-5">
       <PageHeader
         title="Marketplace"
-        description="Browse, install, update, and favorite AI templates."
+        description="Discover, compare, and install AI templates for your workspace."
         action={
           <div className="flex items-center gap-2 text-sm text-muted">
-            <span>{dash.data?.installed_count || 0} installed</span>
-            {(dash.data?.updates_count || 0) > 0 && (
-              <Badge tone="warn">{dash.data?.updates_count} updates</Badge>
+            <span>{home.data?.installed_count || 0} installed</span>
+            {(home.data?.updates_count || 0) > 0 && (
+              <Badge tone="warn">{home.data?.updates_count} updates</Badge>
             )}
           </div>
         }
       />
+
+      <div className="rounded-2xl border border-line bg-gradient-to-br from-canvas via-panel to-canvas p-5 sm:p-7">
+        <h2 className="text-xl font-semibold text-ink sm:text-2xl">Find the right AI template</h2>
+        <p className="mt-1 max-w-2xl text-sm text-muted">
+          Search the catalog, browse curated collections, and install in minutes.
+        </p>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <Input
+            placeholder="Search templates, categories, or use cases…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="sm:max-w-md"
+          />
+          <Button
+            variant="secondary"
+            onClick={() => {
+              setActiveTab("browse");
+            }}
+          >
+            Browse all
+          </Button>
+        </div>
+      </div>
 
       <div className="flex gap-2 overflow-x-auto border-b border-line">
         {tabs.map((tab) => (
@@ -391,6 +538,109 @@ export default function MarketplacePage() {
           </button>
         ))}
       </div>
+
+      {compareItems.length > 0 && (
+        <Card className="space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-semibold text-ink">Compare ({compareItems.length}/3)</h3>
+            <Button size="sm" variant="ghost" onClick={() => setCompareIds(new Set())}>
+              Clear
+            </Button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-3">
+            {compareItems.map((t) => (
+              <div key={t.id} className="rounded-xl border border-line bg-canvas p-3 text-sm">
+                <p className="font-semibold text-ink">{t.name}</p>
+                <p className="mt-1 text-muted">
+                  {priceLabel(t.price, t.pricing_tier, t.pricing_badge)} · {t.install_count} installs
+                </p>
+                <p className="mt-1 text-muted">
+                  {t.rating_avg != null ? `★ ${t.rating_avg.toFixed(1)}` : "No ratings"}
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <Button size="sm" variant="secondary" onClick={() => router.push(`/app/templates/${t.slug}`)}>
+                    Open
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => shareTemplate(t)}>
+                    Share
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {(activeTab === "home" || showSearchResults) && (
+        <div className="space-y-8">
+          {showSearchResults ? (
+            <div className="space-y-4">
+              <h2 className="text-base font-semibold text-ink">
+                Search results{templates.data ? ` (${templates.data.total})` : ""}
+              </h2>
+              {!templates.data?.items.length && !templates.isLoading && (
+                <EmptyState title="No matches" description="Try a different query or browse categories." />
+              )}
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {(templates.data?.items || []).map((template) => (
+                  <TemplateCard key={template.id} template={template} {...cardProps} />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <>
+              <section className="space-y-3">
+                <h2 className="text-base font-semibold text-ink">Categories</h2>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+                  {featuredCategories.map((cat) => (
+                    <button
+                      key={cat.slug}
+                      type="button"
+                      onClick={() => {
+                        setSelectedCategory(cat.slug);
+                        setActiveTab("browse");
+                      }}
+                      className="rounded-xl border border-line bg-panel px-3 py-3 text-left transition hover:border-brand/40"
+                    >
+                      <p className="text-sm font-semibold text-ink">{cat.name}</p>
+                      <p className="mt-1 text-xs text-muted">{cat.count || 0} templates</p>
+                    </button>
+                  ))}
+                </div>
+              </section>
+
+              {(home.data?.collections || []).length > 0 && (
+                <section className="space-y-3">
+                  <h2 className="text-base font-semibold text-ink">Collections</h2>
+                  <div className="flex gap-3 overflow-x-auto pb-1">
+                    {(home.data?.collections || []).map((col) => (
+                      <button
+                        key={col.id}
+                        type="button"
+                        onClick={() => setCollectionFocus(col)}
+                        className="min-w-[200px] rounded-xl border border-line bg-panel px-4 py-3 text-left transition hover:border-brand/40"
+                      >
+                        <p className="font-semibold text-ink">{col.name}</p>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted">{col.description}</p>
+                        <p className="mt-2 text-xs text-muted">{col.item_count} items</p>
+                      </button>
+                    ))}
+                  </div>
+                </section>
+              )}
+
+              <Rail title="Continue using" items={home.data?.continue_using || []} {...cardProps} />
+              <Rail title="Recently viewed" items={home.data?.recently_viewed || []} {...cardProps} />
+              <Rail title="Featured" items={home.data?.featured || []} {...cardProps} />
+              <Rail title="Editor’s choice" items={home.data?.editors_choice || []} {...cardProps} />
+              <Rail title="Trending" items={home.data?.trending || []} {...cardProps} />
+              <Rail title="Top rated" items={home.data?.top_rated || []} {...cardProps} />
+              <Rail title="Most installed" items={home.data?.most_installed || []} {...cardProps} />
+              <Rail title="Newest" items={home.data?.newest || []} {...cardProps} />
+            </>
+          )}
+        </div>
+      )}
 
       {(activeTab === "browse" || activeTab === "featured") && (
         <div className="space-y-5">
@@ -424,7 +674,7 @@ export default function MarketplacePage() {
               All categories
             </Button>
             {categories
-              .filter((c) => c.count > 0 || selectedCategory === c.slug)
+              .filter((c) => c.count > 0 || selectedCategory === c.slug || c.is_featured)
               .map((cat) => (
                 <Button
                   key={cat.slug}
@@ -440,30 +690,17 @@ export default function MarketplacePage() {
               ))}
           </div>
 
-          {browseItems.length === 0 && !templates.isLoading && (
+          {(templates.data?.items || []).length === 0 && !templates.isLoading && (
             <EmptyState
               title="No templates found"
-              description="Try a different search, kind, or category. Seed marketplace templates if the catalog is empty."
+              description="Try a different search, kind, or category."
             />
           )}
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {browseItems.map((template) => (
-              <TemplateCard
-                key={template.id}
-                template={template}
-                installing={install.isPending}
-                favoriting={favorite.isPending}
-                onOpen={setDetail}
-                onInstall={setInstallTarget}
-                onToggleFavorite={(t) => favorite.mutate(t)}
-              />
+            {(templates.data?.items || []).map((template) => (
+              <TemplateCard key={template.id} template={template} {...cardProps} />
             ))}
           </div>
-          {typeof templates.data?.total === "number" && templates.data.total > browseItems.length && (
-            <p className="text-sm text-muted">
-              Showing {browseItems.length} of {templates.data.total}
-            </p>
-          )}
         </div>
       )}
 
@@ -472,7 +709,7 @@ export default function MarketplacePage() {
           {!favorites.data?.length && !favorites.isLoading && (
             <EmptyState
               title="No favorites yet"
-              description="Favorite templates from Browse to find them quickly here."
+              description="Favorite templates from Store Home to find them quickly here."
             />
           )}
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
@@ -480,11 +717,7 @@ export default function MarketplacePage() {
               <TemplateCard
                 key={template.id}
                 template={{ ...template, is_favorited: true }}
-                installing={install.isPending}
-                favoriting={favorite.isPending}
-                onOpen={setDetail}
-                onInstall={setInstallTarget}
-                onToggleFavorite={(t) => favorite.mutate(t)}
+                {...cardProps}
               />
             ))}
           </div>
@@ -534,87 +767,38 @@ export default function MarketplacePage() {
       )}
 
       <DialogShell
-        open={Boolean(activeDetail)}
-        title={activeDetail?.name || "Template"}
-        onClose={() => setDetail(null)}
+        open={Boolean(collectionFocus)}
+        title={collectionFocus?.name || "Collection"}
+        onClose={() => setCollectionFocus(null)}
       >
-        {activeDetail && (
+        {collectionFocus && (
           <div className="space-y-4">
-            <div className="flex flex-wrap gap-2">
-              <Badge>{CATEGORY_LABEL[activeDetail.category] || activeDetail.category}</Badge>
-              {activeDetail.kind && <Badge tone="neutral">{activeDetail.kind}</Badge>}
-              {activeDetail.is_featured && <Badge tone="brand">Featured</Badge>}
-              {activeDetail.installed && <Badge tone="success">Installed</Badge>}
-            </div>
-            <p className="text-sm text-muted">{activeDetail.description}</p>
-            <dl className="grid grid-cols-2 gap-3 text-sm">
-              <div>
-                <dt className="text-muted">Version</dt>
-                <dd className="font-medium">v{activeDetail.version}</dd>
-              </div>
-              <div>
-                <dt className="text-muted">Price</dt>
-                <dd className="font-medium">
-                  {priceLabel(activeDetail.price, activeDetail.pricing_tier)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-muted">Author</dt>
-                <dd className="font-medium">{activeDetail.author}</dd>
-              </div>
-              <div>
-                <dt className="text-muted">Installs</dt>
-                <dd className="font-medium">{activeDetail.install_count}</dd>
-              </div>
-            </dl>
-            {(activeDetail.tags || []).length > 0 && (
-              <div className="flex flex-wrap gap-1.5">
-                {activeDetail.tags.map((tag) => (
-                  <span
-                    key={tag}
-                    className="rounded-full border border-line bg-canvas px-2 py-0.5 text-xs text-muted"
-                  >
-                    {tag}
-                  </span>
-                ))}
-              </div>
-            )}
-            <div className="space-y-2">
-              <p className="text-sm font-semibold text-ink">Release notes</p>
-              {versionsQuery.isLoading ? (
-                <p className="text-sm text-muted">Loading history…</p>
-              ) : (versionsQuery.data || []).length === 0 ? (
-                <p className="text-sm text-muted">No version history yet.</p>
-              ) : (
-                <ul className="max-h-48 space-y-2 overflow-y-auto">
-                  {(versionsQuery.data || []).map((v) => (
-                    <li key={v.id} className="rounded-xl border border-line bg-canvas px-3 py-2">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold text-ink">v{v.version}</span>
-                        {v.is_latest && <Badge tone="brand">latest</Badge>}
-                        <span className="text-xs text-muted">
-                          {formatDate(v.published_at || v.created_at)}
-                        </span>
-                      </div>
-                      <p className="mt-1 whitespace-pre-wrap text-sm text-muted">
-                        {v.release_notes || v.changelog || "No release notes."}
-                      </p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button
-                variant="secondary"
-                disabled={favorite.isPending}
-                onClick={() => favorite.mutate(activeDetail)}
-              >
-                {activeDetail.is_favorited ? "Unfavorite" : "Favorite"}
-              </Button>
-              {!activeDetail.installed && (
-                <Button onClick={() => setInstallTarget(activeDetail)}>Install</Button>
-              )}
+            <p className="text-sm text-muted">{collectionFocus.description}</p>
+            {collectionDetail.isLoading && <p className="text-sm text-muted">Loading…</p>}
+            <div className="grid gap-3">
+              {(collectionDetail.data?.items || []).map((template) => (
+                <div
+                  key={template.id}
+                  className="flex items-center justify-between gap-2 rounded-xl border border-line bg-canvas px-3 py-2"
+                >
+                  <div>
+                    <Link
+                      href={`/app/templates/${template.slug}`}
+                      className="font-medium text-ink hover:underline"
+                    >
+                      {template.name}
+                    </Link>
+                    <p className="text-xs text-muted">
+                      {priceLabel(template.price, template.pricing_tier, template.pricing_badge)}
+                    </p>
+                  </div>
+                  {!template.installed && (
+                    <Button size="sm" onClick={() => setInstallTarget(template)}>
+                      Install
+                    </Button>
+                  )}
+                </div>
+              ))}
             </div>
           </div>
         )}

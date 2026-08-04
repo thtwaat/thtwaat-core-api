@@ -349,6 +349,11 @@ export type TemplateCategory = {
   slug: string;
   name: string;
   count: number;
+  icon?: string | null;
+  template_count?: number | null;
+  popularity_score?: number;
+  is_featured?: boolean;
+  description?: string | null;
 };
 
 export type TemplateItem = {
@@ -377,9 +382,25 @@ export type TemplateItem = {
   install_count: number;
   default_config?: Record<string, unknown>;
   created_at: string;
+  updated_at?: string;
   installed: boolean;
   update_available: boolean;
   is_favorited?: boolean;
+  banner_url?: string | null;
+  screenshots?: string[];
+  video_url?: string | null;
+  live_demo_url?: string | null;
+  verified_publisher?: boolean | null;
+  publisher_slug?: string | null;
+  company_name?: string | null;
+  discount_percent?: number | null;
+  rating_avg?: number | null;
+  review_count?: number | null;
+  download_count?: number | null;
+  estimated_install_minutes?: number | null;
+  compatibility?: string | null;
+  is_editors_choice?: boolean;
+  pricing_badge?: string | null;
 };
 
 export type TemplateVersion = {
@@ -425,6 +446,37 @@ export type UpdateNotification = {
   changelog?: string | null;
 };
 
+export type MarketplaceCollection = {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  icon?: string | null;
+  banner_url?: string | null;
+  is_featured: boolean;
+  sort_order: number;
+  collection_type: string;
+  item_count: number;
+  items?: TemplateItem[];
+  computed_rule?: Record<string, unknown>;
+};
+
+export type MarketplaceHome = {
+  featured: TemplateItem[];
+  newest: TemplateItem[];
+  trending: TemplateItem[];
+  top_rated: TemplateItem[];
+  most_installed: TemplateItem[];
+  editors_choice: TemplateItem[];
+  continue_using: TemplateItem[];
+  recently_installed: TemplateItem[];
+  recently_viewed: TemplateItem[];
+  categories: TemplateCategory[];
+  collections: MarketplaceCollection[];
+  installed_count: number;
+  updates_count: number;
+};
+
 export type MarketplaceDashboard = {
   featured: TemplateItem[];
   newest: TemplateItem[];
@@ -434,8 +486,12 @@ export type MarketplaceDashboard = {
 };
 
 export const marketplaceApi = {
+  home: () => api.v1<MarketplaceHome>("/marketplace/home"),
   dashboard: () => api.v1<MarketplaceDashboard>("/marketplace/dashboard"),
   categories: () => api.v1<TemplateCategory[]>("/marketplace/categories"),
+  collections: () => api.v1<MarketplaceCollection[]>("/marketplace/collections"),
+  collection: (slug: string) =>
+    api.v1<MarketplaceCollection>(`/marketplace/collections/${encodeURIComponent(slug)}`),
   list: async (params?: {
     q?: string;
     category?: string;
