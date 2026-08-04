@@ -256,6 +256,16 @@ def test_generate_and_publish(client, db_session):
     assert pub_data["status"] in ("published", "failed")
     if pub_data["status"] == "published":
         assert pub_data["widget_id"] is not None
+        assert pub_data.get("api_key_prefix") or pub_data.get("api_key")
+        snippet = pub_data.get("widget_snippet") or ""
+        assert "YOUR_KEY" not in snippet
+        if pub_data.get("api_key"):
+            assert pub_data["api_key"].startswith("tht_live_")
+            assert f'data-api-key="{pub_data["api_key"]}"' in snippet
+        assert any(
+            i["key"] == "api_key" and i["done"]
+            for i in pub_data["deployment_checklist"]
+        )
         assert any(
             i["key"] == "publish" and i["done"]
             for i in pub_data["deployment_checklist"]

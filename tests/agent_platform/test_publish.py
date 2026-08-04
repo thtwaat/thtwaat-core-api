@@ -61,10 +61,12 @@ def test_publish_agent_returns_embed_payload(client):
     assert data["status"] == "PUBLISHED"
     assert data["agent_id"] == agent["id"]
     assert data["api_key"].startswith("tht_live_")
+    assert "YOUR_KEY" not in data["api_key"]
     assert data["widget_id"].startswith("wgt_")
     assert "/public/v1/chat" in data["public_chat_url"]
     assert "widget.js" in data["embed_script"]
     assert f'data-api-key="{data["api_key"]}"' in data["embed_script"]
+    assert "YOUR_KEY" not in data["embed_script"]
     assert "/public/v1/widget/embed" in data["iframe_url"]
     assert "api_key=" not in data["iframe_url"]
     assert "tht_live_" not in data["iframe_url"]
@@ -83,6 +85,79 @@ def test_publish_agent_returns_embed_payload(client):
     assert cfg.status_code == 200, cfg.text
     assert cfg.json()["widget_id"] == data["widget_id"]
     assert cfg.json()["status"] == "PUBLISHED"
+
+
+def test_publish_reuses_existing_key_when_plaintext_known(client):
+    """Generate-then-publish path: existing active key + known plaintext → no duplicate."""
+    from uuid import UUID
+
+    from app.agent_platform.models.api_key import AgentApiKey
+    from app.agent_platform.publish.service import PublishService, hash_api_key
+    from app.database.database import get_db
+    from app.users.model import User
+
+    headers, company_id = _auth(client, role="company_owner")
+    agent = _create_agent(client, headers)
+
+    created = client.post(
+        f"/api/v1/agents/{agent['id']}/api-keys",
+        json={"name": "Pre-publish Key"},
+        headers=headers,
+    )
+    assert created.status_code in (200, 201), created.text
+    known = created.json()["api_key"]
+    assert known.startswith("tht_live_")
+
+    db = next(get_db())
+    user = db.query(User).filter(User.company_id == UUID(company_id)).first()
+    assert user is not None
+    pub = PublishService(db).publish(
+        UUID(agent["id"]),
+        UUID(company_id),
+        user.id,
+        known_api_key=known,
+    )
+    assert pub.api_key == known
+    assert "YOUR_KEY" not in pub.embed_script
+    assert f'data-api-key="{known}"' in pub.embed_script
+
+    active = (
+        db.query(AgentApiKey)
+        .filter(
+            AgentApiKey.agent_id == UUID(agent["id"]),
+            AgentApiKey.is_active.is_(True),
+            AgentApiKey.revoked_at.is_(None),
+        )
+        .all()
+    )
+    assert len(active) == 1
+    assert active[0].key_hash == hash_api_key(known)
+
+
+def test_publish_reissues_key_when_existing_plaintext_unavailable(client):
+    headers, _company_id = _auth(client, role="company_owner")
+    agent = _create_agent(client, headers)
+
+    created = client.post(
+        f"/api/v1/agents/{agent['id']}/api-keys",
+        json={"name": "Hidden Key"},
+        headers=headers,
+    )
+    assert created.status_code in (200, 201), created.text
+    old_key = created.json()["api_key"]
+
+    resp = client.post(f"/api/v1/agents/{agent['id']}/publish", headers=headers)
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["api_key"].startswith("tht_live_")
+    assert data["api_key"] != old_key
+    assert "YOUR_KEY" not in data["embed_script"]
+    assert f'data-api-key="{data["api_key"]}"' in data["embed_script"]
+
+    keys = client.get(f"/api/v1/agents/{agent['id']}/api-keys", headers=headers)
+    assert keys.status_code == 200
+    active = [k for k in keys.json() if k.get("is_active")]
+    assert len(active) == 1
 
 
 def test_iframe_embed_rejects_live_api_key_in_url(client):

@@ -352,12 +352,24 @@ class ProductGeneratorService:
                 if agent:
                     job.domain_id = self._create_domain(company_id, user_id, hostname, agent)
 
-            pub = self.publish.publish(job.agent_id, company_id, user_id)
+            pub = self.publish.publish(
+                job.agent_id,
+                company_id,
+                user_id,
+                known_api_key=job.ephemeral_api_key,
+            )
             if pub.api_key:
                 job.ephemeral_api_key = pub.api_key
-                job.api_key_prefix = (pub.api_key or "")[:16] or job.api_key_prefix
+                job.api_key_prefix = pub.api_key[:16]
+            active = self.publish.repo.get_active_key_for_agent(job.agent_id, company_id)
+            if active:
+                job.api_key_id = active.id
+                if not job.api_key_prefix and active.key_prefix:
+                    job.api_key_prefix = active.key_prefix
             job.widget_id = pub.widget_id
             job.widget_snippet = pub.embed_script
+            if job.widget_snippet and "YOUR_KEY" in job.widget_snippet and pub.api_key:
+                job.widget_snippet = job.widget_snippet.replace("tht_live_<YOUR_KEY>", pub.api_key)
             job.preview_url = pub.public_chat_url or job.preview_url
             job.publish_status = pub.status
 
@@ -692,7 +704,7 @@ class ProductGeneratorService:
             item("template", "Select marketplace template", bool(job.template_slug)),
             item("agent", "Create AI agent", bool(job.agent_id), "/app/agents"),
             item("knowledge", "Create knowledge base", bool(job.knowledge_base_id), "/app/knowledge"),
-            item("api_key", "Issue API key", bool(job.api_key_prefix)),
+            item("api_key", "Issue API key", bool(job.api_key_prefix or job.ephemeral_api_key)),
             item("widget", "Configure widget", bool(job.widget_id)),
             item("install", "Install template", bool(job.installation_id), "/app/templates"),
             item("bind", "Bind agent + knowledge + widget", bool(job.product_config.get("bindings"))),

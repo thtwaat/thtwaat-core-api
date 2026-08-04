@@ -211,20 +211,21 @@ class PublishService:
 
     # ── Publish / Unpublish ───────────────────────────────────────────────────
 
-    def publish(self, agent_id: UUID, company_id: UUID, user_id: UUID) -> PublishResponse:
+    def publish(
+        self,
+        agent_id: UUID,
+        company_id: UUID,
+        user_id: UUID,
+        *,
+        known_api_key: Optional[str] = None,
+    ) -> PublishResponse:
         agent = self.repo.get_agent_for_company(agent_id, company_id)
         if not agent:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
 
-        raw_key: Optional[str] = None
-        active_key = self.repo.get_active_key_for_agent(agent_id, company_id)
-
-        if not active_key:
-            raw_key, active_key = self._create_key_record(
-                agent_id=agent_id,
-                company_id=company_id,
-                name="Publish Key",
-            )
+        raw_key, active_key = self._resolve_publish_api_key(
+            agent_id, company_id, known_api_key=known_api_key
+        )
 
         if not agent.widget_id:
             agent.widget_id = generate_widget_id()
@@ -243,7 +244,8 @@ class PublishService:
         if not widget_cfg.agent_name:
             widget_cfg.agent_name = agent.name
 
-        embed_key = raw_key or f"{KEY_PREFIX}<YOUR_KEY>"
+        # Always embed a real live key — never leave YOUR_KEY placeholders.
+        embed_key = raw_key
         embed_token = self.mint_widget_embed_token(
             widget_id=agent.widget_id,
             agent_id=agent.id,
@@ -272,6 +274,43 @@ class PublishService:
                 embed_token=embed_token,
             ),
             published_at=agent.published_at,
+        )
+
+    def _resolve_publish_api_key(
+        self,
+        agent_id: UUID,
+        company_id: UUID,
+        *,
+        known_api_key: Optional[str] = None,
+    ) -> Tuple[str, AgentApiKey]:
+        """Ensure publish returns a plaintext live key for embed snippets.
+
+        - No active key → create one.
+        - Active key + matching ``known_api_key`` → reuse (no duplicate).
+        - Active key without recoverable plaintext → re-issue a single active key
+          (revoke previous actives) so embed never contains ``YOUR_KEY``.
+        """
+        active_key = self.repo.get_active_key_for_agent(agent_id, company_id)
+
+        if not active_key:
+            return self._create_key_record(
+                agent_id=agent_id,
+                company_id=company_id,
+                name="Publish Key",
+            )
+
+        if known_api_key and known_api_key.startswith(KEY_PREFIX):
+            if hash_api_key(known_api_key) == active_key.key_hash:
+                return known_api_key, active_key
+
+        # Existing hashed key only — re-issue one active key for embedability.
+        for key in self.repo.list_keys(agent_id, company_id):
+            if key.is_active and key.revoked_at is None:
+                self.repo.revoke_key(key)
+        return self._create_key_record(
+            agent_id=agent_id,
+            company_id=company_id,
+            name="Publish Key",
         )
 
     def unpublish(self, agent_id: UUID, company_id: UUID, user_id: UUID) -> UnpublishResponse:

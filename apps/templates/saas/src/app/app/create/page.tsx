@@ -381,6 +381,9 @@ export default function ProductGeneratorPage() {
     onSuccess: (data) => {
       setGeneration(data);
       toast.success("Product published!");
+      if (data.api_key && !String(data.api_key).includes("YOUR_KEY")) {
+        toast.message(`API key — copy now: ${data.api_key}`, { duration: 20000 });
+      }
       qc.invalidateQueries({ queryKey: ["gen-history"] });
     },
     onError: (e: Error) => toast.error(e.message)
