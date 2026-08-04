@@ -265,27 +265,30 @@ async def create_chat_completion(
         use_true_stream = mode == "gateway" and stream_enabled()
 
         if use_true_stream:
-            from app.openai_compat.stream_engine import (
-                StreamEngine,
-                resolve_stream_provider_name,
-            )
+            from app.openai_compat.stream_engine import StreamEngine
 
             engine = StreamEngine()
 
             async def _true_stream_and_store():
                 try:
-                    provider_name = await resolve_stream_provider_name(
+                    from app.openai_compat.stream_routing import (
+                        resolve_stream_provider_chain,
+                    )
+
+                    provider_chain = await resolve_stream_provider_chain(
                         model=body.model, provider=body.provider
                     )
                     async for frame in engine.aiter_sse(
                         model=body.model,
                         messages=body.messages,
-                        provider_name=provider_name,
+                        provider_chain=provider_chain,
                         temperature=body.temperature
                         if body.temperature is not None
                         else 0.7,
                         max_tokens=body.max_tokens,
                         request=request,
+                        request_id=getattr(request.state, "request_id", None),
+                        tenant_id=str(principal.company_id),
                     ):
                         yield frame
                 except Exception:

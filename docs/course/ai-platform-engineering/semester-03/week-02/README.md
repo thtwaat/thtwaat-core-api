@@ -6,7 +6,7 @@
 | Day | Topic | Status |
 |-----|--------|--------|
 | 1 | Production streaming engine (OpenAI-compatible SSE) | Done |
-| 2 | Locked | Locked |
+| 2 | Production streaming reliability (routing, fallback, timeouts) | Done |
 | 3 | Locked | Locked |
 | 4 | Locked | Locked |
 | 5 | Locked | Locked |

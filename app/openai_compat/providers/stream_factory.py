@@ -1,10 +1,12 @@
-"""Resolve StreamingAdapter by provider name (Sem03 W2 D1)."""
+"""Resolve StreamingAdapter by provider name (Sem03 W2 D1 + D2)."""
 from __future__ import annotations
-
-from typing import Optional
 
 from app.config.settings import settings
 from app.openai_compat.providers.base import ProviderNotFoundError
+from app.openai_compat.providers.gemini_stream import (
+    AnthropicStreamingAdapter,
+    GeminiStreamingAdapter,
+)
 from app.openai_compat.providers.ollama_stream import OllamaStreamingAdapter
 from app.openai_compat.providers.openai_stream import (
     OpenAIStreamingAdapter,
@@ -23,9 +25,13 @@ def get_streaming_adapter(provider_name: str) -> StreamingAdapter:
         ):
             return OpenAIStreamingAdapter()
         return SyntheticOpenAIStreamingAdapter()
+    if name == "gemini":
+        return GeminiStreamingAdapter()
+    if name == "anthropic":
+        return AnthropicStreamingAdapter()
     raise ProviderNotFoundError(
-        f"Streaming is not implemented for provider '{provider_name}' on Day 1 "
-        f"(supported: ollama, openai)"
+        f"Streaming is not implemented for provider '{provider_name}' "
+        f"(supported: ollama, openai, gemini, anthropic)"
     )
 
 

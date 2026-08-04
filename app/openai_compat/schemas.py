@@ -26,8 +26,9 @@ class ChatCompletionRequest(BaseModel):
     provider: Optional[str] = Field(
         default=None,
         description=(
-            "Optional THTWAAT extension — ollama|openai|gemini|anthropic|vllm. "
-            "When omitted, model→provider resolution applies (default preference: ollama)."
+            "Optional THTWAAT extension — auto|ollama|openai|gemini|anthropic. "
+            "Default auto. On stream failures before the first token, "
+            "STREAM_FALLBACK_ORDER providers are tried."
         ),
     )
 

@@ -85,6 +85,6 @@ INFERENCE_STREAM_LIVE_OPENAI=true   # false → synthetic openai pieces (CI)
 
 ## Tomorrow (Day 2)
 
-Catalog sync / stream harden — locked until approved.
+Production streaming reliability — routing, fallback, timeouts, backpressure.
 
-**Stop here — await approval before Day 2.**
+See [day-02.md](./day-02.md).

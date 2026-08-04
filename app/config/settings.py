@@ -153,6 +153,16 @@ class Settings(BaseSettings):
     STREAM_ENABLED: bool = True
     # When true and OPENAI_API_KEY set, use live OpenAI SSE; else synthetic incremental
     INFERENCE_STREAM_LIVE_OPENAI: bool = True
+    # Sem03 Week 2 Day 2 — production streaming reliability
+    # provider=auto|ollama|openai|gemini|anthropic (request body; default auto)
+    STREAM_DEFAULT_PROVIDER: str = "auto"
+    # Comma list — tried after primary fails before first token
+    STREAM_FALLBACK_ORDER: str = "ollama,openai,gemini,anthropic"
+    STREAM_CONNECT_TIMEOUT: float = 10.0
+    STREAM_FIRST_TOKEN_TIMEOUT: float = 30.0
+    STREAM_IDLE_TIMEOUT: float = 60.0
+    # Max SSE frames buffered for a slow client before disconnect
+    STREAM_MAX_QUEUED_EVENTS: int = 256
     # Week 2 Day 2 — Redis caching for openai_compat
     OPENAI_COMPAT_CACHE_ENABLED: bool = True
     OPENAI_COMPAT_MODEL_CACHE_TTL_SECONDS: int = 300

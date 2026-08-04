@@ -1,4 +1,4 @@
-"""In-process streaming metrics (Sem03 W2 D1)."""
+"""In-process streaming metrics (Sem03 W2 D1 + D2 reliability)."""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -14,6 +14,14 @@ class StreamRunMetrics:
     cancelled: bool = False
     error: Optional[str] = None
     provider: str = ""
+    # Day 2 counters / context
+    fallback_used: bool = False
+    providers_tried: List[str] = field(default_factory=list)
+    provider_latency_ms: Optional[float] = None
+    finish_reason: Optional[str] = None
+    request_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    outcome: str = "completed"  # started|completed|cancelled|failed
 
 
 class StreamingMetrics:
@@ -22,6 +30,12 @@ class StreamingMetrics:
         self.first_token_latency_ms: List[float] = []
         self.total_stream_duration_ms: List[float] = []
         self.streamed_tokens_total: int = 0
+        self.stream_started: int = 0
+        self.stream_completed: int = 0
+        self.stream_cancelled: int = 0
+        self.stream_failed: int = 0
+        self.fallback_used: int = 0
+        self.provider_latency_ms: List[float] = []
         self.cancels: int = 0
         self.errors: Dict[str, int] = defaultdict(int)
         self.by_provider: Dict[str, int] = defaultdict(int)
@@ -31,9 +45,18 @@ class StreamingMetrics:
         self.first_token_latency_ms.clear()
         self.total_stream_duration_ms.clear()
         self.streamed_tokens_total = 0
+        self.stream_started = 0
+        self.stream_completed = 0
+        self.stream_cancelled = 0
+        self.stream_failed = 0
+        self.fallback_used = 0
+        self.provider_latency_ms.clear()
         self.cancels = 0
         self.errors.clear()
         self.by_provider.clear()
+
+    def mark_started(self) -> None:
+        self.stream_started += 1
 
     def record(self, run: StreamRunMetrics) -> None:
         self.runs.append(run)
@@ -42,8 +65,17 @@ class StreamingMetrics:
             self.first_token_latency_ms.append(float(run.first_token_latency_ms))
         self.total_stream_duration_ms.append(float(run.total_stream_duration_ms))
         self.streamed_tokens_total += int(run.streamed_tokens or 0)
-        if run.cancelled:
+        if run.provider_latency_ms is not None:
+            self.provider_latency_ms.append(float(run.provider_latency_ms))
+        if run.fallback_used:
+            self.fallback_used += 1
+        if run.cancelled or run.outcome == "cancelled":
             self.cancels += 1
+            self.stream_cancelled += 1
+        elif run.outcome == "failed" or run.error:
+            self.stream_failed += 1
+        else:
+            self.stream_completed += 1
         if run.error:
             self.errors[run.error] += 1
 
@@ -55,6 +87,17 @@ class StreamingMetrics:
 
         last = self.runs[-1] if self.runs else None
         return {
+            "stream_started": self.stream_started,
+            "stream_completed": self.stream_completed,
+            "stream_cancelled": self.stream_cancelled,
+            "stream_failed": self.stream_failed,
+            "fallback_used": self.fallback_used,
+            "tokens_streamed": self.streamed_tokens_total,
+            "provider_latency_ms": {
+                "count": len(self.provider_latency_ms),
+                "avg": _avg(self.provider_latency_ms),
+                "last": last.provider_latency_ms if last else None,
+            },
             "first_token_latency_ms": {
                 "count": len(self.first_token_latency_ms),
                 "avg": _avg(self.first_token_latency_ms),
