@@ -11,7 +11,7 @@ from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
 from app.payments.subscriptions.schema import (
     StripeCheckoutRequest, RazorpayCheckoutRequest, RazorpayVerifyRequest,
-    CheckoutSessionResponse, SubscriptionResponse
+    CheckoutSessionResponse, SubscriptionResponse, ChangePlanRequest
 )
 from app.payments.subscriptions.service import SubscriptionService
 
@@ -138,14 +138,49 @@ def list_subscriptions(
 @router.post(
     "/cancel",
     response_model=SubscriptionResponse,
-    summary="Cancel current Stripe subscription at period end",
+    summary="Cancel current subscription at period end",
 )
 def cancel_subscription(
     current_user: UserProfileResponse = Depends(get_current_user),
     service: SubscriptionService = Depends(get_sub_service)
 ):
     """
-    Sets cancel_at_period_end=True on the active Stripe subscription.
-    The subscription remains active until the end of the billing period.
+    Sets cancel_at_period_end=True on the active subscription (Stripe/Razorpay).
+    The subscription remains active until the end of the billing period when supported.
     """
-    return service.cancel_stripe_subscription(current_user.company_id)
+    return service.cancel_subscription(current_user.company_id)
+
+
+@router.post(
+    "/resume",
+    response_model=SubscriptionResponse,
+    summary="Resume a subscription pending cancellation",
+)
+def resume_subscription(
+    current_user: UserProfileResponse = Depends(get_current_user),
+    service: SubscriptionService = Depends(get_sub_service),
+):
+    return service.resume_subscription(current_user.company_id)
+
+
+@router.post(
+    "/change-plan",
+    response_model=CheckoutSessionResponse,
+    summary="Upgrade or downgrade plan",
+)
+def change_plan(
+    payload: ChangePlanRequest,
+    current_user: UserProfileResponse = Depends(get_current_user),
+    service: SubscriptionService = Depends(get_sub_service),
+):
+    return service.change_plan(current_user.company_id, payload)
+
+
+@router.get("/providers")
+def subscription_providers(
+    current_user: UserProfileResponse = Depends(get_current_user),
+):
+    _ = current_user
+    from app.payments.provider_flags import billing_providers_status
+
+    return billing_providers_status()

@@ -44,6 +44,15 @@ class Plan(Base, TimestampMixin):
     max_api_keys = Column(Integer, nullable=False, default=1)
     max_templates = Column(Integer, nullable=False, default=0)
 
+    # Phase 6 additive entitlements
+    yearly_amount = Column(Numeric(10, 2), nullable=True)
+    trial_days = Column(Integer, nullable=False, default=0)
+    max_workspaces = Column(Integer, nullable=False, default=1)
+    max_widgets = Column(Integer, nullable=False, default=1)
+    max_knowledge = Column(Integer, nullable=False, default=1)
+    stripe_yearly_price_id = Column(String(255), nullable=True)
+    razorpay_yearly_plan_id = Column(String(255), nullable=True)
+
     is_active = Column(Boolean, nullable=False, default=True)
 
     def __repr__(self) -> str:

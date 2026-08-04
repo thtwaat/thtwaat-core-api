@@ -11,16 +11,20 @@ from pydantic import BaseModel, ConfigDict, Field
 class PlanCreate(BaseModel):
     name: str = Field(..., max_length=100)
     description: Optional[str] = Field(None, max_length=500)
-    amount: Decimal = Field(..., gt=0)
+    amount: Decimal = Field(..., ge=0)
     currency: str = Field(default="USD", min_length=3, max_length=3)
     interval: str = Field(default="month", pattern="^(month|year)$")
     interval_count: int = Field(default=1, ge=1)
+    yearly_amount: Optional[Decimal] = Field(None, ge=0)
+    trial_days: int = Field(default=0, ge=0, le=90)
     max_users: int = Field(default=5, ge=1)
     max_apps: int = Field(default=1, ge=1)
     ai_credits: Decimal = Field(default=Decimal("100.0"), ge=0)
     features: Optional[List[str]] = None
     stripe_price_id: Optional[str] = None
+    stripe_yearly_price_id: Optional[str] = None
     razorpay_plan_id: Optional[str] = None
+    razorpay_yearly_plan_id: Optional[str] = None
     max_agents: int = Field(default=1, ge=0)
     max_messages: int = Field(default=100, ge=0)
     max_tokens: int = Field(default=50000, ge=0)
@@ -29,6 +33,9 @@ class PlanCreate(BaseModel):
     max_team_members: int = Field(default=5, ge=0)
     max_api_keys: int = Field(default=1, ge=0)
     max_templates: int = Field(default=0, ge=0)
+    max_workspaces: int = Field(default=1, ge=0)
+    max_widgets: int = Field(default=1, ge=0)
+    max_knowledge: int = Field(default=1, ge=0)
 
 
 class PlanUpdate(BaseModel):
@@ -70,6 +77,13 @@ class PlanResponse(BaseModel):
     max_team_members: int = 5
     max_api_keys: int = 1
     max_templates: int = 0
+    yearly_amount: Optional[float] = None
+    trial_days: int = 0
+    max_workspaces: int = 1
+    max_widgets: int = 1
+    max_knowledge: int = 1
+    stripe_yearly_price_id: Optional[str] = None
+    razorpay_yearly_plan_id: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

@@ -17,13 +17,18 @@ from app.payments.plans.repository import PlanRepository
 from app.payments.subscriptions.model import Subscription, SubscriptionStatus, SubscriptionProvider
 from app.payments.subscriptions.schema import (
     StripeCheckoutRequest, RazorpayCheckoutRequest, RazorpayVerifyRequest,
-    CheckoutSessionResponse, SubscriptionResponse
+    CheckoutSessionResponse, SubscriptionResponse, ChangePlanRequest
 )
 from app.payments.subscriptions.repository import SubscriptionRepository
 from app.payments.invoices.model import Invoice, InvoiceStatus
 from app.payments.invoices.repository import InvoiceRepository
 from app.companies.repository import CompanyRepository
 from app.companies.model import Company, CompanyPlan, CompanyStatus
+from app.payments.provider_flags import stripe_enabled, razorpay_enabled
+from app.payments.billing_extras import (
+    apply_coupon_discount,
+    get_active_coupon,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -113,27 +118,46 @@ class SubscriptionService:
                 provider="manual",
             )
 
-        if not settings.STRIPE_SECRET_KEY:
-            raise HTTPException(status_code=503, detail="Stripe is not configured.")
+        if not stripe_enabled():
+            raise HTTPException(status_code=503, detail="Stripe billing is not enabled or configured.")
         stripe.api_key = settings.STRIPE_SECRET_KEY
 
-        if not plan.stripe_price_id:
+        use_yearly = (data.interval or plan.interval or "month").lower() == "year"
+        price_id = plan.stripe_yearly_price_id if use_yearly else plan.stripe_price_id
+        if not price_id:
             raise HTTPException(
                 status_code=400,
-                detail=f"Plan '{plan.name}' does not have a Stripe price configured. Ask admin to set stripe_price_id."
+                detail=f"Plan '{plan.name}' does not have a Stripe price configured. Ask admin to set stripe_price_id.",
             )
 
         customer_id = self._get_or_create_stripe_customer(company)
 
-        session = stripe.checkout.Session.create(
-            customer=customer_id,
-            mode="subscription",
-            line_items=[{"price": plan.stripe_price_id, "quantity": 1}],
-            success_url=data.success_url,
-            cancel_url=data.cancel_url,
-            metadata={"company_id": str(company_id), "plan_id": str(plan.id)},
-            subscription_data={"metadata": {"company_id": str(company_id), "plan_id": str(plan.id)}}
-        )
+        session_kwargs = {
+            "customer": customer_id,
+            "mode": "subscription",
+            "line_items": [{"price": price_id, "quantity": 1}],
+            "success_url": data.success_url,
+            "cancel_url": data.cancel_url,
+            "metadata": {"company_id": str(company_id), "plan_id": str(plan.id)},
+            "subscription_data": {
+                "metadata": {"company_id": str(company_id), "plan_id": str(plan.id)}
+            },
+        }
+        trial_days = data.trial_days
+        if trial_days is None:
+            trial_days = int(getattr(plan, "trial_days", 0) or 0)
+        if trial_days and trial_days > 0:
+            session_kwargs["subscription_data"]["trial_period_days"] = int(trial_days)
+
+        if data.coupon_code:
+            coupon = get_active_coupon(self.db, data.coupon_code)
+            if not coupon:
+                raise HTTPException(status_code=400, detail="Invalid coupon code")
+            if coupon.stripe_coupon_id:
+                session_kwargs["discounts"] = [{"coupon": coupon.stripe_coupon_id}]
+            session_kwargs["metadata"]["coupon_code"] = coupon.code
+
+        session = stripe.checkout.Session.create(**session_kwargs)
 
         # Create a pending subscription record
         existing = self.sub_repo.get_active_by_company(company_id)
@@ -157,33 +181,159 @@ class SubscriptionService:
         return self.sub_repo.list_by_company(company_id)
 
     def cancel_stripe_subscription(self, company_id: uuid.UUID) -> SubscriptionResponse:
-        """Cancels an active Stripe subscription at period end."""
-        if not settings.STRIPE_SECRET_KEY:
-            raise HTTPException(status_code=503, detail="Stripe is not configured.")
-        stripe.api_key = settings.STRIPE_SECRET_KEY
+        """Cancels an active subscription at period end (Stripe or Razorpay)."""
+        return self.cancel_subscription(company_id)
 
+    def cancel_subscription(self, company_id: uuid.UUID) -> SubscriptionResponse:
         sub = self.sub_repo.get_active_by_company(company_id)
         if not sub:
             raise HTTPException(status_code=404, detail="No active subscription found.")
-        if sub.provider != SubscriptionProvider.STRIPE:
-            raise HTTPException(status_code=400, detail="Subscription is not a Stripe subscription.")
-        if not sub.provider_subscription_id:
-            raise HTTPException(status_code=400, detail="No Stripe subscription ID found.")
 
-        stripe.Subscription.modify(
-            sub.provider_subscription_id,
-            cancel_at_period_end=True
-        )
-        self.sub_repo.update(sub, {"cancel_at_period_end": True})
+        if sub.provider == SubscriptionProvider.STRIPE:
+            if not stripe_enabled():
+                raise HTTPException(status_code=503, detail="Stripe billing is not enabled or configured.")
+            stripe.api_key = settings.STRIPE_SECRET_KEY
+            if not sub.provider_subscription_id:
+                raise HTTPException(status_code=400, detail="No Stripe subscription ID found.")
+            stripe.Subscription.modify(
+                sub.provider_subscription_id,
+                cancel_at_period_end=True,
+            )
+            self.sub_repo.update(sub, {"cancel_at_period_end": True})
+        elif sub.provider == SubscriptionProvider.RAZORPAY:
+            if not razorpay_enabled():
+                raise HTTPException(status_code=503, detail="Razorpay billing is not enabled or configured.")
+            if sub.provider_subscription_id:
+                import razorpay
+
+                client = razorpay.Client(
+                    auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+                )
+                try:
+                    client.subscription.cancel(sub.provider_subscription_id)
+                except Exception as exc:
+                    logger.warning("razorpay cancel remote failed: %s", exc)
+            self.sub_repo.update(
+                sub,
+                {
+                    "cancel_at_period_end": True,
+                    "cancelled_at": datetime.now(timezone.utc),
+                },
+            )
+        else:
+            # Manual / free
+            self.sub_repo.update(
+                sub,
+                {
+                    "status": SubscriptionStatus.CANCELLED,
+                    "cancel_at_period_end": False,
+                    "cancelled_at": datetime.now(timezone.utc),
+                },
+            )
+            self._downgrade_to_free(company_id)
+
         self.db.refresh(sub)
         return sub
+
+    def resume_subscription(self, company_id: uuid.UUID) -> SubscriptionResponse:
+        """Undo cancel-at-period-end when still within the paid period."""
+        sub = self.sub_repo.get_active_by_company(company_id)
+        if not sub:
+            raise HTTPException(status_code=404, detail="No active subscription found.")
+        if not sub.cancel_at_period_end:
+            raise HTTPException(status_code=400, detail="Subscription is not pending cancellation.")
+
+        if sub.provider == SubscriptionProvider.STRIPE:
+            if not stripe_enabled():
+                raise HTTPException(status_code=503, detail="Stripe billing is not enabled or configured.")
+            stripe.api_key = settings.STRIPE_SECRET_KEY
+            if not sub.provider_subscription_id:
+                raise HTTPException(status_code=400, detail="No Stripe subscription ID found.")
+            stripe.Subscription.modify(
+                sub.provider_subscription_id,
+                cancel_at_period_end=False,
+            )
+        self.sub_repo.update(sub, {"cancel_at_period_end": False, "cancelled_at": None})
+        self.db.refresh(sub)
+        return sub
+
+    def change_plan(
+        self, company_id: uuid.UUID, data: ChangePlanRequest
+    ) -> CheckoutSessionResponse:
+        """
+        Upgrade/downgrade via checkout for paid providers, or immediate activate for free.
+        """
+        plan = self.plan_repo.get_by_id(data.plan_id)
+        if not plan or not plan.is_active:
+            raise HTTPException(status_code=404, detail="Plan not found or inactive.")
+        amount = float(plan.amount or 0)
+        if amount <= 0:
+            existing = self.sub_repo.get_active_by_company(company_id)
+            if existing:
+                self.sub_repo.update(
+                    existing,
+                    {
+                        "plan_id": plan.id,
+                        "status": SubscriptionStatus.ACTIVE,
+                        "cancel_at_period_end": False,
+                    },
+                )
+            else:
+                self.sub_repo.create(
+                    {
+                        "company_id": company_id,
+                        "plan_id": plan.id,
+                        "provider": SubscriptionProvider.MANUAL,
+                        "status": SubscriptionStatus.ACTIVE,
+                        "metadata_": {"source": "change_plan_free"},
+                    }
+                )
+            self._activate_company_plan(company_id, plan)
+            return CheckoutSessionResponse(checkout_url=None, provider="manual")
+
+        # Paid: route through checkout
+        success = data.success_url or "https://app.thtwaat.com/app/billing?upgraded=1"
+        cancel = data.cancel_url or "https://app.thtwaat.com/app/billing?cancelled=1"
+        if stripe_enabled():
+            return self.create_stripe_checkout_session(
+                company_id,
+                StripeCheckoutRequest(
+                    plan_id=data.plan_id,
+                    success_url=success,
+                    cancel_url=cancel,
+                    coupon_code=data.coupon_code,
+                    interval=data.interval,
+                ),
+            )
+        if razorpay_enabled():
+            raise HTTPException(
+                status_code=400,
+                detail="Use Razorpay order+verify flow for plan changes when Stripe is disabled.",
+            )
+        raise HTTPException(status_code=503, detail="No billing provider enabled.")
+
+    def _downgrade_to_free(self, company_id: uuid.UUID) -> None:
+        company = self.company_repo.get_by_id(company_id)
+        if not company:
+            return
+        company.plan = CompanyPlan.FREE
+        company.status = CompanyStatus.ACTIVE
+        company.max_users = 5
+        company.max_apps = 1
+        self.db.commit()
+        try:
+            from app.usage.service import UsageService
+
+            UsageService(self.db).apply_plan_limits(company_id, "free")
+        except Exception as exc:
+            logger.warning("downgrade usage limits failed: %s", exc)
 
     # ─── Razorpay ──────────────────────────────────────────────────────────
 
     def create_razorpay_order(self, company_id: uuid.UUID, data: RazorpayCheckoutRequest) -> CheckoutSessionResponse:
         """Creates a Razorpay subscription order."""
-        if not settings.RAZORPAY_KEY_ID or not settings.RAZORPAY_KEY_SECRET:
-            raise HTTPException(status_code=503, detail="Razorpay is not configured.")
+        if not razorpay_enabled():
+            raise HTTPException(status_code=503, detail="Razorpay billing is not enabled or configured.")
         import razorpay
         client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
 
@@ -195,9 +345,22 @@ class SubscriptionService:
         if not plan or not plan.is_active:
             raise HTTPException(status_code=404, detail="Plan not found or inactive.")
 
+        use_yearly = (data.interval or plan.interval or "month").lower() == "year"
+        amount = plan.yearly_amount if use_yearly and plan.yearly_amount is not None else plan.amount
+        amount_dec = __import__("decimal").Decimal(str(amount or 0))
+        coupon_code = None
+        if data.coupon_code:
+            coupon = get_active_coupon(self.db, data.coupon_code)
+            if not coupon:
+                raise HTTPException(status_code=400, detail="Invalid coupon code")
+            amount_dec = apply_coupon_discount(amount_dec, coupon)
+            coupon_code = coupon.code
+            coupon.redeemed_count = int(coupon.redeemed_count or 0) + 1
+            self.db.commit()
+
         # Create Razorpay order
         order_data = {
-            "amount": int(float(plan.amount) * 100),
+            "amount": int(float(amount_dec) * 100),
             "currency": plan.currency.upper(),
             "payment_capture": 1,
             "notes": {
@@ -205,6 +368,7 @@ class SubscriptionService:
                 "plan_id": str(plan.id),
                 "customer_name": data.customer_name,
                 "customer_email": data.customer_email,
+                **({"coupon_code": coupon_code} if coupon_code else {}),
             }
         }
         order = client.order.create(data=order_data)

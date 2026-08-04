@@ -71,3 +71,15 @@ Canonical paths: `app/openai_compat` (`/v1/chat/completions`) + `app/ai` (`/api/
 - SaaS board: `/app/providers` live health + cost/latency + workspace defaults
 
 Migration: `k5e6f7a8b9c0_ai_gateway_workspace`.
+
+## Enterprise Billing & Usage (Phase 6)
+
+Canonical path: `app/payments` + `app/usage` (no parallel `app/billing`).
+
+- Plans: Free / Starter / Pro / Business / Enterprise (`scripts/seed_billing_plans.py`)
+- Feature flags: `BILLING_ENABLE_STRIPE`, `BILLING_ENABLE_RAZORPAY`
+- Subscriptions: checkout, change-plan, cancel, resume, coupons, trial_days
+- Webhooks: Stripe (+ `invoice.paid`, `customer.subscription.created`) and Razorpay (+ `subscription.cancelled`, `refund.processed`) with idempotent `billing_webhook_events`
+- Admin: `GET /api/v1/payments/admin/analytics` (MRR/ARR/revenue/AI costs)
+- Customer UI: `/app/billing` · Admin tab: Billing
+- Migration: `l6f7a8b9c0d1_enterprise_billing`

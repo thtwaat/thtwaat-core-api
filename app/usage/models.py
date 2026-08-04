@@ -12,6 +12,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Index,
     Text,
+    Numeric,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 
@@ -67,6 +68,7 @@ class CompanyUsageMeter(Base, TimestampMixin):
     api_keys = Column(Integer, nullable=False, default=0)
     domains = Column(Integer, nullable=False, default=0)
     templates_published = Column(Integer, nullable=False, default=0)
+    estimated_cost = Column(Numeric(12, 6), nullable=False, default=0)
 
     # Limits snapshot (copied from plan at period open / upgrade)
     max_agents = Column(Integer, nullable=False, default=1)
@@ -77,6 +79,8 @@ class CompanyUsageMeter(Base, TimestampMixin):
     max_team_members = Column(Integer, nullable=False, default=5)
     max_api_keys = Column(Integer, nullable=False, default=1)
     max_templates = Column(Integer, nullable=False, default=0)
+    max_widgets = Column(Integer, nullable=False, default=1)
+    max_knowledge = Column(Integer, nullable=False, default=1)
 
 
 class UsageDailyAggregate(Base, TimestampMixin):

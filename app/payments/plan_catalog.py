@@ -1,0 +1,80 @@
+"""Canonical SaaS plan definitions (Free → Enterprise)."""
+from __future__ import annotations
+
+from decimal import Decimal
+from typing import Any, Dict, List
+
+from app.usage.dimensions import DEFAULT_PLAN_LIMITS, PlanTier
+
+CANONICAL_PLANS: List[Dict[str, Any]] = [
+    {
+        "name": "Free",
+        "description": "Get started with THTWAAT",
+        "amount": Decimal("0"),
+        "yearly_amount": Decimal("0"),
+        "currency": "USD",
+        "interval": "month",
+        "trial_days": 0,
+        "features": ["1 agent", "100 messages", "community support"],
+        **DEFAULT_PLAN_LIMITS[PlanTier.FREE],
+        "max_workspaces": 1,
+        "max_widgets": 1,
+        "max_knowledge": 1,
+    },
+    {
+        "name": "Starter",
+        "description": "For early teams",
+        "amount": Decimal("29"),
+        "yearly_amount": Decimal("290"),
+        "currency": "USD",
+        "interval": "month",
+        "trial_days": 14,
+        "features": ["5 agents", "5k messages", "email support"],
+        **DEFAULT_PLAN_LIMITS[PlanTier.STARTER],
+        "max_workspaces": 1,
+        "max_widgets": 3,
+        "max_knowledge": 3,
+    },
+    {
+        "name": "Pro",
+        "description": "Scale production AI workloads",
+        "amount": Decimal("99"),
+        "yearly_amount": Decimal("990"),
+        "currency": "USD",
+        "interval": "month",
+        "trial_days": 14,
+        "features": ["25 agents", "50k messages", "priority support"],
+        **DEFAULT_PLAN_LIMITS[PlanTier.PRO],
+        "max_workspaces": 3,
+        "max_widgets": 10,
+        "max_knowledge": 10,
+    },
+    {
+        "name": "Business",
+        "description": "Multi-team workspaces and higher quotas",
+        "amount": Decimal("299"),
+        "yearly_amount": Decimal("2990"),
+        "currency": "USD",
+        "interval": "month",
+        "trial_days": 14,
+        "features": ["100 agents", "250k messages", "SSO ready"],
+        **DEFAULT_PLAN_LIMITS[PlanTier.BUSINESS],
+        "max_workspaces": 10,
+        "max_widgets": 50,
+        "max_knowledge": 50,
+    },
+    {
+        "name": "Enterprise",
+        "description": "Custom limits, security, and SLAs",
+        "amount": Decimal("999"),
+        "yearly_amount": Decimal("9990"),
+        "currency": "USD",
+        "interval": "month",
+        "trial_days": 30,
+        "features": ["unlimited agents*", "custom quotas", "dedicated success"],
+        **DEFAULT_PLAN_LIMITS[PlanTier.ENTERPRISE],
+        "max_workspaces": 100,
+        "max_widgets": 500,
+        "max_knowledge": 500,
+    },
+]

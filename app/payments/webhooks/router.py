@@ -52,9 +52,11 @@ async def stripe_webhook(
 
     event_type = event["type"]
     event_data = event["data"]["object"]
+    event_id = event.get("id") or f"stripe-{event_type}-{event_data.get('id')}"
 
     logger.info(f"[Stripe Webhook] Received event: {event_type}")
 
+    from app.payments.billing_extras import claim_webhook_event, mark_webhook_processed
     from app.payments.subscriptions.service import SubscriptionService
     from app.payments.invoices.repository import InvoiceRepository
     from app.payments.invoices.model import InvoiceStatus
@@ -62,6 +64,16 @@ async def stripe_webhook(
     from app.notifications.events import NotificationEventBus
     import uuid
     from datetime import datetime, timezone
+
+    claimed = claim_webhook_event(
+        db,
+        provider="stripe",
+        event_id=str(event_id),
+        event_type=event_type,
+        payload={"type": event_type, "object_id": event_data.get("id")},
+    )
+    if claimed is None:
+        return {"received": True, "event": event_type, "duplicate": True}
 
     sub_service = SubscriptionService(db)
     invoice_repo = InvoiceRepository(db)
@@ -82,10 +94,14 @@ async def stripe_webhook(
                 stripe_sub = stripe.Subscription.retrieve(stripe_sub_id)
                 sub_service.handle_stripe_subscription_event(dict(stripe_sub), event_type)
 
-        elif event_type in ("customer.subscription.updated", "customer.subscription.deleted"):
+        elif event_type in (
+            "customer.subscription.created",
+            "customer.subscription.updated",
+            "customer.subscription.deleted",
+        ):
             sub_service.handle_stripe_subscription_event(dict(event_data), event_type)
 
-        elif event_type == "invoice.payment_succeeded":
+        elif event_type in ("invoice.payment_succeeded", "invoice.paid"):
             inv_data = event_data
             stripe_inv_id = inv_data.get("id")
             stripe_sub_id = inv_data.get("subscription")
@@ -155,8 +171,10 @@ async def stripe_webhook(
                 except Exception:
                     pass
 
+        mark_webhook_processed(db, claimed)
     except Exception as e:
         logger.error(f"[Stripe Webhook] Error processing event {event_type}: {e}", exc_info=True)
+        mark_webhook_processed(db, claimed, error=str(e))
         # Return 200 anyway so Stripe doesn't retry indefinitely for processing errors
         return {"received": True, "warning": str(e)}
 
@@ -202,8 +220,15 @@ async def razorpay_webhook(
 
     event_type = data.get("event")
     event_data = data.get("payload", {})
+    event_id = (
+        data.get("event_id")
+        or (event_data.get("payment", {}) or {}).get("entity", {}).get("id")
+        or (event_data.get("subscription", {}) or {}).get("entity", {}).get("id")
+        or f"razorpay-{event_type}-{hash(payload)}"
+    )
     logger.info(f"[Razorpay Webhook] Received event: {event_type}")
 
+    from app.payments.billing_extras import claim_webhook_event, mark_webhook_processed
     from app.notifications.events import NotificationEventBus
     from app.payments.subscriptions.service import SubscriptionService
     from app.payments.subscriptions.model import SubscriptionStatus
@@ -212,6 +237,16 @@ async def razorpay_webhook(
     from app.companies.repository import CompanyRepository
     import uuid
     from datetime import datetime, timezone
+
+    claimed = claim_webhook_event(
+        db,
+        provider="razorpay",
+        event_id=str(event_id),
+        event_type=str(event_type or "unknown"),
+        payload={"event": event_type},
+    )
+    if claimed is None:
+        return {"received": True, "event": event_type, "duplicate": True}
 
     try:
         if event_type == "payment.captured":
@@ -349,8 +384,52 @@ async def razorpay_webhook(
                     data={"plan_name": notes.get("plan_name", "your selected")}
                 )
 
+        elif event_type in ("subscription.cancelled", "subscription.canceled"):
+            sub_entity = event_data.get("subscription", {}).get("entity", {})
+            razorpay_sub_id = sub_entity.get("id")
+            notes = sub_entity.get("notes", {}) or {}
+            company_id_str = notes.get("company_id")
+            sub_service = SubscriptionService(db)
+            sub = None
+            if razorpay_sub_id:
+                sub = sub_service.sub_repo.get_by_provider_subscription_id(razorpay_sub_id)
+            if not sub and company_id_str:
+                sub = sub_service.sub_repo.get_active_by_company(uuid.UUID(company_id_str))
+            if sub:
+                sub_service.sub_repo.update(
+                    sub,
+                    {
+                        "status": SubscriptionStatus.CANCELLED,
+                        "cancelled_at": datetime.now(timezone.utc),
+                        "cancel_at_period_end": False,
+                    },
+                )
+                sub_service._downgrade_to_free(sub.company_id)
+
+        elif event_type == "refund.processed":
+            refund = event_data.get("refund", {}).get("entity", {}) or event_data.get("payment", {}).get("entity", {})
+            notes = refund.get("notes", {}) or {}
+            company_id_str = notes.get("company_id")
+            amount = (refund.get("amount") or 0) / 100
+            currency = (refund.get("currency") or "INR")
+            if company_id_str:
+                NotificationEventBus.dispatch(
+                    event_type="payment.refunded",
+                    db=db,
+                    company_id=uuid.UUID(company_id_str),
+                    user_id=None,
+                    data={
+                        "amount": amount,
+                        "currency": currency,
+                        "refund_id": refund.get("id"),
+                        "payment_id": refund.get("payment_id"),
+                    },
+                )
+
+        mark_webhook_processed(db, claimed)
     except Exception as e:
         logger.error(f"[Razorpay Webhook] Error processing {event_type}: {e}", exc_info=True)
+        mark_webhook_processed(db, claimed, error=str(e))
 
     return {"received": True, "event": event_type}
 

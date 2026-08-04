@@ -201,6 +201,7 @@ export type Plan = {
   slug?: string;
   price?: number;
   amount?: number;
+  yearly_amount?: number | null;
   currency?: string;
   interval?: string;
   description?: string;
@@ -215,6 +216,10 @@ export type Plan = {
   max_team_members?: number;
   max_api_keys?: number;
   max_templates?: number;
+  max_workspaces?: number;
+  max_widgets?: number;
+  max_knowledge?: number;
+  trial_days?: number;
   ai_credits?: number;
   is_active?: boolean;
 };
@@ -224,10 +229,13 @@ export type Invoice = {
   number?: string;
   status: string;
   amount?: number;
+  amount_paid?: number;
   total?: number;
   currency?: string;
   created_at: string;
   pdf_url?: string;
+  invoice_pdf?: string | null;
+  hosted_url?: string | null;
 };
 
 export type Subscription = {

@@ -150,11 +150,19 @@ export const billingApi = {
     api.v1<Plan>(`/payments/plans/${id}`, { method: "PATCH", body }),
   subscription: () => api.v1<Subscription>("/payments/subscriptions/me"),
   invoices: () => api.v1<Invoice[]>("/payments/invoices"),
+  providers: () =>
+    api.v1<{
+      stripe: { available: boolean; configured: boolean; flag_enabled: boolean };
+      razorpay: { available: boolean; configured: boolean; flag_enabled: boolean };
+      default: string;
+    }>("/payments/subscriptions/providers"),
   razorpayOrder: (body: {
     plan_id: string;
     customer_name: string;
     customer_email: string;
     customer_phone?: string;
+    coupon_code?: string;
+    interval?: string;
   }) =>
     api.v1<{ order_id: string; subscription_id?: string; provider?: string }>(
       "/payments/subscriptions/razorpay/order",
@@ -173,12 +181,55 @@ export const billingApi = {
       method: "POST",
       body
     }),
-  stripeCheckout: (plan_id: string, success_url: string, cancel_url: string) =>
-    api.v1<{ checkout_url: string }>("/payments/subscriptions/stripe/checkout", {
+  stripeCheckout: (body: {
+    plan_id: string;
+    success_url: string;
+    cancel_url: string;
+    coupon_code?: string;
+    trial_days?: number;
+    interval?: string;
+  }) =>
+    api.v1<{ checkout_url: string; provider?: string }>("/payments/subscriptions/stripe/checkout", {
       method: "POST",
-      body: { plan_id, success_url, cancel_url }
+      body
     }),
-  cancel: () => api.v1("/payments/subscriptions/cancel", { method: "POST" })
+  cancel: () => api.v1("/payments/subscriptions/cancel", { method: "POST" }),
+  resume: () => api.v1("/payments/subscriptions/resume", { method: "POST" }),
+  changePlan: (body: {
+    plan_id: string;
+    interval?: string;
+    coupon_code?: string;
+    success_url?: string;
+    cancel_url?: string;
+  }) =>
+    api.v1<{ checkout_url?: string | null; order_id?: string; provider: string }>(
+      "/payments/subscriptions/change-plan",
+      { method: "POST", body }
+    ),
+  validateCoupon: (code: string) =>
+    api.v1<{ valid: boolean; percent_off?: number; amount_off?: number; currency: string }>(
+      "/payments/coupons/validate",
+      { method: "POST", body: { code } }
+    ),
+  adminAnalytics: () => api.v1<BillingAdminAnalytics>("/payments/admin/analytics")
+};
+
+export type BillingAdminAnalytics = {
+  mrr: number;
+  arr: number;
+  revenue: number;
+  refunds: number;
+  failed_payments: number;
+  active_subscriptions: number;
+  top_customers: Array<{ company_id: string; revenue: number }>;
+  top_plans: Array<{ plan: string; active_subscriptions: number }>;
+  token_usage: number;
+  ai_costs: number;
+  gross_margin: number;
+  providers?: {
+    stripe?: { available?: boolean };
+    razorpay?: { available?: boolean };
+  };
 };
 
 export const conversationsApi = {

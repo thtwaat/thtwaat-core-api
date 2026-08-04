@@ -183,6 +183,20 @@ class AIService:
                 },
             )
 
+            try:
+                from app.usage.service import UsageService
+
+                UsageService(self.db).record_ai_usage(
+                    company_id,
+                    prompt_tokens=int(ai_response.input_tokens or 0),
+                    completion_tokens=int(ai_response.output_tokens or 0),
+                    source="ai_gateway",
+                    estimated_cost=float(actual_cost or 0),
+                    provider=used_provider,
+                )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("usage meter update after chat failed: %s", exc)
+
             return ChatResponse(
                 content=ai_response.content,
                 input_tokens=ai_response.input_tokens,

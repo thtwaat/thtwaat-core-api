@@ -12,6 +12,9 @@ class StripeCheckoutRequest(BaseModel):
     plan_id: uuid.UUID
     success_url: str = Field(..., description="URL to redirect after successful payment")
     cancel_url: str  = Field(..., description="URL to redirect if user cancels")
+    coupon_code: Optional[str] = None
+    trial_days: Optional[int] = Field(None, ge=0, le=90)
+    interval: Optional[str] = Field(None, pattern="^(month|year)$")
 
 
 class RazorpayCheckoutRequest(BaseModel):
@@ -19,6 +22,16 @@ class RazorpayCheckoutRequest(BaseModel):
     customer_name: str
     customer_email: str
     customer_phone: Optional[str] = None
+    coupon_code: Optional[str] = None
+    interval: Optional[str] = Field(None, pattern="^(month|year)$")
+
+
+class ChangePlanRequest(BaseModel):
+    plan_id: uuid.UUID
+    interval: Optional[str] = Field(None, pattern="^(month|year)$")
+    coupon_code: Optional[str] = None
+    success_url: Optional[str] = None
+    cancel_url: Optional[str] = None
 
 
 class RazorpayVerifyRequest(BaseModel):

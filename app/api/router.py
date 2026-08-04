@@ -16,6 +16,8 @@ from app.payments.plans.router import router as plans_router
 from app.payments.subscriptions.router import router as subscriptions_router
 from app.payments.invoices.router import router as invoices_router
 from app.payments.webhooks.router import router as payment_webhooks_router
+from app.payments.admin_router import router as billing_admin_router
+from app.payments.coupons_router import router as coupons_router
 from app.agent_platform.publish.router import router as agent_publish_router
 from app.usage.router import router as usage_router
 from app.domains.router import router as domains_router
@@ -49,6 +51,8 @@ api_router.include_router(plans_router)
 api_router.include_router(subscriptions_router)
 api_router.include_router(invoices_router)
 api_router.include_router(payment_webhooks_router)
+api_router.include_router(billing_admin_router)
+api_router.include_router(coupons_router)
 api_router.include_router(payments_router)
 api_router.include_router(ai_router)
 api_router.include_router(products_router)

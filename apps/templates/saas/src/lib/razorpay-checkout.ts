@@ -8,6 +8,8 @@ export type RazorpayOrderRequest = {
   customer_name: string;
   customer_email: string;
   customer_phone?: string;
+  coupon_code?: string;
+  interval?: string;
 };
 
 export type RazorpayOrderResponse = {

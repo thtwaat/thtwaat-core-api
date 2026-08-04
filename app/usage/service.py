@@ -395,6 +395,8 @@ class UsageService:
         source: str = "gateway",
         is_widget: bool = False,
         create_conversation: bool = False,
+        estimated_cost: float = 0.0,
+        provider: Optional[str] = None,
     ) -> None:
         total = int(prompt_tokens) + int(completion_tokens)
         self.check_quota(company_id, UsageDimension.AI_MESSAGES, quantity=1)
@@ -407,7 +409,11 @@ class UsageService:
             widget_id=widget_id,
             source=source,
             emit_webhook=False,
+            metadata={"provider": provider} if provider else None,
         )
+        # Drop None metadata if repo doesn't like it
+        if kw.get("metadata") is None:
+            kw.pop("metadata", None)
         self.record(company_id, UsageDimension.AI_MESSAGES, 1, **kw)
         self.record(company_id, UsageDimension.API_REQUESTS, 1, **kw)
         if is_widget:
@@ -421,12 +427,25 @@ class UsageService:
         if total:
             self.record(company_id, UsageDimension.TOTAL_TOKENS, total, **kw)
 
+        if estimated_cost and estimated_cost > 0:
+            meter = self.get_or_create_meter(company_id)
+            try:
+                from decimal import Decimal
+
+                current = Decimal(str(getattr(meter, "estimated_cost", 0) or 0))
+                meter.estimated_cost = current + Decimal(str(estimated_cost))
+                self.repo.save_meter(meter)
+            except Exception:
+                logger.debug("estimated_cost meter update skipped", exc_info=True)
+
         self._emit_webhook(company_id, "usage.updated", {
             "dimension": "ai_messages",
             "quantity": 1,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             "total_tokens": total,
+            "estimated_cost": estimated_cost,
+            "provider": provider,
         })
 
     # ── Reset ─────────────────────────────────────────────────────────────────

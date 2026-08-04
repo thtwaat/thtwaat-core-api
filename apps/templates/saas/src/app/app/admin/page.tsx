@@ -8,9 +8,11 @@ import { useAuth } from "@/lib/auth";
 import { canAccessAdmin, canManageTemplates, canPlatformAdmin } from "@/lib/permissions";
 import {
   agentStoreApi,
+  billingApi,
   marketplaceApi,
   type AgentListing,
   type AbuseReport,
+  type BillingAdminAnalytics,
   type TemplateItem,
   type TemplateVersion
 } from "@/lib/services";
@@ -20,7 +22,7 @@ import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 
-type AdminTab = "registry" | "store" | "analytics";
+type AdminTab = "registry" | "store" | "analytics" | "billing";
 
 const CATEGORIES = [
   "website",
@@ -628,6 +630,70 @@ function CatalogAnalyticsPanel() {
   );
 }
 
+function BillingAdminPanel() {
+  const analytics = useQuery({
+    queryKey: ["admin-billing-analytics"],
+    queryFn: billingApi.adminAnalytics
+  });
+  const data = analytics.data as BillingAdminAnalytics | undefined;
+
+  return (
+    <div className="space-y-6">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="MRR" value={data ? `$${data.mrr.toFixed(2)}` : "—"} />
+        <Stat label="ARR" value={data ? `$${data.arr.toFixed(2)}` : "—"} />
+        <Stat label="Revenue" value={data ? `$${data.revenue.toFixed(2)}` : "—"} />
+        <Stat label="Gross margin" value={data ? `$${data.gross_margin.toFixed(2)}` : "—"} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Stat label="Refunds" value={data ? `$${data.refunds.toFixed(2)}` : "—"} />
+        <Stat label="Failed payments" value={String(data?.failed_payments ?? "—")} />
+        <Stat label="Active subs" value={String(data?.active_subscriptions ?? "—")} />
+        <Stat label="Token usage" value={String(data?.token_usage ?? "—")} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Stat label="AI costs" value={data ? `$${data.ai_costs.toFixed(4)}` : "—"} />
+        <Stat
+          label="Providers"
+          value={
+            data?.providers
+              ? `S:${data.providers.stripe?.available ? "on" : "off"} R:${data.providers.razorpay?.available ? "on" : "off"}`
+              : "—"
+          }
+        />
+      </div>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Top plans</h3>
+        {(data?.top_plans || []).length === 0 ? (
+          <EmptyState title="No subscription mix yet" />
+        ) : (
+          (data?.top_plans || []).map((p) => (
+            <Card key={p.plan} className="flex items-center justify-between p-4">
+              <p className="font-semibold text-ink">{p.plan}</p>
+              <Badge tone="brand">{p.active_subscriptions} active</Badge>
+            </Card>
+          ))
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-muted">Top customers</h3>
+        {(data?.top_customers || []).length === 0 ? (
+          <EmptyState title="No paid customers yet" />
+        ) : (
+          (data?.top_customers || []).map((c) => (
+            <Card key={c.company_id} className="flex items-center justify-between p-4">
+              <p className="font-mono text-xs text-muted">{c.company_id}</p>
+              <p className="font-semibold text-ink">${c.revenue.toFixed(2)}</p>
+            </Card>
+          ))
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function AdminPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -646,6 +712,7 @@ export default function AdminPage() {
     if (tab === "registry" && !manage && platform) setTab("store");
     if (tab === "store" && !platform && manage) setTab("registry");
     if (tab === "analytics" && !manage) setTab(platform ? "store" : "registry");
+    if (tab === "billing" && !platform) setTab(manage ? "registry" : "store");
   }, [tab, manage, platform]);
 
   const tabs = useMemo(() => {
@@ -653,6 +720,7 @@ export default function AdminPage() {
     if (manage) items.push({ key: "registry", label: "Registry" });
     if (manage) items.push({ key: "analytics", label: "Analytics" });
     if (platform) items.push({ key: "store", label: "Agent Store" });
+    if (platform) items.push({ key: "billing", label: "Billing" });
     return items;
   }, [manage, platform]);
 
@@ -687,6 +755,7 @@ export default function AdminPage() {
       {tab === "registry" && manage ? <RegistryPanel /> : null}
       {tab === "analytics" && manage ? <CatalogAnalyticsPanel /> : null}
       {tab === "store" && platform ? <StorePanel /> : null}
+      {tab === "billing" && platform ? <BillingAdminPanel /> : null}
     </div>
   );
 }
