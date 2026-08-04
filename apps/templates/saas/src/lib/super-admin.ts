@@ -6,7 +6,7 @@ export const SUPER_ADMIN_NAV = [
   { href: "/admin/users", label: "Users", exact: false as boolean },
   { href: "/admin/ai", label: "AI Analytics", exact: false as boolean },
   { href: "/admin/marketplace", label: "Marketplace", exact: false as boolean },
-  { href: "/admin/logs", label: "Logs", exact: false as boolean },
+  { href: "/admin/audit", label: "Logs", exact: false as boolean },
   { href: "/admin/operations", label: "Operations", exact: false as boolean },
   { href: "/admin/plans", label: "Plans", exact: false as boolean },
   { href: "/admin/health", label: "System Health", exact: false as boolean }

@@ -25,7 +25,7 @@ Customer `/app` UI was not redesigned. Marketplace remains at `/app/admin`.
 - `/admin/users` — invite, roles, disable, reset password
 - `/admin/ai` — AI analytics
 - `/admin/marketplace` — catalog + publisher moderation
-- `/admin/logs` — unified ops logs
+- `/admin/audit` — unified ops logs
 - `/admin/operations` — jobs / queues
 - `/admin/plans` — plan limits
 - `/admin/health` — system health

@@ -95,5 +95,5 @@ Canonical path: `app/monitoring` Super Admin facade (no parallel `app/admin` pac
 - Marketplace rollup: `GET /api/v1/admin/marketplace-analytics`
 - Invite / reset password: `POST /api/v1/admin/users/invite`, `POST /api/v1/admin/users/{id}/reset-password`
 - Export CSV/Excel/PDF: `POST /api/v1/admin/export`
-- SaaS Super Admin: `/admin`, `/admin/ai`, `/admin/logs`, `/admin/marketplace`, `/admin/operations`, workspaces/users/health
+- SaaS Super Admin: `/admin`, `/admin/ai`, `/admin/audit`, `/admin/marketplace`, `/admin/operations`, workspaces/users/health
 - Migration: none (reuses existing tables)
