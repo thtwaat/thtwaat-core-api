@@ -82,6 +82,33 @@ docker compose -f docker-compose.monitoring.yml up -d
 ./deploy/verify-monitoring.sh
 ```
 
+## SaaS frontend (`web_app`) vs API
+
+`app.thtwaat.com` is served by Compose service **`web_app`** (`apps/templates/saas` → Next.js).  
+`api.thtwaat.com` is **`api`**.
+
+**Common mistake:** after pulling SaaS routes (e.g. `/app/inbox`, `/app/providers`) only rebuild API:
+
+```bash
+# WRONG for UI — leaves stale Next.js image → App Router 404
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build api
+```
+
+**Correct when frontend files change:**
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build web_app
+# Prefer both when API + UI shipped together:
+docker compose -f docker-compose.prod.yml --env-file .env.prod up -d --build web_app api
+```
+
+Verify Inbox is inside the running image:
+
+```bash
+docker compose -f docker-compose.prod.yml --env-file .env.prod exec web_app \
+  ls /app/.next/server/app/app/inbox
+```
+
 ## CI/CD
 
 Workflow: `.github/workflows/deploy-production.yml`
