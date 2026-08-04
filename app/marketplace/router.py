@@ -12,12 +12,17 @@ from app.auth.schema import UserProfileResponse
 from app.database.database import get_db
 from app.marketplace.schemas import (
     CategoryItem,
+    CollectionCreate,
+    CollectionDetail,
+    CollectionSummary,
+    CollectionUpdate,
     ConnectRequest,
     InstallActionRequest,
     InstallRequest,
     InstallationResponse,
     MarketplaceAnalytics,
     MarketplaceDashboard,
+    MarketplaceHomeResponse,
     TemplateCreate,
     TemplateListPage,
     TemplateResponse,
@@ -54,6 +59,18 @@ def marketplace_dashboard(
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
     return service.dashboard(UUID(str(user.company_id)))
+
+
+@router.get("/home", response_model=MarketplaceHomeResponse)
+def marketplace_home(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    """Store Home rails: featured, newest, trending, collections, categories."""
+    return service.home(
+        UUID(str(user.company_id)),
+        user_id=UUID(str(user.id)),
+    )
 
 
 @router.get("/analytics", response_model=MarketplaceAnalytics)
@@ -143,7 +160,71 @@ def get_template(
     user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
     service: MarketplaceService = Depends(get_marketplace_service),
 ):
-    return service.get_template(template_id_or_slug, UUID(str(user.company_id)))
+    return service.get_template(
+        template_id_or_slug,
+        UUID(str(user.company_id)),
+        user_id=UUID(str(user.id)),
+        record_view=True,
+    )
+
+
+# ── Collections ───────────────────────────────────────────────────────────────
+
+@router.get("/collections", response_model=List[CollectionSummary])
+def list_collections(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.list_collections(public_only=True)
+
+
+@router.get("/collections/{slug}", response_model=CollectionDetail)
+def get_collection(
+    slug: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_READ)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.get_collection(slug, UUID(str(user.company_id)))
+
+
+@router.get("/admin/collections", response_model=List[CollectionSummary])
+def admin_list_collections(
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.list_collections(public_only=False)
+
+
+@router.post(
+    "/admin/collections",
+    response_model=CollectionDetail,
+    status_code=status.HTTP_201_CREATED,
+)
+def admin_create_collection(
+    payload: CollectionCreate,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.create_collection(payload)
+
+
+@router.patch("/admin/collections/{collection_id_or_slug}", response_model=CollectionDetail)
+def admin_update_collection(
+    collection_id_or_slug: str,
+    payload: CollectionUpdate,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.update_collection(collection_id_or_slug, payload)
+
+
+@router.delete("/admin/collections/{collection_id_or_slug}")
+def admin_delete_collection(
+    collection_id_or_slug: str,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: MarketplaceService = Depends(get_marketplace_service),
+):
+    return service.delete_collection(collection_id_or_slug)
 
 
 # ── Favorites ─────────────────────────────────────────────────────────────────

@@ -90,7 +90,15 @@ def seed_marketplace_catalog(
                 dry_run=dry_run,
             )
         )
-    return merge_stats(*parts) if parts else SeedStats()
+    stats = merge_stats(*parts) if parts else SeedStats()
+    try:
+        from app.marketplace.seed_store_home import seed_store_home
+
+        seed_store_home(db, dry_run=dry_run)
+    except Exception:
+        # Store-home tables may not exist yet on older DBs mid-migration.
+        pass
+    return stats
 
 
 def ensure_marketplace_catalog_seeded(

@@ -9,7 +9,11 @@ from sqlalchemy.orm import Session
 
 from app.marketplace.models import (
     InstallStatus,
+    MarketplaceCategoryMeta,
+    MarketplaceCollection,
+    MarketplaceCollectionItem,
     MarketplaceTemplate,
+    MarketplaceTemplateEvent,
     TemplateFavorite,
     TemplateInstallation,
     TemplateStatus,
@@ -226,6 +230,183 @@ class MarketplaceRepository:
     def delete_favorite(self, favorite: TemplateFavorite) -> None:
         self.db.delete(favorite)
         self.db.flush()
+
+    # ── Category meta / collections / events ───────────────────────────────────
+
+    def list_category_meta(self) -> List[MarketplaceCategoryMeta]:
+        return (
+            self.db.query(MarketplaceCategoryMeta)
+            .order_by(MarketplaceCategoryMeta.display_order.asc(), MarketplaceCategoryMeta.category_slug.asc())
+            .all()
+        )
+
+    def get_category_meta(self, slug: str) -> Optional[MarketplaceCategoryMeta]:
+        return (
+            self.db.query(MarketplaceCategoryMeta)
+            .filter(MarketplaceCategoryMeta.category_slug == slug)
+            .first()
+        )
+
+    def upsert_category_meta(self, meta: MarketplaceCategoryMeta) -> MarketplaceCategoryMeta:
+        self.db.add(meta)
+        self.db.flush()
+        return meta
+
+    def list_collections(self, *, public_only: bool = True) -> List[MarketplaceCollection]:
+        query = self.db.query(MarketplaceCollection)
+        if public_only:
+            query = query.filter(MarketplaceCollection.is_public.is_(True))
+        return query.order_by(
+            MarketplaceCollection.sort_order.asc(),
+            MarketplaceCollection.name.asc(),
+        ).all()
+
+    def get_collection_by_slug(self, slug: str) -> Optional[MarketplaceCollection]:
+        return (
+            self.db.query(MarketplaceCollection)
+            .filter(MarketplaceCollection.slug == slug)
+            .first()
+        )
+
+    def get_collection(self, collection_id: UUID) -> Optional[MarketplaceCollection]:
+        return (
+            self.db.query(MarketplaceCollection)
+            .filter(MarketplaceCollection.id == collection_id)
+            .first()
+        )
+
+    def save_collection(self, collection: MarketplaceCollection) -> MarketplaceCollection:
+        self.db.add(collection)
+        self.db.flush()
+        return collection
+
+    def delete_collection(self, collection: MarketplaceCollection) -> None:
+        self.db.delete(collection)
+        self.db.flush()
+
+    def list_collection_templates(self, collection_id: UUID) -> List[MarketplaceTemplate]:
+        return (
+            self.db.query(MarketplaceTemplate)
+            .join(
+                MarketplaceCollectionItem,
+                MarketplaceCollectionItem.template_id == MarketplaceTemplate.id,
+            )
+            .filter(MarketplaceCollectionItem.collection_id == collection_id)
+            .order_by(MarketplaceCollectionItem.position.asc())
+            .all()
+        )
+
+    def replace_collection_items(
+        self, collection_id: UUID, template_ids: List[UUID]
+    ) -> None:
+        self.db.query(MarketplaceCollectionItem).filter(
+            MarketplaceCollectionItem.collection_id == collection_id
+        ).delete(synchronize_session=False)
+        for position, template_id in enumerate(template_ids):
+            self.db.add(
+                MarketplaceCollectionItem(
+                    collection_id=collection_id,
+                    template_id=template_id,
+                    position=position,
+                )
+            )
+        self.db.flush()
+
+    def collection_item_counts(self) -> dict[UUID, int]:
+        rows = (
+            self.db.query(
+                MarketplaceCollectionItem.collection_id,
+                func.count(MarketplaceCollectionItem.id),
+            )
+            .group_by(MarketplaceCollectionItem.collection_id)
+            .all()
+        )
+        return {cid: int(count) for cid, count in rows}
+
+    def list_editors_choice(self, *, limit: int = 12) -> List[MarketplaceTemplate]:
+        return (
+            self.db.query(MarketplaceTemplate)
+            .filter(
+                MarketplaceTemplate.status == TemplateStatus.PUBLISHED.value,
+                MarketplaceTemplate.is_public.is_(True),
+                MarketplaceTemplate.is_editors_choice.is_(True),
+            )
+            .order_by(
+                MarketplaceTemplate.is_featured.desc(),
+                MarketplaceTemplate.install_count.desc(),
+            )
+            .limit(limit)
+            .all()
+        )
+
+    def list_recent_install_templates(
+        self, company_id: UUID, *, limit: int = 8
+    ) -> List[MarketplaceTemplate]:
+        return (
+            self.db.query(MarketplaceTemplate)
+            .join(
+                TemplateInstallation,
+                TemplateInstallation.template_id == MarketplaceTemplate.id,
+            )
+            .filter(
+                TemplateInstallation.company_id == company_id,
+                TemplateInstallation.status != InstallStatus.UNINSTALLED.value,
+            )
+            .order_by(TemplateInstallation.updated_at.desc())
+            .limit(limit)
+            .all()
+        )
+
+    def record_template_event(
+        self,
+        *,
+        company_id: UUID,
+        user_id: UUID,
+        template_id: UUID,
+        event_type: str = "view",
+    ) -> MarketplaceTemplateEvent:
+        event = MarketplaceTemplateEvent(
+            company_id=company_id,
+            user_id=user_id,
+            template_id=template_id,
+            event_type=event_type,
+        )
+        self.db.add(event)
+        self.db.flush()
+        return event
+
+    def list_recently_viewed_templates(
+        self,
+        company_id: UUID,
+        user_id: UUID,
+        *,
+        limit: int = 8,
+    ) -> List[MarketplaceTemplate]:
+        # Distinct by template, most recent view first
+        subq = (
+            self.db.query(
+                MarketplaceTemplateEvent.template_id,
+                func.max(MarketplaceTemplateEvent.created_at).label("last_seen"),
+            )
+            .filter(
+                MarketplaceTemplateEvent.company_id == company_id,
+                MarketplaceTemplateEvent.user_id == user_id,
+                MarketplaceTemplateEvent.event_type == "view",
+            )
+            .group_by(MarketplaceTemplateEvent.template_id)
+            .subquery()
+        )
+        return (
+            self.db.query(MarketplaceTemplate)
+            .join(subq, subq.c.template_id == MarketplaceTemplate.id)
+            .filter(
+                MarketplaceTemplate.status == TemplateStatus.PUBLISHED.value,
+                MarketplaceTemplate.is_public.is_(True),
+            )
+            .order_by(subq.c.last_seen.desc())
+            .limit(limit)
+            .all()
+        )
 
     def commit(self) -> None:
         self.db.commit()

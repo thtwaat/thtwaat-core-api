@@ -45,6 +45,23 @@ class TemplateCategory(str, enum.Enum):
     AI_AGENTS = "ai_agents"
     BUSINESS = "business"
     ANALYTICS = "analytics"
+    # Store Home verticals (additive)
+    INSURANCE = "insurance"
+    GOVERNMENT = "government"
+    TRAVEL = "travel"
+    RETAIL = "retail"
+    MANUFACTURING = "manufacturing"
+    SALES = "sales"
+    ERP = "erp"
+    BI = "bi"
+    DEVOPS = "devops"
+    SECURITY = "security"
+    NEWS = "news"
+    MEDIA = "media"
+    STARTUP = "startup"
+    PRODUCTIVITY = "productivity"
+    AUTOMATION = "automation"
+    MULTILINGUAL = "multilingual"
 
 
 class TemplateKind(str, enum.Enum):
@@ -151,6 +168,15 @@ class MarketplaceTemplate(Base, TimestampMixin):
     package_path = Column(String(255), nullable=True)  # e.g. apps/templates/landing
     install_count = Column(Integer, nullable=False, default=0)
     default_config = Column(JSONB, nullable=False, default=dict)
+    # Store Home media / trust enrichment (additive, null-safe)
+    banner_url = Column(String(500), nullable=True)
+    screenshots = Column(ARRAY(String), nullable=False, default=list)
+    video_url = Column(String(500), nullable=True)
+    live_demo_url = Column(String(500), nullable=True)
+    discount_percent = Column(Integer, nullable=True)
+    estimated_install_minutes = Column(Integer, nullable=True)
+    compatibility = Column(String(255), nullable=True)
+    is_editors_choice = Column(Boolean, nullable=False, default=False)
 
     versions = relationship(
         "TemplateVersion",
@@ -281,3 +307,106 @@ class TemplateFavorite(Base, TimestampMixin):
     )
 
     template = relationship("MarketplaceTemplate", back_populates="favorites")
+
+
+class MarketplaceCategoryMeta(Base, TimestampMixin):
+    """Optional per-category icon/featured/popularity without enum churn."""
+
+    __tablename__ = "marketplace_category_meta"
+
+    category_slug = Column(String(64), primary_key=True)
+    display_name = Column(String(120), nullable=True)
+    icon = Column(String(120), nullable=True)
+    description = Column(Text, nullable=True)
+    is_featured = Column(Boolean, nullable=False, default=False)
+    popularity_score = Column(Integer, nullable=False, default=0)
+    display_order = Column(Integer, nullable=False, default=100)
+
+
+class MarketplaceCollection(Base, TimestampMixin):
+    """Curated or computed storefront collection (rail / strip)."""
+
+    __tablename__ = "marketplace_collections"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_marketplace_collections_slug"),
+        Index("ix_marketplace_collections_featured", "is_featured", "is_public"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    slug = Column(String(120), nullable=False, index=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=False, default="")
+    icon = Column(String(120), nullable=True)
+    banner_url = Column(String(500), nullable=True)
+    is_public = Column(Boolean, nullable=False, default=True)
+    is_featured = Column(Boolean, nullable=False, default=False)
+    sort_order = Column(Integer, nullable=False, default=100)
+    collection_type = Column(String(32), nullable=False, default="curated")  # curated | computed
+    computed_rule = Column(JSONB, nullable=False, default=dict)
+
+    items = relationship(
+        "MarketplaceCollectionItem",
+        back_populates="collection",
+        cascade="all, delete-orphan",
+        order_by="MarketplaceCollectionItem.position",
+    )
+
+
+class MarketplaceCollectionItem(Base, TimestampMixin):
+    __tablename__ = "marketplace_collection_items"
+    __table_args__ = (
+        UniqueConstraint("collection_id", "template_id", name="uq_marketplace_collection_template"),
+        Index("ix_marketplace_collection_items_order", "collection_id", "position"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    collection_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("marketplace_collections.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("marketplace_templates.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    position = Column(Integer, nullable=False, default=0)
+
+    collection = relationship("MarketplaceCollection", back_populates="items")
+    template = relationship("MarketplaceTemplate")
+
+
+class MarketplaceTemplateEvent(Base, TimestampMixin):
+    """Lightweight discovery events (recently viewed, etc.)."""
+
+    __tablename__ = "marketplace_template_events"
+    __table_args__ = (
+        Index(
+            "ix_marketplace_template_events_user_type",
+            "company_id",
+            "user_id",
+            "event_type",
+            "created_at",
+        ),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    company_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    template_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("marketplace_templates.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    event_type = Column(String(32), nullable=False, default="view")

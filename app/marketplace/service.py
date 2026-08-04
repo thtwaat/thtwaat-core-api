@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.marketplace.models import (
     InstallStatus,
+    MarketplaceCollection,
     MarketplaceTemplate,
     PricingTier,
     TemplateCategory,
@@ -25,10 +26,15 @@ from app.marketplace.models import (
 from app.marketplace.repository import MarketplaceRepository
 from app.marketplace.schemas import (
     CategoryItem,
+    CollectionCreate,
+    CollectionDetail,
+    CollectionSummary,
+    CollectionUpdate,
     ConnectRequest,
     InstallRequest,
     InstallationResponse,
     MarketplaceDashboard,
+    MarketplaceHomeResponse,
     TemplateCreate,
     TemplateListPage,
     TemplateResponse,
@@ -63,6 +69,61 @@ CATEGORY_LABELS = {
     TemplateCategory.AI_AGENTS.value: "AI Agents",
     TemplateCategory.BUSINESS.value: "Business",
     TemplateCategory.ANALYTICS.value: "Analytics",
+    TemplateCategory.INSURANCE.value: "Insurance",
+    TemplateCategory.GOVERNMENT.value: "Government",
+    TemplateCategory.TRAVEL.value: "Travel",
+    TemplateCategory.RETAIL.value: "Retail",
+    TemplateCategory.MANUFACTURING.value: "Manufacturing",
+    TemplateCategory.SALES.value: "Sales",
+    TemplateCategory.ERP.value: "ERP",
+    TemplateCategory.BI.value: "BI",
+    TemplateCategory.DEVOPS.value: "DevOps",
+    TemplateCategory.SECURITY.value: "Security",
+    TemplateCategory.NEWS.value: "News",
+    TemplateCategory.MEDIA.value: "Media",
+    TemplateCategory.STARTUP.value: "Startup",
+    TemplateCategory.PRODUCTIVITY.value: "Productivity",
+    TemplateCategory.AUTOMATION.value: "Automation",
+    TemplateCategory.MULTILINGUAL.value: "Multilingual",
+}
+
+DEFAULT_CATEGORY_ICONS = {
+    "website": "globe",
+    "landing": "layout",
+    "saas": "cloud",
+    "crm": "users",
+    "helpdesk": "headphones",
+    "ecommerce": "shopping-cart",
+    "education": "graduation-cap",
+    "healthcare": "heart-pulse",
+    "real_estate": "home",
+    "restaurant": "utensils",
+    "finance": "wallet",
+    "legal": "scale",
+    "writing": "pen",
+    "coding": "code",
+    "marketing": "megaphone",
+    "hr": "briefcase",
+    "research": "search",
+    "ai_agents": "bot",
+    "business": "building",
+    "analytics": "chart",
+    "insurance": "shield",
+    "government": "landmark",
+    "travel": "plane",
+    "retail": "store",
+    "manufacturing": "factory",
+    "sales": "trending-up",
+    "erp": "layers",
+    "bi": "bar-chart",
+    "devops": "git-branch",
+    "security": "lock",
+    "news": "newspaper",
+    "media": "film",
+    "startup": "rocket",
+    "productivity": "check-square",
+    "automation": "workflow",
+    "multilingual": "languages",
 }
 
 
@@ -107,6 +168,7 @@ class MarketplaceService:
         self.db = db
         self.repo = MarketplaceRepository(db)
         self.usage = UsageService(db)
+        self._bridge_cache: Optional[Dict[UUID, Dict[str, Any]]] = None
 
     # ── Catalog ───────────────────────────────────────────────────────────────
 
@@ -149,8 +211,17 @@ class MarketplaceService:
             offset=offset,
         )
         installed_map = self._installed_map(company_id) if company_id else {}
+        favorite_ids = set()
+        self._warm_bridge([t.id for t in items])
         return TemplateListPage(
-            items=[self._template_response(t, installed_map.get(t.id)) for t in items],
+            items=[
+                self._template_response(
+                    t,
+                    installed_map.get(t.id),
+                    favorited=t.id in favorite_ids,
+                )
+                for t in items
+            ],
             total=total,
             limit=limit,
             offset=offset,
@@ -158,43 +229,131 @@ class MarketplaceService:
         )
 
     def get_template(
-        self, template_id_or_slug: str, company_id: Optional[UUID] = None
+        self,
+        template_id_or_slug: str,
+        company_id: Optional[UUID] = None,
+        *,
+        user_id: Optional[UUID] = None,
+        record_view: bool = False,
     ) -> TemplateResponse:
         template = self._resolve_template(template_id_or_slug)
         install = (
             self.repo.get_install_for_template(company_id, template.id) if company_id else None
         )
+        if record_view and company_id and user_id:
+            self.repo.record_template_event(
+                company_id=company_id,
+                user_id=user_id,
+                template_id=template.id,
+                event_type="view",
+            )
+            self.repo.commit()
+        self._warm_bridge([template.id])
         return self._template_response(template, install)
+
+    def home(
+        self,
+        company_id: UUID,
+        *,
+        user_id: Optional[UUID] = None,
+        rail_limit: int = 12,
+    ) -> MarketplaceHomeResponse:
+        featured = self.list_templates(company_id, featured=True, limit=rail_limit).items
+        newest = self.list_templates(company_id, newest=True, limit=rail_limit).items
+        most_installed = self.list_templates(
+            company_id, sort="installs", limit=rail_limit
+        ).items
+        editors_raw = self.repo.list_editors_choice(limit=rail_limit)
+        if not editors_raw:
+            editors_raw = [
+                t
+                for t in self.repo.list_templates(featured=True, sort="featured", limit=rail_limit)[0]
+            ]
+        installed_map = self._installed_map(company_id)
+        self._warm_bridge([t.id for t in editors_raw])
+        editors_choice = [self._template_response(t, installed_map.get(t.id)) for t in editors_raw]
+
+        trending, top_rated = self._agent_store_rails(company_id, limit=rail_limit)
+
+        recent_installs = self.repo.list_recent_install_templates(company_id, limit=rail_limit)
+        self._warm_bridge([t.id for t in recent_installs])
+        recently_installed = [
+            self._template_response(t, installed_map.get(t.id)) for t in recent_installs
+        ]
+        continue_using = recently_installed[:rail_limit]
+
+        recently_viewed: List[TemplateResponse] = []
+        if user_id:
+            viewed = self.repo.list_recently_viewed_templates(
+                company_id, user_id, limit=rail_limit
+            )
+            self._warm_bridge([t.id for t in viewed])
+            recently_viewed = [
+                self._template_response(t, installed_map.get(t.id)) for t in viewed
+            ]
+
+        installs = self.repo.list_installs(company_id)
+        updates = self.repo.list_updates(company_id)
+        return MarketplaceHomeResponse(
+            featured=featured,
+            newest=newest,
+            trending=trending,
+            top_rated=top_rated,
+            most_installed=most_installed,
+            editors_choice=editors_choice,
+            continue_using=continue_using,
+            recently_installed=recently_installed,
+            recently_viewed=recently_viewed,
+            categories=self.categories(),
+            collections=self.list_collections(public_only=True),
+            installed_count=len(installs),
+            updates_count=len(updates),
+        )
 
     def dashboard(self, company_id: UUID) -> MarketplaceDashboard:
         featured = self.list_templates(company_id, featured=True, limit=8).items
         newest = self.list_templates(company_id, newest=True, limit=8).items
         installs = self.repo.list_installs(company_id)
         updates = self.repo.list_updates(company_id)
-        categories = [
-            CategoryItem(slug=slug, name=CATEGORY_LABELS.get(slug, slug.title()), count=count)
-            for slug, count in self.repo.category_counts()
-        ]
-        # Ensure all categories appear even with 0
-        seen = {c.slug for c in categories}
-        for slug, name in CATEGORY_LABELS.items():
-            if slug not in seen:
-                categories.append(CategoryItem(slug=slug, name=name, count=0))
-        categories.sort(key=lambda c: c.name)
         return MarketplaceDashboard(
             featured=featured,
             newest=newest,
             installed_count=len(installs),
             updates_count=len(updates),
-            categories=categories,
+            categories=self.categories(),
         )
 
     def categories(self) -> List[CategoryItem]:
         counts = dict(self.repo.category_counts())
-        return [
-            CategoryItem(slug=slug, name=name, count=counts.get(slug, 0))
-            for slug, name in CATEGORY_LABELS.items()
-        ]
+        meta_rows = {m.category_slug: m for m in self.repo.list_category_meta()}
+        items: List[CategoryItem] = []
+        for slug, name in CATEGORY_LABELS.items():
+            meta = meta_rows.get(slug)
+            count = counts.get(slug, 0)
+            items.append(
+                CategoryItem(
+                    slug=slug,
+                    name=(meta.display_name if meta and meta.display_name else name),
+                    count=count,
+                    template_count=count,
+                    icon=(
+                        meta.icon
+                        if meta and meta.icon
+                        else DEFAULT_CATEGORY_ICONS.get(slug)
+                    ),
+                    popularity_score=int(meta.popularity_score) if meta else count,
+                    is_featured=bool(meta.is_featured) if meta else False,
+                    description=meta.description if meta else None,
+                )
+            )
+        items.sort(
+            key=lambda c: (
+                0 if c.is_featured else 1,
+                -(c.popularity_score or 0),
+                c.name.lower(),
+            )
+        )
+        return items
 
     def analytics(
         self,
@@ -211,6 +370,124 @@ class MarketplaceService:
             days=days,
             include_catalog=include_catalog,
         )
+
+    # ── Collections ───────────────────────────────────────────────────────────
+
+    def list_collections(self, *, public_only: bool = True) -> List[CollectionSummary]:
+        rows = self.repo.list_collections(public_only=public_only)
+        counts = self.repo.collection_item_counts()
+        return [
+            CollectionSummary(
+                id=c.id,
+                slug=c.slug,
+                name=c.name,
+                description=c.description or "",
+                icon=c.icon,
+                banner_url=c.banner_url,
+                is_featured=bool(c.is_featured),
+                sort_order=int(c.sort_order or 100),
+                collection_type=c.collection_type or "curated",
+                item_count=counts.get(c.id, 0),
+            )
+            for c in rows
+        ]
+
+    def get_collection(
+        self, slug: str, company_id: Optional[UUID] = None, *, allow_private: bool = False
+    ) -> CollectionDetail:
+        collection = self.repo.get_collection_by_slug(slug)
+        if not collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        if not collection.is_public and not allow_private:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        templates = self._resolve_collection_templates(collection)
+        installed_map = self._installed_map(company_id) if company_id else {}
+        self._warm_bridge([t.id for t in templates])
+        return CollectionDetail(
+            id=collection.id,
+            slug=collection.slug,
+            name=collection.name,
+            description=collection.description or "",
+            icon=collection.icon,
+            banner_url=collection.banner_url,
+            is_featured=bool(collection.is_featured),
+            sort_order=int(collection.sort_order or 100),
+            collection_type=collection.collection_type or "curated",
+            item_count=len(templates),
+            items=[self._template_response(t, installed_map.get(t.id)) for t in templates],
+            computed_rule=dict(collection.computed_rule or {}),
+        )
+
+    def create_collection(self, payload: CollectionCreate) -> CollectionDetail:
+        if self.repo.get_collection_by_slug(payload.slug):
+            raise HTTPException(status_code=409, detail="Collection slug already exists")
+        collection = MarketplaceCollection(
+            slug=payload.slug,
+            name=payload.name,
+            description=payload.description or "",
+            icon=payload.icon,
+            banner_url=payload.banner_url,
+            is_public=payload.is_public,
+            is_featured=payload.is_featured,
+            sort_order=payload.sort_order,
+            collection_type=payload.collection_type or "curated",
+            computed_rule=payload.computed_rule or {},
+        )
+        self.repo.save_collection(collection)
+        if payload.template_ids:
+            self.repo.replace_collection_items(collection.id, payload.template_ids)
+        self.repo.commit()
+        return self.get_collection(collection.slug, allow_private=True)
+
+    def update_collection(
+        self, collection_id_or_slug: str, payload: CollectionUpdate
+    ) -> CollectionDetail:
+        collection = self._resolve_collection(collection_id_or_slug)
+        data = payload.model_dump(exclude_unset=True)
+        template_ids = data.pop("template_ids", None)
+        for key, value in data.items():
+            setattr(collection, key, value)
+        if template_ids is not None:
+            self.repo.replace_collection_items(collection.id, template_ids)
+        self.repo.commit()
+        return self.get_collection(collection.slug, allow_private=True)
+
+    def delete_collection(self, collection_id_or_slug: str) -> dict:
+        collection = self._resolve_collection(collection_id_or_slug)
+        slug = collection.slug
+        self.repo.delete_collection(collection)
+        self.repo.commit()
+        return {"detail": "Collection deleted", "slug": slug}
+
+    def _resolve_collection(self, collection_id_or_slug: str) -> MarketplaceCollection:
+        collection: Optional[MarketplaceCollection] = None
+        try:
+            collection = self.repo.get_collection(UUID(collection_id_or_slug))
+        except ValueError:
+            collection = self.repo.get_collection_by_slug(collection_id_or_slug)
+        if not collection:
+            raise HTTPException(status_code=404, detail="Collection not found")
+        return collection
+
+    def _resolve_collection_templates(
+        self, collection: MarketplaceCollection
+    ) -> List[MarketplaceTemplate]:
+        rule = dict(collection.computed_rule or {})
+        ctype = (collection.collection_type or "curated").lower()
+        if ctype == "computed":
+            pricing = rule.get("pricing_tier")
+            featured = rule.get("featured")
+            sort = rule.get("sort") or "installs"
+            limit = int(rule.get("limit") or 24)
+            items, _ = self.repo.list_templates(
+                pricing_tier=pricing,
+                featured=featured if isinstance(featured, bool) else None,
+                sort=sort,
+                limit=limit,
+                offset=0,
+            )
+            return items
+        return self.repo.list_collection_templates(collection.id)
 
     # ── Favorites ─────────────────────────────────────────────────────────────
 
@@ -273,6 +550,14 @@ class MarketplaceService:
             package_path=payload.package_path,
             default_config=payload.default_config or {},
             status=TemplateStatus.PUBLISHED if payload.publish else TemplateStatus.DRAFT,
+            banner_url=payload.banner_url,
+            screenshots=list(payload.screenshots or []),
+            video_url=payload.video_url,
+            live_demo_url=payload.live_demo_url,
+            discount_percent=payload.discount_percent,
+            estimated_install_minutes=payload.estimated_install_minutes,
+            compatibility=payload.compatibility,
+            is_editors_choice=bool(payload.is_editors_choice),
         )
         self.repo.save_template(template)
         version = TemplateVersion(
@@ -802,6 +1087,24 @@ class MarketplaceService:
         *,
         favorited: bool = False,
     ) -> TemplateResponse:
+        bridge = self._bridge_for(template.id)
+        pricing_tier = (
+            template.pricing_tier.value
+            if hasattr(template, "pricing_tier") and hasattr(template.pricing_tier, "value")
+            else getattr(template, "pricing_tier", None) or PricingTier.FREE.value
+        )
+        price = Decimal(template.price or 0)
+        badge = self._pricing_badge(pricing_tier, price)
+        screenshots = list(getattr(template, "screenshots", None) or [])
+        if bridge and bridge.get("screenshots") and not screenshots:
+            screenshots = list(bridge["screenshots"])
+        live_demo = getattr(template, "live_demo_url", None) or (
+            bridge.get("demo_url") if bridge else None
+        )
+        install_count = int(template.install_count or 0)
+        download_count = install_count
+        if bridge and bridge.get("download_count") is not None:
+            download_count = int(bridge["download_count"])
         return TemplateResponse(
             id=template.id,
             slug=template.slug,
@@ -812,11 +1115,7 @@ class MarketplaceService:
                 if hasattr(template, "kind") and hasattr(template.kind, "value")
                 else getattr(template, "kind", None) or TemplateKind.PACKAGE.value
             ),
-            pricing_tier=(
-                template.pricing_tier.value
-                if hasattr(template, "pricing_tier") and hasattr(template.pricing_tier, "value")
-                else getattr(template, "pricing_tier", None) or PricingTier.FREE.value
-            ),
+            pricing_tier=pricing_tier,
             industry=template.industry,
             description=template.description or "",
             version=template.version,
@@ -825,7 +1124,7 @@ class MarketplaceService:
             tags=list(template.tags or []),
             author=template.author,
             status=template.status.value if hasattr(template.status, "value") else str(template.status),
-            price=Decimal(template.price or 0),
+            price=price,
             is_public=bool(template.is_public),
             is_featured=bool(template.is_featured),
             supports_agents=bool(template.supports_agents),
@@ -833,14 +1132,149 @@ class MarketplaceService:
             supports_billing=bool(template.supports_billing),
             supports_mobile=bool(template.supports_mobile),
             package_path=template.package_path,
-            install_count=int(template.install_count or 0),
+            install_count=install_count,
             default_config=dict(template.default_config or {}),
             created_at=template.created_at,
             updated_at=template.updated_at,
             installed=bool(install),
             update_available=bool(install.update_available) if install else False,
             is_favorited=favorited,
+            banner_url=getattr(template, "banner_url", None),
+            screenshots=screenshots,
+            video_url=getattr(template, "video_url", None),
+            live_demo_url=live_demo,
+            verified_publisher=bridge.get("verified_publisher") if bridge else None,
+            publisher_slug=bridge.get("publisher_slug") if bridge else None,
+            company_name=bridge.get("company_name") if bridge else None,
+            discount_percent=getattr(template, "discount_percent", None),
+            rating_avg=bridge.get("rating_avg") if bridge else None,
+            review_count=bridge.get("review_count") if bridge else None,
+            download_count=download_count,
+            estimated_install_minutes=getattr(template, "estimated_install_minutes", None),
+            compatibility=getattr(template, "compatibility", None),
+            is_editors_choice=bool(getattr(template, "is_editors_choice", False)),
+            pricing_badge=badge,
         )
+
+    @staticmethod
+    def _pricing_badge(pricing_tier: str, price: Decimal) -> str:
+        tier = (pricing_tier or "free").lower()
+        if tier == "enterprise" or price >= Decimal("500"):
+            return "Enterprise"
+        if tier in ("pro", "starter") or price > 0:
+            return "Pro"
+        return "Free"
+
+    def _warm_bridge(self, template_ids: List[UUID]) -> None:
+        ids = [tid for tid in template_ids if tid]
+        if not ids:
+            return
+        if self._bridge_cache is None:
+            self._bridge_cache = {}
+        missing = [tid for tid in ids if tid not in self._bridge_cache]
+        if not missing:
+            return
+        try:
+            from app.agent_store.models import (
+                AgentStoreListing,
+                AgentStorePublisher,
+                ListingStatus,
+            )
+            from app.companies.model import Company
+        except Exception:
+            for tid in missing:
+                self._bridge_cache[tid] = {}
+            return
+
+        rows = (
+            self.db.query(AgentStoreListing, AgentStorePublisher, Company)
+            .outerjoin(
+                AgentStorePublisher,
+                AgentStorePublisher.id == AgentStoreListing.publisher_id,
+            )
+            .outerjoin(Company, Company.id == AgentStorePublisher.company_id)
+            .filter(
+                AgentStoreListing.template_id.in_(missing),
+                AgentStoreListing.status == ListingStatus.PUBLISHED.value,
+            )
+            .all()
+        )
+        found: Dict[UUID, Dict[str, Any]] = {}
+        for listing, publisher, company in rows:
+            found[listing.template_id] = {
+                "rating_avg": float(listing.rating_avg or 0) if listing.rating_count else None,
+                "review_count": int(listing.rating_count or 0) or None,
+                "download_count": int(listing.download_count or listing.install_count or 0),
+                "demo_url": listing.demo_url,
+                "screenshots": list(listing.screenshots or []),
+                "verified_publisher": bool(
+                    (publisher and publisher.is_verified) or listing.is_verified_badge
+                ),
+                "publisher_slug": publisher.slug if publisher else None,
+                "company_name": (
+                    (publisher.display_name if publisher else None)
+                    or (company.name if company else None)
+                ),
+                "install_count": int(listing.install_count or 0),
+            }
+        for tid in missing:
+            self._bridge_cache[tid] = found.get(tid, {})
+
+    def _bridge_for(self, template_id: UUID) -> Dict[str, Any]:
+        if self._bridge_cache is None:
+            self._warm_bridge([template_id])
+        assert self._bridge_cache is not None
+        if template_id not in self._bridge_cache:
+            self._warm_bridge([template_id])
+        return self._bridge_cache.get(template_id, {})
+
+    def _agent_store_rails(
+        self, company_id: UUID, *, limit: int = 12
+    ) -> tuple[List[TemplateResponse], List[TemplateResponse]]:
+        """Build trending / top_rated rails from agent_store when available."""
+        installed_map = self._installed_map(company_id)
+        try:
+            from app.agent_store.models import AgentStoreListing, ListingStatus
+        except Exception:
+            most = self.list_templates(company_id, sort="installs", limit=limit).items
+            return most, most
+
+        published = (
+            self.db.query(AgentStoreListing)
+            .filter(AgentStoreListing.status == ListingStatus.PUBLISHED.value)
+            .all()
+        )
+        if not published:
+            most = self.list_templates(company_id, sort="installs", limit=limit).items
+            return most, most
+
+        trending_listings = sorted(
+            published,
+            key=lambda l: (l.install_count, float(l.rating_avg or 0)),
+            reverse=True,
+        )[:limit]
+        top_rated_listings = sorted(
+            [l for l in published if (l.rating_count or 0) > 0],
+            key=lambda l: (float(l.rating_avg or 0), l.rating_count or 0),
+            reverse=True,
+        )[:limit]
+
+        def _from_listings(listings) -> List[TemplateResponse]:
+            templates: List[MarketplaceTemplate] = []
+            for listing in listings:
+                tpl = self.repo.get_template(listing.template_id)
+                if tpl and tpl.status == TemplateStatus.PUBLISHED and tpl.is_public:
+                    templates.append(tpl)
+            self._warm_bridge([t.id for t in templates])
+            return [self._template_response(t, installed_map.get(t.id)) for t in templates]
+
+        trending = _from_listings(trending_listings)
+        top_rated = _from_listings(top_rated_listings)
+        if not trending:
+            trending = self.list_templates(company_id, sort="installs", limit=limit).items
+        if not top_rated:
+            top_rated = trending
+        return trending, top_rated
 
     def _install_response(
         self,

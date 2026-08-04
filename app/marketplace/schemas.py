@@ -33,6 +33,14 @@ class TemplateCreate(BaseModel):
     default_config: Dict[str, Any] = Field(default_factory=dict)
     changelog: Optional[str] = "Initial release"
     publish: bool = False
+    banner_url: Optional[str] = None
+    screenshots: List[str] = Field(default_factory=list)
+    video_url: Optional[str] = None
+    live_demo_url: Optional[str] = None
+    discount_percent: Optional[int] = Field(default=None, ge=0, le=100)
+    estimated_install_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
+    compatibility: Optional[str] = None
+    is_editors_choice: bool = False
 
 
 class TemplateUpdate(BaseModel):
@@ -56,6 +64,14 @@ class TemplateUpdate(BaseModel):
     package_path: Optional[str] = None
     default_config: Optional[Dict[str, Any]] = None
     status: Optional[str] = None
+    banner_url: Optional[str] = None
+    screenshots: Optional[List[str]] = None
+    video_url: Optional[str] = None
+    live_demo_url: Optional[str] = None
+    discount_percent: Optional[int] = Field(default=None, ge=0, le=100)
+    estimated_install_minutes: Optional[int] = Field(default=None, ge=0, le=1440)
+    compatibility: Optional[str] = None
+    is_editors_choice: Optional[bool] = None
 
 
 class TemplateVersionCreate(BaseModel):
@@ -116,6 +132,22 @@ class TemplateResponse(BaseModel):
     installed: bool = False
     update_available: bool = False
     is_favorited: bool = False
+    # Store Home enrichment (additive / null-safe)
+    banner_url: Optional[str] = None
+    screenshots: List[str] = Field(default_factory=list)
+    video_url: Optional[str] = None
+    live_demo_url: Optional[str] = None
+    verified_publisher: Optional[bool] = None
+    publisher_slug: Optional[str] = None
+    company_name: Optional[str] = None
+    discount_percent: Optional[int] = None
+    rating_avg: Optional[float] = None
+    review_count: Optional[int] = None
+    download_count: Optional[int] = None
+    estimated_install_minutes: Optional[int] = None
+    compatibility: Optional[str] = None
+    is_editors_choice: bool = False
+    pricing_badge: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -200,6 +232,11 @@ class CategoryItem(BaseModel):
     slug: str
     name: str
     count: int = 0
+    icon: Optional[str] = None
+    template_count: Optional[int] = None
+    popularity_score: int = 0
+    is_featured: bool = False
+    description: Optional[str] = None
 
 
 class MarketplaceDashboard(BaseModel):
@@ -208,6 +245,67 @@ class MarketplaceDashboard(BaseModel):
     installed_count: int
     updates_count: int
     categories: List[CategoryItem]
+
+
+class CollectionSummary(BaseModel):
+    id: UUID
+    slug: str
+    name: str
+    description: str = ""
+    icon: Optional[str] = None
+    banner_url: Optional[str] = None
+    is_featured: bool = False
+    sort_order: int = 100
+    collection_type: str = "curated"
+    item_count: int = 0
+
+
+class CollectionDetail(CollectionSummary):
+    items: List[TemplateResponse] = Field(default_factory=list)
+    computed_rule: Dict[str, Any] = Field(default_factory=dict)
+
+
+class CollectionCreate(BaseModel):
+    slug: str = Field(..., min_length=2, max_length=120, pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
+    name: str = Field(..., min_length=2, max_length=200)
+    description: str = ""
+    icon: Optional[str] = None
+    banner_url: Optional[str] = None
+    is_public: bool = True
+    is_featured: bool = False
+    sort_order: int = 100
+    collection_type: str = "curated"
+    computed_rule: Dict[str, Any] = Field(default_factory=dict)
+    template_ids: List[UUID] = Field(default_factory=list)
+
+
+class CollectionUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    icon: Optional[str] = None
+    banner_url: Optional[str] = None
+    is_public: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    sort_order: Optional[int] = None
+    collection_type: Optional[str] = None
+    computed_rule: Optional[Dict[str, Any]] = None
+    template_ids: Optional[List[UUID]] = None
+
+
+class MarketplaceHomeResponse(BaseModel):
+    featured: List[TemplateResponse] = Field(default_factory=list)
+    newest: List[TemplateResponse] = Field(default_factory=list)
+    trending: List[TemplateResponse] = Field(default_factory=list)
+    top_rated: List[TemplateResponse] = Field(default_factory=list)
+    most_installed: List[TemplateResponse] = Field(default_factory=list)
+    editors_choice: List[TemplateResponse] = Field(default_factory=list)
+    continue_using: List[TemplateResponse] = Field(default_factory=list)
+    recently_installed: List[TemplateResponse] = Field(default_factory=list)
+    recently_viewed: List[TemplateResponse] = Field(default_factory=list)
+    categories: List[CategoryItem] = Field(default_factory=list)
+    collections: List[CollectionSummary] = Field(default_factory=list)
+    installed_count: int = 0
+    updates_count: int = 0
 
 
 class UpdateNotification(BaseModel):
