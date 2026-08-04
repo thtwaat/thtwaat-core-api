@@ -67,12 +67,20 @@ type RequestOptions = {
   formData?: FormData;
 };
 
-function formatApiErrorMessage(detail: unknown, status: number): string {
+/**
+ * Prefer platform envelope `{ error, code }` (see app/api/exceptions.py),
+ * then FastAPI `{ detail }`, then structured payloads.
+ */
+export function formatApiErrorMessage(detail: unknown, status: number): string {
   if (typeof detail === "string" && detail.trim()) return detail;
 
   if (detail && typeof detail === "object") {
     const root = detail as Record<string, unknown>;
-    const inner = (root.detail ?? root) as unknown;
+
+    // Global HTTPException handler: {"error": "Invalid OTP", "code": 400}
+    if (typeof root.error === "string" && root.error.trim()) return root.error;
+
+    const inner = (root.detail ?? root.error ?? root) as unknown;
 
     if (typeof inner === "string" && inner.trim()) return inner;
 
@@ -90,6 +98,7 @@ function formatApiErrorMessage(detail: unknown, status: number): string {
     if (inner && typeof inner === "object") {
       const row = inner as Record<string, unknown>;
       if (typeof row.message === "string" && row.message.trim()) return row.message;
+      if (typeof row.error === "string" && row.error.trim()) return row.error;
       if (row.error === "quota_exceeded") {
         const dim = String(row.dimension || "resource");
         return (

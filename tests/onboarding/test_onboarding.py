@@ -242,3 +242,60 @@ def test_onboarding_autosave_pause_resume_skip(client):
 
     by_token = client.get(f"/api/v1/onboarding/resume/{session['resume_token']}")
     assert by_token.status_code == 200
+
+
+@pytest.mark.integration
+def test_onboarding_verify_email_surfaces_otp_error_messages(client):
+    """
+    Wrong OTP / rate-limit must return platform {error, code} (not opaque status-only).
+    Frontend formatApiErrorMessage reads the `error` field.
+    """
+    from unittest import mock
+
+    from app.auth.service import AuthService
+
+    token, session = _auth(client)
+    headers = {"Authorization": f"Bearer {token}"}
+    email = session["draft_data"]["account"]["email"]
+
+    with mock.patch.object(AuthService, "generate_otp", return_value="654321"):
+        sent = client.post(
+            "/api/v1/auth/send-email-verification",
+            json={"email": email},
+        )
+        assert sent.status_code == 200, sent.text
+
+        wrong = client.post(
+            "/api/v1/onboarding/me/steps/verify_email/complete",
+            headers=headers,
+            json={"data": {"email": email, "code": "123456"}},
+        )
+        assert wrong.status_code == 400, wrong.text
+        assert wrong.json().get("error") == "Invalid OTP"
+        assert "access_token" not in wrong.json()
+
+        cooldown = client.post(
+            "/api/v1/auth/send-otp",
+            json={"purpose": "EMAIL_VERIFY", "email": email},
+        )
+        assert cooldown.status_code == 429, cooldown.text
+        assert "wait 60 seconds" in cooldown.json().get("error", "")
+
+        ok = client.post(
+            "/api/v1/onboarding/me/steps/verify_email/complete",
+            headers=headers,
+            json={"data": {"email": email, "code": "654321"}},
+        )
+        assert ok.status_code == 200, ok.text
+        assert "verify_email" in ok.json()["session"]["completed_steps"]
+
+
+def test_step_verify_email_requires_code():
+    svc = OnboardingService(MagicMock())
+    session = SimpleNamespace(
+        draft_data={"account": {"email": "a@b.com"}},
+    )
+    with pytest.raises(HTTPException) as exc:
+        svc._step_verify_email(session, {"email": "a@b.com"})
+    assert exc.value.status_code == 422
+    assert "code" in str(exc.value.detail).lower()
