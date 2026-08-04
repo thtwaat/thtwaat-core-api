@@ -1216,7 +1216,6 @@ class MarketplaceService:
             review_count=bridge.get("review_count") if bridge else None,
             download_count=download_count,
             estimated_install_minutes=getattr(template, "estimated_install_minutes", None),
-            compatibility=getattr(template, "compatibility", None),
             is_editors_choice=bool(getattr(template, "is_editors_choice", False)),
             pricing_badge=badge,
             **self._detail_fields(template, bridge),
