@@ -13,7 +13,10 @@ import { Progress } from "@/components/ui/misc";
 export default function DashboardPage() {
   const usage = useQuery({ queryKey: ["usage-current"], queryFn: usageApi.current });
   const agents = useQuery({ queryKey: ["agents"], queryFn: agentsApi.list });
-  const conversations = useQuery({ queryKey: ["conversations"], queryFn: conversationsApi.list });
+  const conversations = useQuery({
+    queryKey: ["conversations"],
+    queryFn: () => conversationsApi.list()
+  });
   const domains = useQuery({ queryKey: ["domains"], queryFn: domainsApi.list });
 
   const u = usage.data?.usage || {};
