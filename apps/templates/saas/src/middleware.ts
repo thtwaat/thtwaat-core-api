@@ -5,7 +5,7 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = Boolean(request.cookies.get("tht_session")?.value);
 
-  if (pathname.startsWith("/app") && !hasSession) {
+  if ((pathname.startsWith("/app") || pathname.startsWith("/admin")) && !hasSession) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("next", pathname);
@@ -22,5 +22,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/app/:path*", "/login", "/signup"]
+  matcher: ["/app/:path*", "/admin", "/admin/:path*", "/login", "/signup"]
 };

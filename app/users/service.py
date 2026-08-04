@@ -154,6 +154,9 @@ class UserService:
         page_size: int = 20,
         status_filter: Optional[UserStatus] = None,
         actor: Optional[UserProfileResponse] = None,
+        q: Optional[str] = None,
+        include_inactive: bool = False,
+        role: Optional[str] = None,
     ) -> UserListResponse:
         """Fetch paginated users scoped to the actor's company (unless platform admin)."""
         if page_size > 100:
@@ -170,13 +173,16 @@ class UserService:
                     detail="User not found.",
                 )
             scoped_company_id = actor.company_id
-        
+            include_inactive = False
+
         rows, total = self.repo.list_all(
             company_id=scoped_company_id,
             page=page,
             page_size=page_size,
             status=status_filter,
-            is_active=True,
+            is_active=None if include_inactive else True,
+            q=q,
+            role=role,
         )
         return UserListResponse(
             total=total,

@@ -194,3 +194,23 @@ class PlatformReportResponse(BaseModel):
     revenue_summary: Dict[str, Any]
     usage_trends: Dict[str, Any]
     generated_at: datetime
+
+
+class ImpersonateCompanyRequest(BaseModel):
+    company_id: UUID
+    reason: Optional[str] = Field(None, max_length=500)
+
+
+class ImpersonateCompanyResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    expires_in: int
+    company_id: UUID
+    company_name: str
+    company_slug: str
+    user_id: UUID
+    user_email: str
+    user_role: str
+    impersonated_by: UUID
+

@@ -72,6 +72,15 @@ class CompanyAdminUpdate(CompanyUpdate):
     is_active: Optional[bool] = None
     max_users: Optional[int] = Field(None, ge=1, le=10000)
     max_apps: Optional[int] = Field(None, ge=1, le=1000)
+    # Usage meter quota overrides (applied via UsageService — not duplicate APIs)
+    max_agents: Optional[int] = Field(None, ge=0)
+    max_messages: Optional[int] = Field(None, ge=0)
+    max_tokens: Optional[int] = Field(None, ge=0)
+    max_storage: Optional[int] = Field(None, ge=0)
+    max_domains: Optional[int] = Field(None, ge=0)
+    max_team_members: Optional[int] = Field(None, ge=0)
+    max_api_keys: Optional[int] = Field(None, ge=0)
+    max_templates: Optional[int] = Field(None, ge=0)
 
 
 # ── Response ─────────────────────────────────────────────────────────────────

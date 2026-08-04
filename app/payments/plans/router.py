@@ -2,17 +2,21 @@
 app/payments/plans/router.py
 """
 import uuid
-from typing import List
-from fastapi import APIRouter, Depends, status
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
+from app.auth.service import AuthService
+from app.auth.tenant import require_platform_admin
 from app.payments.plans.schema import PlanCreate, PlanUpdate, PlanResponse
 from app.payments.plans.service import PlanService
 
 router = APIRouter(prefix="/payments/plans", tags=["Plans"])
+_optional_bearer = HTTPBearer(auto_error=False)
 
 
 def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
@@ -22,18 +26,27 @@ def get_plan_service(db: Session = Depends(get_db)) -> PlanService:
 @router.get(
     "",
     response_model=List[PlanResponse],
-    summary="List all active subscription plans",
+    summary="List subscription plans",
     include_in_schema=False,
 )
 @router.get(
     "/",
     response_model=List[PlanResponse],
-    summary="List all active subscription plans",
+    summary="List subscription plans",
 )
 def list_plans(
-    service: PlanService = Depends(get_plan_service)
+    include_inactive: bool = Query(default=False, description="Platform admin: include inactive"),
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_bearer),
+    db: Session = Depends(get_db),
+    service: PlanService = Depends(get_plan_service),
 ):
-    """Public endpoint — lists all active plans."""
+    """Public lists active plans; platform admin may request inactive too."""
+    if include_inactive:
+        if credentials is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        actor = AuthService(db).get_current_user_profile(credentials.credentials)
+        require_platform_admin(actor)
+        return service.list_plans(active_only=False)
     return service.list_plans(active_only=True)
 
 
@@ -60,7 +73,8 @@ def create_plan(
     current_user: UserProfileResponse = Depends(get_current_user),
     service: PlanService = Depends(get_plan_service)
 ):
-    """Admin only — creates a new billing plan."""
+    """Platform admin only — creates a new billing plan."""
+    require_platform_admin(current_user)
     return service.create_plan(payload)
 
 
@@ -75,6 +89,7 @@ def update_plan(
     current_user: UserProfileResponse = Depends(get_current_user),
     service: PlanService = Depends(get_plan_service)
 ):
+    require_platform_admin(current_user)
     return service.update_plan(plan_id, payload)
 
 
@@ -88,4 +103,5 @@ def deactivate_plan(
     current_user: UserProfileResponse = Depends(get_current_user),
     service: PlanService = Depends(get_plan_service)
 ):
+    require_platform_admin(current_user)
     return service.deactivate_plan(plan_id)

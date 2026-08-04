@@ -42,7 +42,7 @@ PLAN_LIMITS: dict[CompanyPlan, dict] = {
 
 # Valid status transitions (state machine)
 ALLOWED_STATUS_TRANSITIONS: dict[CompanyStatus, list[CompanyStatus]] = {
-    CompanyStatus.TRIAL:     [CompanyStatus.ACTIVE, CompanyStatus.CANCELLED],
+    CompanyStatus.TRIAL:     [CompanyStatus.ACTIVE, CompanyStatus.SUSPENDED, CompanyStatus.CANCELLED],
     CompanyStatus.ACTIVE:    [CompanyStatus.SUSPENDED, CompanyStatus.CANCELLED],
     CompanyStatus.SUSPENDED: [CompanyStatus.ACTIVE, CompanyStatus.CANCELLED],
     CompanyStatus.CANCELLED: [],  # Terminal state — no transitions allowed
@@ -162,6 +162,8 @@ class CompanyService:
         page_size: int = 20,
         status_filter: Optional[CompanyStatus] = None,
         plan_filter: Optional[CompanyPlan] = None,
+        q: Optional[str] = None,
+        include_inactive: bool = False,
     ) -> CompanyListResponse:
         # page_size already capped at 100 by Query(le=100) in router,
         # but we guard here too for direct service calls
@@ -175,7 +177,8 @@ class CompanyService:
             page_size=page_size,
             status=status_filter,
             plan=plan_filter,
-            is_active=True,
+            is_active=None if include_inactive else True,
+            q=q,
         )
         return CompanyListResponse(
             total=total,
@@ -204,14 +207,13 @@ class CompanyService:
         Admin-only: update plan, status, limits.
         Validates status transitions via state machine.
         Automatically adjusts resource limits when plan changes.
+        Usage quota overrides are applied via UsageService (same meters).
         """
         company = self._get_or_404(company_id)
 
-        # Validate status transition if status is being changed
         if data.status and data.status != company.status:
             self._validate_status_transition(company.status, data.status)
 
-        # Auto-update limits when plan changes (unless overridden)
         if data.plan and data.plan != company.plan:
             limits = PLAN_LIMITS[data.plan]
             if data.max_users is None:
@@ -219,8 +221,53 @@ class CompanyService:
             if data.max_apps is None:
                 data = data.model_copy(update={"max_apps": limits["max_apps"]})
 
-        updated = self.repo.update(company, data)
-        return CompanyResponse.model_validate(updated)
+        quota_keys = (
+            "max_agents",
+            "max_messages",
+            "max_tokens",
+            "max_storage",
+            "max_domains",
+            "max_team_members",
+            "max_api_keys",
+            "max_templates",
+        )
+        raw = data.model_dump(exclude_unset=True)
+        quota_payload = {k: raw.pop(k) for k in list(raw.keys()) if k in quota_keys}
+
+        company_fields = {
+            k: v
+            for k, v in raw.items()
+            if k
+            in {
+                "name",
+                "display_name",
+                "description",
+                "website",
+                "logo_url",
+                "industry",
+                "country",
+                "timezone",
+                "settings",
+                "plan",
+                "status",
+                "is_verified",
+                "is_active",
+                "max_users",
+                "max_apps",
+            }
+        }
+        if company_fields:
+            for field, value in company_fields.items():
+                setattr(company, field, value)
+            self.repo.db.commit()
+            self.repo.db.refresh(company)
+
+        if quota_payload:
+            from app.usage.service import UsageService
+
+            UsageService(self.repo.db).override_quotas(company_id, quota_payload)
+
+        return CompanyResponse.model_validate(company)
 
     def deactivate_company(
         self,

@@ -49,11 +49,13 @@ def list_companies(
     page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
     status_filter: Optional[CompanyStatus] = Query(default=None, alias="status"),
     plan_filter: Optional[CompanyPlan] = Query(default=None, alias="plan"),
+    q: Optional[str] = Query(default=None, description="Search name / slug / display_name"),
+    include_inactive: bool = Query(default=False, description="Include inactive companies"),
     current_user: UserProfileResponse = Depends(get_current_user),
     service: CompanyService = Depends(get_company_service),
 ):
     """
-    Retrieve a paginated list of active company tenants.
+    Retrieve a paginated list of company tenants.
     Platform admin only.
     """
     require_platform_admin(current_user)
@@ -62,6 +64,8 @@ def list_companies(
         page_size=page_size,
         status_filter=status_filter,
         plan_filter=plan_filter,
+        q=q,
+        include_inactive=include_inactive,
     )
 
 

@@ -142,6 +142,9 @@ export const usageApi = {
 
 export const billingApi = {
   plans: () => api.v1<Plan[]>("/payments/plans/"),
+  plansAdmin: () => api.v1<Plan[]>("/payments/plans/?include_inactive=true"),
+  updatePlan: (id: string, body: Record<string, unknown>) =>
+    api.v1<Plan>(`/payments/plans/${id}`, { method: "PATCH", body }),
   subscription: () => api.v1<Subscription>("/payments/subscriptions/me"),
   invoices: () => api.v1<Invoice[]>("/payments/invoices"),
   razorpayOrder: (body: {
@@ -225,22 +228,68 @@ export const companiesApi = {
     api.v1<Company>(`/companies/${id}`, { method: "PATCH", body }),
   // Trailing slash matches FastAPI route; avoids slash-redirect dropping POST body.
   create: (body: Record<string, unknown>) =>
-    api.v1<Company>("/companies/", { method: "POST", auth: false, body })
+    api.v1<Company>("/companies/", { method: "POST", auth: false, body }),
+  list: (params?: {
+    page?: number;
+    page_size?: number;
+    status?: string;
+    plan?: string;
+    q?: string;
+    include_inactive?: boolean;
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.page != null) sp.set("page", String(params.page));
+    if (params?.page_size != null) sp.set("page_size", String(params.page_size));
+    if (params?.status) sp.set("status", params.status);
+    if (params?.plan) sp.set("plan", params.plan);
+    if (params?.q) sp.set("q", params.q);
+    if (params?.include_inactive) sp.set("include_inactive", "true");
+    const qs = sp.toString();
+    return api.v1<{
+      total: number;
+      page: number;
+      page_size: number;
+      results: Company[];
+    }>(`/companies/${qs ? `?${qs}` : ""}`);
+  },
+  adminUpdate: (id: string, body: Record<string, unknown>) =>
+    api.v1<Company>(`/companies/${id}/admin`, { method: "PATCH", body })
 };
 
 export const usersApi = {
   create: (body: Record<string, unknown>) =>
     api.v1("/users/", { method: "POST", auth: false, body }),
-  list: async () => {
-    const page = await api.v1<{
+  listPage: (params?: {
+    company_id?: string;
+    page?: number;
+    page_size?: number;
+    status?: string;
+    q?: string;
+    include_inactive?: boolean;
+    role?: string;
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.company_id) sp.set("company_id", params.company_id);
+    if (params?.page != null) sp.set("page", String(params.page));
+    if (params?.page_size != null) sp.set("page_size", String(params.page_size));
+    if (params?.status) sp.set("status", params.status);
+    if (params?.q) sp.set("q", params.q);
+    if (params?.include_inactive) sp.set("include_inactive", "true");
+    if (params?.role) sp.set("role", params.role);
+    const qs = sp.toString();
+    return api.v1<{
       total: number;
       page: number;
       page_size: number;
       results: Array<Record<string, unknown>>;
-    }>("/users/");
+    }>(`/users/${qs ? `?${qs}` : ""}`);
+  },
+  list: async () => {
+    const page = await usersApi.listPage();
     return page.results ?? [];
   },
-  update: (id: string, body: Record<string, unknown>) => api.v1(`/users/${id}`, { method: "PATCH", body })
+  update: (id: string, body: Record<string, unknown>) => api.v1(`/users/${id}`, { method: "PATCH", body }),
+  deactivate: (id: string) => api.v1(`/users/${id}`, { method: "DELETE" })
 };
 
 export const apiKeysApi = {
@@ -863,4 +912,57 @@ export const onboardingApi = {
       xhr.send(form);
     });
   }
+};
+
+/** Platform Super Admin — reuses /admin, /monitoring, companies, users, plans */
+export type PlatformOverview = {
+  active_users: number;
+  companies: number;
+  agents: number;
+  published_agents: number;
+  knowledge_bases: number;
+  marketplace_installs: number;
+  product_generations: number;
+  billing_summary: {
+    active_subscriptions?: number;
+    revenue_paid?: number;
+    amount_due_open?: number;
+  };
+  onboarding?: Record<string, unknown>;
+  deployments?: Record<string, unknown>;
+  generated_at: string;
+};
+
+export type SystemHealth = {
+  status: string;
+  api: Record<string, unknown>;
+  database: Record<string, unknown>;
+  redis: Record<string, unknown>;
+  queue: Record<string, unknown>;
+  storage: Record<string, unknown>;
+  workers: Record<string, unknown>;
+  ai_providers: Record<string, unknown>;
+};
+
+export const platformAdminApi = {
+  overview: () => api.v1<PlatformOverview>("/admin/overview"),
+  observability: () => api.v1<Record<string, unknown>>("/monitoring/observability"),
+  health: () => api.v1<SystemHealth>("/monitoring/health"),
+  impersonateCompany: (company_id: string, reason?: string) =>
+    api.v1<{
+      access_token: string;
+      refresh_token: string;
+      token_type: string;
+      expires_in: number;
+      company_id: string;
+      company_name: string;
+      company_slug: string;
+      user_id: string;
+      user_email: string;
+      user_role: string;
+      impersonated_by: string;
+    }>("/admin/impersonate/company", {
+      method: "POST",
+      body: { company_id, reason: reason || null }
+    })
 };

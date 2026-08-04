@@ -149,9 +149,18 @@ export type Plan = {
   interval?: string;
   description?: string;
   features?: string[];
+  max_users?: number;
+  max_apps?: number;
   max_agents?: number;
   max_messages?: number;
   max_tokens?: number;
+  max_storage?: number;
+  max_domains?: number;
+  max_team_members?: number;
+  max_api_keys?: number;
+  max_templates?: number;
+  ai_credits?: number;
+  is_active?: boolean;
 };
 
 export type Invoice = {
@@ -177,8 +186,13 @@ export type Company = {
   id: string;
   name: string;
   slug: string;
+  display_name?: string | null;
   plan?: string;
   status?: string;
+  is_active?: boolean;
+  is_verified?: boolean;
+  max_users?: number;
+  max_apps?: number;
   brand_color?: string;
   logo_url?: string;
 };

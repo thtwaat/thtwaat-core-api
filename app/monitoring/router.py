@@ -22,6 +22,8 @@ from app.monitoring.schemas import (
     CancelJobRequest,
     DeploymentEventResponse,
     EnqueueJobRequest,
+    ImpersonateCompanyRequest,
+    ImpersonateCompanyResponse,
     JobListResponse,
     ObservabilityResponse,
     PlatformOverviewResponse,
@@ -77,6 +79,20 @@ def admin_report(
     service: MonitoringOpsService = Depends(get_ops_service),
 ):
     return service.platform_report(period)
+
+
+@admin_router.post(
+    "/impersonate/company",
+    response_model=ImpersonateCompanyResponse,
+    summary="Login as company (issue tokens for owner/admin)",
+)
+def impersonate_company(
+    payload: ImpersonateCompanyRequest,
+    request: Request,
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: MonitoringOpsService = Depends(get_ops_service),
+):
+    return service.impersonate_company(user.id, payload, _client_ip(request))
 
 
 @admin_router.get(

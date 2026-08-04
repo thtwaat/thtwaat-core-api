@@ -56,6 +56,8 @@ from app.monitoring.schemas import (
     CancelJobRequest,
     DeploymentEventResponse,
     EnqueueJobRequest,
+    ImpersonateCompanyRequest,
+    ImpersonateCompanyResponse,
     JobListResponse,
     ObservabilityResponse,
     PlatformOverviewResponse,
@@ -205,6 +207,77 @@ class MonitoringOpsService:
                 else 0.0,
             },
             generated_at=_now(),
+        )
+
+    def impersonate_company(
+        self,
+        actor_id: UUID,
+        body: ImpersonateCompanyRequest,
+        ip: Optional[str] = None,
+    ) -> ImpersonateCompanyResponse:
+        """Issue JWT for the company owner (or first admin) — reuses AuthService tokens."""
+        from app.auth.service import AuthService, ACCESS_TOKEN_EXPIRE_MINUTES
+        from app.companies.model import CompanyStatus
+        from app.rbac.enums import EnterpriseRole
+        from app.users.model import User, UserStatus
+
+        company = self.db.get(Company, body.company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found")
+        if not company.is_active or company.status == CompanyStatus.CANCELLED:
+            raise HTTPException(status_code=403, detail="Company is inactive or cancelled")
+
+        preferred = [
+            EnterpriseRole.COMPANY_OWNER,
+            EnterpriseRole.ADMIN,
+            EnterpriseRole.MANAGER,
+        ]
+        target = None
+        for role in preferred:
+            target = self.db.scalar(
+                select(User).where(
+                    User.company_id == company.id,
+                    User.role == role,
+                    User.is_active.is_(True),
+                    User.status == UserStatus.ACTIVE,
+                )
+            )
+            if target:
+                break
+        if not target:
+            raise HTTPException(
+                status_code=404,
+                detail="No active owner/admin user found for this company",
+            )
+
+        auth = AuthService(self.db)
+        access = auth.create_access_token(subject=str(target.id))
+        refresh = auth.create_refresh_token(subject=str(target.id))
+        self._record_activity(
+            actor_id,
+            "impersonation",
+            "login_as_company",
+            "company",
+            str(company.id),
+            ip,
+            {
+                "target_user_id": str(target.id),
+                "target_email": target.email,
+                "reason": body.reason,
+            },
+        )
+        self.db.commit()
+        return ImpersonateCompanyResponse(
+            access_token=access,
+            refresh_token=refresh,
+            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+            company_id=company.id,
+            company_name=company.name,
+            company_slug=company.slug,
+            user_id=target.id,
+            user_email=target.email,
+            user_role=target.role.value if hasattr(target.role, "value") else str(target.role),
+            impersonated_by=actor_id,
         )
 
     # ── System health ─────────────────────────────────────────────────────────

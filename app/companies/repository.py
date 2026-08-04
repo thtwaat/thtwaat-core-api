@@ -53,6 +53,7 @@ class CompanyRepository:
         status: Optional[CompanyStatus] = None,
         plan: Optional[CompanyPlan] = None,
         is_active: Optional[bool] = None,
+        q: Optional[str] = None,
     ) -> tuple[list[Company], int]:
         """
         Return a paginated list of companies with optional filters.
@@ -66,6 +67,13 @@ class CompanyRepository:
             stmt = stmt.where(Company.plan == plan)
         if is_active is not None:
             stmt = stmt.where(Company.is_active == is_active)
+        if q:
+            term = f"%{q.strip()}%"
+            stmt = stmt.where(
+                (Company.name.ilike(term))
+                | (Company.slug.ilike(term))
+                | (Company.display_name.ilike(term))
+            )
 
         # Total count (before pagination)
         count_stmt = select(func.count()).select_from(stmt.subquery())

@@ -47,6 +47,8 @@ class UserRepository:
         page_size: int = 20,
         status: Optional[UserStatus] = None,
         is_active: Optional[bool] = None,
+        q: Optional[str] = None,
+        role: Optional[str] = None,
     ) -> tuple[list[User], int]:
         """
         Return a paginated list of users with optional filters.
@@ -60,6 +62,15 @@ class UserRepository:
             stmt = stmt.where(User.status == status)
         if is_active is not None:
             stmt = stmt.where(User.is_active == is_active)
+        if role is not None:
+            stmt = stmt.where(User.role == role)
+        if q:
+            term = f"%{q.strip()}%"
+            stmt = stmt.where(
+                (User.email.ilike(term))
+                | (User.first_name.ilike(term))
+                | (User.last_name.ilike(term))
+            )
 
         # Total count (before pagination)
         count_stmt = select(func.count()).select_from(stmt.subquery())

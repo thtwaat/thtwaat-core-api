@@ -178,6 +178,7 @@ class UsageService:
             quota = CompanyQuota(company_id=company_id)
             self.db.add(quota)
         quota.monthly_token_limit = int(limits["max_tokens"])
+
         # rough spend ceiling: leave existing or scale with tier
         if key == "free":
             quota.monthly_spend_limit = 5.0
@@ -196,6 +197,38 @@ class UsageService:
                 "plan": key,
                 "limits": limits,
             })
+        return meter
+
+    def override_quotas(self, company_id: UUID, overrides: Dict[str, int]) -> CompanyUsageMeter:
+        """Platform-admin quota override — mutates current usage meter limits only."""
+        allowed = {
+            "max_agents",
+            "max_messages",
+            "max_tokens",
+            "max_storage",
+            "max_domains",
+            "max_team_members",
+            "max_api_keys",
+            "max_templates",
+        }
+        meter = self.get_or_create_meter(company_id)
+        for key, value in overrides.items():
+            if key not in allowed:
+                continue
+            setattr(meter, key, int(value))
+        self.repo.save_meter(meter)
+
+        if "max_tokens" in overrides:
+            quota = (
+                self.db.query(CompanyQuota)
+                .filter(CompanyQuota.company_id == company_id)
+                .first()
+            )
+            if not quota:
+                quota = CompanyQuota(company_id=company_id)
+                self.db.add(quota)
+            quota.monthly_token_limit = int(overrides["max_tokens"])
+            self.db.commit()
         return meter
 
     def downgrade_to_free(self, company_id: UUID) -> CompanyUsageMeter:

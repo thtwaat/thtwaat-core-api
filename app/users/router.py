@@ -76,6 +76,9 @@ def list_users(
     page: int = Query(default=1, ge=1, description="Page number"),
     page_size: int = Query(default=20, ge=1, le=100, description="Items per page"),
     status_filter: Optional[UserStatus] = Query(default=None, alias="status"),
+    q: Optional[str] = Query(default=None, description="Search email / name"),
+    include_inactive: bool = Query(default=False, description="Include disabled users"),
+    role: Optional[str] = Query(default=None, description="Filter by role"),
     current_user: UserProfileResponse = Depends(get_current_user),
     service: UserService = Depends(get_user_service),
 ):
@@ -89,6 +92,9 @@ def list_users(
         page_size=page_size,
         status_filter=status_filter,
         actor=current_user,
+        q=q,
+        include_inactive=include_inactive,
+        role=role,
     )
 
 
