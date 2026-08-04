@@ -6,6 +6,7 @@ import type {
   AiProvidersList,
   Company,
   Conversation,
+  ConversationDetail,
   Domain,
   Invoice,
   KnowledgeBase,
@@ -129,7 +130,45 @@ export const billingApi = {
 };
 
 export const conversationsApi = {
-  list: () => api.v2<Conversation[]>("/conversations")
+  list: (params?: {
+    q?: string;
+    agent_id?: string;
+    channel?: string;
+    status?: string;
+    assigned_to?: string;
+    unread_only?: boolean;
+    skip?: number;
+    limit?: number;
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.agent_id) sp.set("agent_id", params.agent_id);
+    if (params?.channel) sp.set("channel", params.channel);
+    if (params?.status) sp.set("status", params.status);
+    if (params?.assigned_to) sp.set("assigned_to", params.assigned_to);
+    if (params?.unread_only) sp.set("unread_only", "true");
+    if (params?.skip != null) sp.set("skip", String(params.skip));
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return api.v2<Conversation[]>(`/conversations${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string, markRead = true) =>
+    api.v2<ConversationDetail>(`/conversations/${id}?mark_read=${markRead ? "true" : "false"}`),
+  update: (
+    id: string,
+    body: {
+      title?: string;
+      status?: string;
+      assigned_to_user_id?: string | null;
+      clear_assignee?: boolean;
+      mark_read?: boolean;
+    }
+  ) => api.v2<Conversation>(`/conversations/${id}`, { method: "PATCH", body }),
+  sendMessage: (id: string, content: string) =>
+    api.v2<{ user_message: unknown; assistant_message: unknown }>(
+      `/conversations/${id}/messages`,
+      { method: "POST", body: { content } }
+    )
 };
 
 export const companiesApi = {

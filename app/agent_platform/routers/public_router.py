@@ -153,7 +153,7 @@ async def public_chat(
 ):
     api_key = _resolve_key(request, body, db)
     reply, conversation_id, usage = await run_public_chat(
-        db, api_key, body.message, body.session_id
+        db, api_key, body.message, body.session_id, metadata=body.metadata
     )
     return PublicChatResponse(reply=reply, conversation_id=conversation_id, usage=usage)
 
@@ -172,7 +172,7 @@ async def public_chat_stream(
     async def event_gen() -> AsyncIterator[str]:
         try:
             reply, conversation_id, usage = await run_public_chat(
-                db, api_key, body.message, body.session_id
+                db, api_key, body.message, body.session_id, metadata=body.metadata
             )
             # Progressive token emission for UX until native provider streaming lands
             chunk = max(1, len(reply) // 48) if reply else 1

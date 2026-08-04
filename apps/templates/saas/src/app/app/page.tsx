@@ -60,6 +60,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader title="Quick actions" />
           <div className="grid gap-2">
+            <Link href="/app/inbox"><Button variant="secondary" className="w-full justify-start">Open inbox</Button></Link>
             <Link href="/app/agents"><Button variant="secondary" className="w-full justify-start">Manage agents</Button></Link>
             <Link href="/app/knowledge"><Button variant="secondary" className="w-full justify-start">Upload knowledge</Button></Link>
             <Link href="/app/domains"><Button variant="secondary" className="w-full justify-start">Add domain</Button></Link>
@@ -73,17 +74,25 @@ export default function DashboardPage() {
         <Card>
           <CardHeader
             title="Recent conversations"
-            action={<Badge tone="brand">{conversations.data?.length || 0}</Badge>}
+            action={
+              <Link href="/app/inbox">
+                <Badge tone="brand">{conversations.data?.length || 0}</Badge>
+              </Link>
+            }
           />
           <div className="space-y-3">
             {(conversations.data || []).slice(0, 5).map((c) => (
-              <div key={c.id} className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5">
+              <Link
+                key={c.id}
+                href={`/app/inbox?id=${encodeURIComponent(c.id)}`}
+                className="flex items-center justify-between rounded-xl border border-line px-3 py-2.5 transition hover:bg-canvas"
+              >
                 <div>
                   <p className="text-sm font-medium">{c.title || c.id.slice(0, 8)}</p>
                   <p className="text-xs text-muted">{formatDate(c.created_at)}</p>
                 </div>
-                <Badge>{c.message_count ?? "—"} msgs</Badge>
-              </div>
+                <Badge>{c.message_count ?? 0} msgs</Badge>
+              </Link>
             ))}
             {!conversations.data?.length && <EmptyState title="No conversations yet" />}
           </div>

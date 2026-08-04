@@ -2,7 +2,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional, Tuple
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional, Tuple
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -36,8 +37,9 @@ async def run_public_chat(
     api_key: AgentApiKey,
     message: str,
     session_id: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
 ) -> Tuple[str, str, PublicChatUsage]:
-    """Returns (reply, conversation_id, usage)."""
+    """Returns (reply, conversation_id, usage). Creates widget-channel inbox threads."""
     usage_svc = UsageService(db)
     usage_svc.check_quota(api_key.company_id, UsageDimension.AI_MESSAGES, quantity=1)
     usage_svc.check_quota(api_key.company_id, UsageDimension.TOTAL_TOKENS, quantity=1)
@@ -66,18 +68,31 @@ async def run_public_chat(
         except ValueError:
             conv = None
 
+    meta = dict(metadata or {})
     if not conv:
         conv = Conversation(
             company_id=api_key.company_id,
             agent_id=agent.id,
             title=(message or "Chat")[:80],
+            channel="widget",
+            status="open",
+            extra_metadata=meta,
         )
         db.add(conv)
         db.commit()
         db.refresh(conv)
         created_conversation = True
+    elif meta:
+        # Merge visitor metadata without wiping prior keys
+        existing = dict(conv.extra_metadata or {})
+        existing.update(meta)
+        conv.extra_metadata = existing
+        db.add(conv)
+        db.commit()
 
     db.add(Message(conversation_id=conv.id, role="user", content=message))
+    # Visitor message → unread until operator opens inbox detail
+    conv.updated_at = datetime.now(timezone.utc)
     db.commit()
 
     provider = (agent.web_config or {}).get("provider", "openai")

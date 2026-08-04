@@ -48,11 +48,32 @@ export type PublishResult = {
 
 export type Conversation = {
   id: string;
-  agent_id?: string;
-  title?: string;
+  company_id: string;
+  agent_id: string;
+  title?: string | null;
+  channel?: string;
+  status?: string;
+  assigned_to_user_id?: string | null;
+  last_read_at?: string | null;
+  extra_metadata?: Record<string, unknown>;
+  message_count?: number;
+  last_message_preview?: string | null;
+  last_message_at?: string | null;
+  unread?: boolean;
   created_at: string;
   updated_at?: string;
-  message_count?: number;
+};
+
+export type ConversationMessage = {
+  id: string;
+  conversation_id: string;
+  role: string;
+  content?: string | null;
+  created_at: string;
+};
+
+export type ConversationDetail = Conversation & {
+  messages: ConversationMessage[];
 };
 
 export type KnowledgeBase = {

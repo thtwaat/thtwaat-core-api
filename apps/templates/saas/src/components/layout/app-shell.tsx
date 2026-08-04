@@ -8,6 +8,7 @@ import {
   CreditCard,
   Cpu,
   Globe2,
+  Inbox,
   LayoutDashboard,
   Library,
   LogOut,
@@ -30,6 +31,7 @@ import { Button } from "@/components/ui/button";
 const baseNav = [
   { href: "/app", label: "Overview", icon: LayoutDashboard },
   { href: "/app/create", label: "Create Product", icon: Sparkles },
+  { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/agents", label: "Agents", icon: Bot },
   { href: "/app/knowledge", label: "Knowledge", icon: Library },
   { href: "/app/templates", label: "Marketplace", icon: Store },
