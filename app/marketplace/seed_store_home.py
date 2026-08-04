@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 from uuid import UUID
 
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.marketplace.models import (
@@ -94,14 +95,33 @@ COLLECTION_SEEDS: List[Dict[str, Any]] = [
 
 
 def seed_category_meta(db: Session, *, dry_run: bool = False) -> int:
-    """Upsert category meta rows for every known category slug."""
+    """Upsert category meta rows from live catalog counts + known labels.
+
+    Does not hardcode the homepage grid — featured flags prefer categories that
+    already have published templates, then curated verticals.
+    """
     existing = {
         row.category_slug: row
         for row in db.query(MarketplaceCategoryMeta).all()
     }
+    counts: Dict[str, int] = {}
+    rows = (
+        db.query(MarketplaceTemplate.category, func.count(MarketplaceTemplate.id))
+        .filter(
+            MarketplaceTemplate.status == TemplateStatus.PUBLISHED.value,
+            MarketplaceTemplate.is_public.is_(True),
+        )
+        .group_by(MarketplaceTemplate.category)
+        .all()
+    )
+    for cat, count in rows:
+        slug = str(cat.value if hasattr(cat, "value") else cat)
+        counts[slug] = int(count)
+
+    slugs = list(dict.fromkeys([*CATEGORY_LABELS.keys(), *counts.keys(), *existing.keys()]))
     created = 0
     order = 0
-    for slug, name in CATEGORY_LABELS.items():
+    for slug in slugs:
         order += 10
         meta = existing.get(slug)
         if meta is None:
@@ -111,13 +131,15 @@ def seed_category_meta(db: Session, *, dry_run: bool = False) -> int:
             meta = MarketplaceCategoryMeta(category_slug=slug)
             db.add(meta)
             created += 1
+        name = CATEGORY_LABELS.get(slug) or slug.replace("_", " ").title()
         meta.display_name = meta.display_name or name
         meta.icon = meta.icon or DEFAULT_CATEGORY_ICONS.get(slug)
-        meta.is_featured = slug in FEATURED_CATEGORY_SLUGS
-        if not meta.popularity_score:
-            meta.popularity_score = 100 if slug in FEATURED_CATEGORY_SLUGS else 10
-        if meta.display_order == 100 or meta.display_order is None:
-            meta.display_order = order if slug in FEATURED_CATEGORY_SLUGS else 500 + order
+        live_count = counts.get(slug, 0)
+        # Featured when curated OR when the catalog actually has templates.
+        meta.is_featured = slug in FEATURED_CATEGORY_SLUGS or live_count > 0
+        meta.popularity_score = max(int(meta.popularity_score or 0), live_count * 10, 10 if live_count else 0)
+        if meta.display_order is None or meta.display_order >= 100:
+            meta.display_order = order if meta.is_featured else 500 + order
     if not dry_run:
         db.commit()
     return created

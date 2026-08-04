@@ -382,11 +382,16 @@ export default function MarketplacePage() {
     return () => window.clearTimeout(t);
   }, [search]);
 
-  // Prefer /home when available; fall back to dashboard + list sorts (existing APIs).
+  // Prefer /home when available; always load categories independently so the
+  // homepage catalog still renders if a rail endpoint fails.
   const home = useQuery({
     queryKey: ["mkt-home"],
     queryFn: marketplaceApi.home,
-    retry: false
+    retry: 1
+  });
+  const categoriesQuery = useQuery({
+    queryKey: ["mkt-categories"],
+    queryFn: marketplaceApi.categories
   });
   const dash = useQuery({
     queryKey: ["mkt-dashboard"],
@@ -396,7 +401,17 @@ export default function MarketplacePage() {
   const trendingFallback = useQuery({
     queryKey: ["mkt-trending-fallback"],
     queryFn: () => marketplaceApi.listPage({ sort: "installs", limit: 12 }),
-    enabled: home.isError || !home.data
+    enabled: home.isError || !(home.data?.trending?.length || home.data?.most_installed?.length)
+  });
+  const featuredFallback = useQuery({
+    queryKey: ["mkt-featured-fallback"],
+    queryFn: () => marketplaceApi.listPage({ featured: true, sort: "featured", limit: 12 }),
+    enabled: home.isError || !(home.data?.featured?.length)
+  });
+  const newestFallback = useQuery({
+    queryKey: ["mkt-newest-fallback"],
+    queryFn: () => marketplaceApi.listPage({ newest: true, sort: "newest", limit: 12 }),
+    enabled: home.isError || !(home.data?.newest?.length)
   });
 
   const searching = Boolean(debouncedSearch);
@@ -422,39 +437,70 @@ export default function MarketplacePage() {
   const installed = useQuery({ queryKey: ["mkt-installed"], queryFn: marketplaceApi.installed });
   const updates = useQuery({ queryKey: ["mkt-updates"], queryFn: marketplaceApi.updates });
 
-  const featured = home.data?.featured || dash.data?.featured || [];
-  const newest = home.data?.newest || dash.data?.newest || [];
+  const featured =
+    home.data?.featured?.length
+      ? home.data.featured
+      : dash.data?.featured?.length
+        ? dash.data.featured
+        : featuredFallback.data?.items || [];
+  const newest =
+    home.data?.newest?.length
+      ? home.data.newest
+      : dash.data?.newest?.length
+        ? dash.data.newest
+        : newestFallback.data?.items || [];
   const trending = home.data?.trending?.length
     ? home.data.trending
     : home.data?.most_installed?.length
       ? home.data.most_installed
       : trendingFallback.data?.items || [];
-  const categories = home.data?.categories || dash.data?.categories || [];
-  const installedCount = home.data?.installed_count ?? dash.data?.installed_count ?? 0;
-  const updatesCount = home.data?.updates_count ?? dash.data?.updates_count ?? 0;
+  const categories =
+    (categoriesQuery.data && categoriesQuery.data.length > 0
+      ? categoriesQuery.data
+      : null) ||
+    home.data?.categories ||
+    dash.data?.categories ||
+    [];
+  const installedCount =
+    home.data?.installed_count ??
+    dash.data?.installed_count ??
+    installed.data?.length ??
+    0;
+  const updatesCount = home.data?.updates_count ?? dash.data?.updates_count ?? updates.data?.length ?? 0;
+
+  const categoryCount = (c: TemplateCategory) => c.count || c.template_count || 0;
 
   const browseCategories = useMemo(() => {
-    const withCount = categories.filter((c) => (c.count || 0) > 0 || c.slug === selectedCategory);
-    const featuredCats = categories.filter((c) => c.is_featured && !withCount.some((w) => w.slug === c.slug));
+    const withCount = categories.filter(
+      (c) => categoryCount(c) > 0 || c.slug === selectedCategory
+    );
+    const featuredCats = categories.filter(
+      (c) => c.is_featured && !withCount.some((w) => w.slug === c.slug)
+    );
     return [...withCount, ...featuredCats].slice(0, 24);
   }, [categories, selectedCategory]);
 
   const homeCategories = useMemo(() => {
     const ranked = [...categories].sort((a, b) => {
-      const af = a.is_featured ? 0 : 1;
-      const bf = b.is_featured ? 0 : 1;
+      const af = a.is_featured || categoryCount(a) > 0 ? 0 : 1;
+      const bf = b.is_featured || categoryCount(b) > 0 ? 0 : 1;
       if (af !== bf) return af - bf;
-      return (b.count || 0) - (a.count || 0);
+      return categoryCount(b) - categoryCount(a);
     });
-    return ranked.filter((c) => (c.count || 0) > 0 || c.is_featured).slice(0, 12);
+    const populated = ranked.filter((c) => categoryCount(c) > 0 || c.is_featured);
+    // If meta marks nothing featured and counts are present, still show top populated.
+    return (populated.length ? populated : ranked.filter((c) => categoryCount(c) > 0)).slice(0, 12);
   }, [categories]);
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["mkt-templates"] });
     qc.invalidateQueries({ queryKey: ["mkt-installed"] });
     qc.invalidateQueries({ queryKey: ["mkt-home"] });
+    qc.invalidateQueries({ queryKey: ["mkt-categories"] });
     qc.invalidateQueries({ queryKey: ["mkt-dashboard"] });
     qc.invalidateQueries({ queryKey: ["mkt-trending-fallback"] });
+    qc.invalidateQueries({ queryKey: ["mkt-featured-fallback"] });
+    qc.invalidateQueries({ queryKey: ["mkt-newest-fallback"] });
     qc.invalidateQueries({ queryKey: ["mkt-updates"] });
     qc.invalidateQueries({ queryKey: ["mkt-favorites"] });
   };
@@ -694,7 +740,10 @@ export default function MarketplacePage() {
                     </button>
                   ))}
                 </div>
-                {!homeCategories.length && !home.isLoading && !dash.isLoading && (
+                {!homeCategories.length &&
+                  !home.isLoading &&
+                  !dash.isLoading &&
+                  !categoriesQuery.isLoading && (
                   <EmptyState
                     title="No categories yet"
                     description="Seed marketplace templates to populate the catalog."

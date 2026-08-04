@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import logging
 import secrets
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -47,6 +48,8 @@ from app.marketplace.schemas import (
 from app.marketplace.search import resolve_sort_key
 from app.usage.dimensions import UsageDimension
 from app.usage.service import UsageService
+
+logger = logging.getLogger(__name__)
 
 CATEGORY_LABELS = {
     TemplateCategory.WEBSITE.value: "Website",
@@ -261,42 +264,78 @@ class MarketplaceService:
         user_id: Optional[UUID] = None,
         rail_limit: int = 12,
     ) -> MarketplaceHomeResponse:
-        featured = self.list_templates(company_id, featured=True, limit=rail_limit).items
-        newest = self.list_templates(company_id, newest=True, limit=rail_limit).items
-        most_installed = self.list_templates(
-            company_id, sort="installs", limit=rail_limit
-        ).items
-        editors_raw = self.repo.list_editors_choice(limit=rail_limit)
-        if not editors_raw:
-            editors_raw = [
-                t
-                for t in self.repo.list_templates(featured=True, sort="featured", limit=rail_limit)[0]
-            ]
+        # Categories first — homepage must still render if a rail fails.
+        categories = self.categories()
         installed_map = self._installed_map(company_id)
-        self._warm_bridge([t.id for t in editors_raw])
-        editors_choice = [self._template_response(t, installed_map.get(t.id)) for t in editors_raw]
-
-        trending, top_rated = self._agent_store_rails(company_id, limit=rail_limit)
-
-        recent_installs = self.repo.list_recent_install_templates(company_id, limit=rail_limit)
-        self._warm_bridge([t.id for t in recent_installs])
-        recently_installed = [
-            self._template_response(t, installed_map.get(t.id)) for t in recent_installs
-        ]
-        continue_using = recently_installed[:rail_limit]
-
-        recently_viewed: List[TemplateResponse] = []
-        if user_id:
-            viewed = self.repo.list_recently_viewed_templates(
-                company_id, user_id, limit=rail_limit
-            )
-            self._warm_bridge([t.id for t in viewed])
-            recently_viewed = [
-                self._template_response(t, installed_map.get(t.id)) for t in viewed
-            ]
-
         installs = self.repo.list_installs(company_id)
         updates = self.repo.list_updates(company_id)
+
+        def _rail(sort: Optional[str] = None, *, featured: Optional[bool] = None, newest: bool = False):
+            try:
+                return self.list_templates(
+                    company_id,
+                    featured=featured,
+                    newest=newest,
+                    sort=sort,
+                    limit=rail_limit,
+                ).items
+            except Exception:
+                logger.exception("marketplace home rail failed sort=%s featured=%s", sort, featured)
+                return []
+
+        featured = _rail(featured=True)
+        newest = _rail(newest=True)
+        most_installed = _rail(sort="installs")
+
+        editors_choice: List[TemplateResponse] = []
+        try:
+            editors_raw = self.repo.list_editors_choice(limit=rail_limit)
+            if not editors_raw:
+                editors_raw = list(
+                    self.repo.list_templates(featured=True, sort="featured", limit=rail_limit)[0]
+                )
+            self._warm_bridge([t.id for t in editors_raw])
+            editors_choice = [self._template_response(t, installed_map.get(t.id)) for t in editors_raw]
+        except Exception:
+            logger.exception("marketplace editors_choice rail failed")
+            editors_choice = featured[:rail_limit]
+
+        try:
+            trending, top_rated = self._agent_store_rails(company_id, limit=rail_limit)
+        except Exception:
+            logger.exception("marketplace agent_store rails failed")
+            trending, top_rated = most_installed, most_installed
+
+        recently_installed: List[TemplateResponse] = []
+        try:
+            recent_installs = self.repo.list_recent_install_templates(company_id, limit=rail_limit)
+            self._warm_bridge([t.id for t in recent_installs])
+            recently_installed = [
+                self._template_response(t, installed_map.get(t.id)) for t in recent_installs
+            ]
+        except Exception:
+            logger.exception("marketplace recently_installed rail failed")
+
+        continue_using = recently_installed[:rail_limit]
+        recently_viewed: List[TemplateResponse] = []
+        if user_id:
+            try:
+                viewed = self.repo.list_recently_viewed_templates(
+                    company_id, user_id, limit=rail_limit
+                )
+                self._warm_bridge([t.id for t in viewed])
+                recently_viewed = [
+                    self._template_response(t, installed_map.get(t.id)) for t in viewed
+                ]
+            except Exception:
+                logger.exception("marketplace recently_viewed rail failed")
+
+        collections: List[CollectionSummary] = []
+        try:
+            collections = self.list_collections(public_only=True)
+        except Exception:
+            logger.exception("marketplace collections listing failed")
+
         return MarketplaceHomeResponse(
             featured=featured,
             newest=newest,
@@ -307,15 +346,24 @@ class MarketplaceService:
             continue_using=continue_using,
             recently_installed=recently_installed,
             recently_viewed=recently_viewed,
-            categories=self.categories(),
-            collections=self.list_collections(public_only=True),
+            categories=categories,
+            collections=collections,
             installed_count=len(installs),
             updates_count=len(updates),
         )
 
     def dashboard(self, company_id: UUID) -> MarketplaceDashboard:
-        featured = self.list_templates(company_id, featured=True, limit=8).items
-        newest = self.list_templates(company_id, newest=True, limit=8).items
+        categories = self.categories()
+        try:
+            featured = self.list_templates(company_id, featured=True, limit=8).items
+        except Exception:
+            logger.exception("marketplace dashboard featured failed")
+            featured = []
+        try:
+            newest = self.list_templates(company_id, newest=True, limit=8).items
+        except Exception:
+            logger.exception("marketplace dashboard newest failed")
+            newest = []
         installs = self.repo.list_installs(company_id)
         updates = self.repo.list_updates(company_id)
         return MarketplaceDashboard(
@@ -323,35 +371,49 @@ class MarketplaceService:
             newest=newest,
             installed_count=len(installs),
             updates_count=len(updates),
-            categories=self.categories(),
+            categories=categories,
         )
 
     def categories(self) -> List[CategoryItem]:
         counts = dict(self.repo.category_counts())
-        meta_rows = {m.category_slug: m for m in self.repo.list_category_meta()}
+        meta_rows: Dict[str, Any] = {}
+        try:
+            meta_rows = {m.category_slug: m for m in self.repo.list_category_meta()}
+        except Exception:
+            logger.exception("marketplace category meta unavailable; using counts only")
+            meta_rows = {}
+
+        # Prefer live catalog categories (from counts) + known labels — never hardcode-only empty.
+        slugs = list(dict.fromkeys([*CATEGORY_LABELS.keys(), *counts.keys(), *meta_rows.keys()]))
         items: List[CategoryItem] = []
-        for slug, name in CATEGORY_LABELS.items():
+        for slug in slugs:
             meta = meta_rows.get(slug)
-            count = counts.get(slug, 0)
+            count = int(counts.get(slug, 0))
+            name = (
+                (meta.display_name if meta and meta.display_name else None)
+                or CATEGORY_LABELS.get(slug)
+                or str(slug).replace("_", " ").title()
+            )
             items.append(
                 CategoryItem(
-                    slug=slug,
-                    name=(meta.display_name if meta and meta.display_name else name),
+                    slug=str(slug),
+                    name=name,
                     count=count,
                     template_count=count,
                     icon=(
                         meta.icon
                         if meta and meta.icon
-                        else DEFAULT_CATEGORY_ICONS.get(slug)
+                        else DEFAULT_CATEGORY_ICONS.get(str(slug))
                     ),
                     popularity_score=int(meta.popularity_score) if meta else count,
-                    is_featured=bool(meta.is_featured) if meta else False,
+                    is_featured=bool(meta.is_featured) if meta else count > 0,
                     description=meta.description if meta else None,
                 )
             )
         items.sort(
             key=lambda c: (
                 0 if c.is_featured else 1,
+                -(c.count or 0),
                 -(c.popularity_score or 0),
                 c.name.lower(),
             )

@@ -47,6 +47,14 @@ def test_enrich_detail_fields_from_store_config():
     assert any(c["key"] == "rag" for c in fields["feature_cards"])
 
 
+def test_enrich_survives_malformed_store_config():
+    tpl = _tpl(default_config={"store": "not-a-dict", "marketplace": ["x"]})
+    fields = enrich_detail_fields(tpl, bridge={})
+    assert fields["license"]
+    assert isinstance(fields["feature_cards"], list)
+    assert fields["what_it_does"]
+
+
 def test_permissions_and_features_from_flags():
     tpl = _tpl(supports_agents=True, supports_domains=True, tags=["webhooks"])
     perms = derive_permissions(tpl, tpl.default_config["store"])
