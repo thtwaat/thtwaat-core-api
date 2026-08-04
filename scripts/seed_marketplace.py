@@ -14,9 +14,6 @@ from __future__ import annotations
 
 import argparse
 
-from app.database.database import SessionLocal
-from app.marketplace.seed import seed_marketplace_catalog
-
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Idempotent marketplace seed (packages + prompts)")
@@ -36,6 +33,14 @@ def main() -> None:
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print per-slug actions")
     args = parser.parse_args()
+
+    # CLI does not load main.py — register Company/User/etc. before any Session.
+    from app.database.orm_bootstrap import register_orm_models
+
+    register_orm_models()
+
+    from app.database.database import SessionLocal
+    from app.marketplace.seed import seed_marketplace_catalog
 
     include_packages = not args.prompts_only
     include_prompts = not args.packages_only

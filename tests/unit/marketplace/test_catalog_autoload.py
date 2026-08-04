@@ -48,3 +48,10 @@ def test_main_lifespan_wires_auto_seed():
     main_src = (ROOT / "main.py").read_text(encoding="utf-8")
     assert "MARKETPLACE_AUTO_SEED_ON_STARTUP" in main_src
     assert "ensure_marketplace_catalog_seeded" in main_src
+
+
+def test_seed_marketplace_cli_registers_orm_before_session():
+    src = (ROOT / "scripts" / "seed_marketplace.py").read_text(encoding="utf-8")
+    assert "register_orm_models" in src
+    # Must register before SessionLocal usage to resolve Company.users -> User.
+    assert src.index("register_orm_models") < src.index("SessionLocal")

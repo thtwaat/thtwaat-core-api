@@ -104,6 +104,9 @@ def ensure_marketplace_catalog_seeded(
     """
     from app.config.settings import settings
     from app.database.database import SessionLocal
+    from app.database.orm_bootstrap import register_orm_models
+
+    register_orm_models()
 
     own_session = db is None
     session = db or SessionLocal()
