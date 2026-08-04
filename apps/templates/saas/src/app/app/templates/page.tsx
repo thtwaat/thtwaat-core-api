@@ -2,17 +2,16 @@
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   type Installation,
-  type MarketplaceCollection,
+  type TemplateCategory,
   type TemplateItem,
   type UpdateNotification,
   marketplaceApi
 } from "@/lib/services";
-import { formatDate } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
 import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -59,6 +58,45 @@ const CATEGORY_LABEL: Record<string, string> = {
   multilingual: "Multilingual"
 };
 
+const CATEGORY_ICON: Record<string, string> = {
+  website: "WB",
+  landing: "LP",
+  saas: "SA",
+  crm: "CR",
+  helpdesk: "HD",
+  ecommerce: "EC",
+  education: "ED",
+  healthcare: "HC",
+  real_estate: "RE",
+  restaurant: "RS",
+  finance: "FN",
+  legal: "LG",
+  writing: "WR",
+  coding: "CD",
+  marketing: "MK",
+  hr: "HR",
+  research: "RS",
+  ai_agents: "AI",
+  business: "BZ",
+  analytics: "AN",
+  insurance: "IN",
+  government: "GV",
+  travel: "TV",
+  retail: "RT",
+  manufacturing: "MF",
+  sales: "SL",
+  erp: "ER",
+  bi: "BI",
+  devops: "DV",
+  security: "SC",
+  news: "NW",
+  media: "MD",
+  startup: "ST",
+  productivity: "PD",
+  automation: "AU",
+  multilingual: "ML"
+};
+
 function statusTone(status: string): "success" | "warn" | "neutral" | "brand" {
   switch (status) {
     case "ready":
@@ -75,8 +113,13 @@ function statusTone(status: string): "success" | "warn" | "neutral" | "brand" {
 function priceLabel(price: string | number | undefined, tier?: string, badge?: string | null) {
   if (badge) return badge;
   const n = Number(price ?? 0);
-  if (!(n > 0)) return tier && tier !== "free" ? tier : "Free";
+  if (!(n > 0)) return tier && tier !== "free" ? String(tier) : "Free";
   return `$${n}`;
+}
+
+function categoryName(slug: string, categories?: TemplateCategory[]) {
+  const fromApi = categories?.find((c) => c.slug === slug)?.name;
+  return fromApi || CATEGORY_LABEL[slug] || slug.replace(/_/g, " ");
 }
 
 function DialogShell({
@@ -101,7 +144,7 @@ function DialogShell({
 
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+    <div className="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
       <button
         type="button"
         aria-label="Close dialog"
@@ -111,7 +154,7 @@ function DialogShell({
       <div
         role="dialog"
         aria-modal="true"
-        className="relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-5 shadow-xl sm:max-w-lg sm:rounded-2xl"
+        className="relative z-10 max-h-[90vh] w-full overflow-y-auto rounded-t-2xl border border-line bg-panel p-4 shadow-xl sm:max-w-lg sm:rounded-2xl sm:p-5"
       >
         <div className="mb-4 flex items-start justify-between gap-3">
           <h2 className="text-lg font-semibold text-ink">{title}</h2>
@@ -127,63 +170,75 @@ function DialogShell({
 
 function TemplateCard({
   template,
+  categories,
   onInstall,
   onToggleFavorite,
-  onCompare,
-  compareSelected,
   installing,
-  favoriting
+  favoriting,
+  layout = "rail"
 }: {
   template: TemplateItem;
+  categories?: TemplateCategory[];
   onInstall: (t: TemplateItem) => void;
   onToggleFavorite: (t: TemplateItem) => void;
-  onCompare?: (t: TemplateItem) => void;
-  compareSelected?: boolean;
   installing: boolean;
   favoriting: boolean;
+  layout?: "rail" | "grid";
 }) {
+  const thumb = template.thumbnail || template.banner_url;
   return (
-    <Card className="flex min-w-[260px] max-w-sm flex-col snap-start">
-      <Link href={`/app/templates/${template.slug}`} className="text-left">
-        <div className="flex items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-line bg-canvas text-sm font-semibold uppercase text-brand">
-            {(template.category || "t").slice(0, 2)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="font-semibold text-ink">{template.name}</h3>
-              {(template.pricing_badge || template.pricing_tier) && (
-                <Badge tone="neutral">
-                  {priceLabel(template.price, template.pricing_tier, template.pricing_badge)}
-                </Badge>
-              )}
-              {template.is_featured && <Badge tone="brand">Featured</Badge>}
-              {template.is_editors_choice && <Badge tone="brand">Editor</Badge>}
-              {template.verified_publisher && <Badge tone="success">Verified</Badge>}
-              {template.installed && <Badge tone="success">Installed</Badge>}
+    <Card
+      className={cn(
+        "flex flex-col overflow-hidden p-0 transition hover:border-brand/35",
+        layout === "rail" && "min-w-[260px] max-w-[300px] shrink-0 snap-start sm:min-w-[280px]",
+        layout === "grid" && "w-full"
+      )}
+    >
+      <Link href={`/app/templates/${template.slug}`} className="block text-left">
+        <div className="relative h-28 w-full border-b border-line bg-gradient-to-br from-brand/10 via-canvas to-panel sm:h-32">
+          {thumb ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={thumb} alt="" className="h-full w-full object-cover" />
+          ) : (
+            <div className="flex h-full items-end justify-between p-3">
+              <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-line bg-panel text-xs font-bold uppercase tracking-wide text-brand">
+                {CATEGORY_ICON[template.category] || (template.category || "tp").slice(0, 2)}
+              </span>
+              <span className="rounded-lg bg-panel/90 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                {template.kind || "package"}
+              </span>
             </div>
-            <p className="mt-1 text-xs capitalize text-muted">
-              {CATEGORY_LABEL[template.category] || template.category}
-              {template.kind ? ` · ${template.kind}` : ""} · v{template.version}
-            </p>
-          </div>
+          )}
         </div>
-        <p className="mt-3 line-clamp-2 text-sm text-muted">{template.description}</p>
+        <div className="space-y-2 p-4">
+          <div className="flex flex-wrap items-start gap-2">
+            <h3 className="min-w-0 flex-1 text-sm font-semibold leading-snug text-ink sm:text-base">
+              {template.name}
+            </h3>
+            <Badge tone="neutral">
+              {priceLabel(template.price, template.pricing_tier, template.pricing_badge)}
+            </Badge>
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {template.is_featured && <Badge tone="brand">Featured</Badge>}
+            {template.installed && <Badge tone="success">Installed</Badge>}
+            {template.update_available && <Badge tone="warn">Update</Badge>}
+          </div>
+          <p className="text-xs capitalize text-muted">
+            {categoryName(template.category, categories)}
+            {template.kind ? ` · ${template.kind}` : ""} · v{template.version}
+          </p>
+          <p className="line-clamp-2 text-sm text-muted">{template.description}</p>
+          <p className="text-xs text-muted">
+            {template.install_count} install{template.install_count !== 1 ? "s" : ""}
+            {template.author ? ` · ${template.author}` : ""}
+          </p>
+        </div>
       </Link>
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted">
-        {template.rating_avg != null && template.review_count ? (
-          <span>
-            ★ {template.rating_avg.toFixed(1)} ({template.review_count})
-          </span>
-        ) : null}
-        <span>
-          {template.install_count} install{template.install_count !== 1 ? "s" : ""}
-        </span>
-      </div>
-      <div className="mt-4 flex flex-wrap gap-2">
+      <div className="mt-auto flex flex-wrap gap-2 border-t border-line px-4 py-3">
         <Link
           href={`/app/templates/${template.slug}`}
-          className="inline-flex h-8 items-center justify-center rounded-lg border border-line bg-panel px-3 text-sm font-medium text-ink hover:bg-canvas"
+          className="inline-flex h-9 items-center justify-center rounded-xl border border-line bg-panel px-3 text-xs font-semibold text-ink hover:bg-canvas"
         >
           Preview
         </Link>
@@ -195,15 +250,6 @@ function TemplateCard({
         >
           {template.is_favorited ? "Unfavorite" : "Favorite"}
         </Button>
-        {onCompare && (
-          <Button
-            size="sm"
-            variant={compareSelected ? "default" : "secondary"}
-            onClick={() => onCompare(template)}
-          >
-            {compareSelected ? "Compared" : "Compare"}
-          </Button>
-        )}
         {template.installed ? (
           <Badge tone="success">Installed</Badge>
         ) : (
@@ -216,35 +262,46 @@ function TemplateCard({
   );
 }
 
-function Rail({
+function TemplateRail({
   title,
+  subtitle,
   items,
+  categories,
+  onSeeAll,
   ...cardProps
 }: {
   title: string;
+  subtitle?: string;
   items: TemplateItem[];
+  categories?: TemplateCategory[];
+  onSeeAll?: () => void;
   onInstall: (t: TemplateItem) => void;
   onToggleFavorite: (t: TemplateItem) => void;
-  onCompare?: (t: TemplateItem) => void;
-  compareIds: Set<string>;
   installing: boolean;
   favoriting: boolean;
 }) {
   if (!items.length) return null;
   return (
     <section className="space-y-3">
-      <h2 className="text-base font-semibold text-ink">{title}</h2>
-      <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+      <div className="flex items-end justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-ink sm:text-lg">{title}</h2>
+          {subtitle && <p className="mt-0.5 text-sm text-muted">{subtitle}</p>}
+        </div>
+        {onSeeAll && (
+          <Button size="sm" variant="ghost" onClick={onSeeAll}>
+            See all
+          </Button>
+        )}
+      </div>
+      <div className="-mx-1 flex gap-3 overflow-x-auto px-1 pb-2 snap-x snap-mandatory [scrollbar-width:thin]">
         {items.map((template) => (
           <TemplateCard
             key={template.id}
             template={template}
-            installing={cardProps.installing}
-            favoriting={cardProps.favoriting}
-            onInstall={cardProps.onInstall}
-            onToggleFavorite={cardProps.onToggleFavorite}
-            onCompare={cardProps.onCompare}
-            compareSelected={cardProps.compareIds.has(template.id)}
+            categories={categories}
+            layout="rail"
+            {...cardProps}
           />
         ))}
       </div>
@@ -266,7 +323,7 @@ function InstallCard({
   return (
     <Card>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <Link
               href={
@@ -274,7 +331,7 @@ function InstallCard({
                   ? `/app/templates/${install.template_slug}`
                   : "/app/templates"
               }
-              className="font-semibold text-ink hover:underline"
+              className="truncate font-semibold text-ink hover:underline"
             >
               {install.template_name || install.template_slug}
             </Link>
@@ -311,7 +368,6 @@ function InstallCard({
 }
 
 export default function MarketplacePage() {
-  const router = useRouter();
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<TabKey>("home");
   const [search, setSearch] = useState("");
@@ -320,44 +376,85 @@ export default function MarketplacePage() {
   const [kindFilter, setKindFilter] = useState("");
   const [installTarget, setInstallTarget] = useState<TemplateItem | null>(null);
   const [updateTarget, setUpdateTarget] = useState<Installation | UpdateNotification | null>(null);
-  const [compareIds, setCompareIds] = useState<Set<string>>(new Set());
-  const [collectionFocus, setCollectionFocus] = useState<MarketplaceCollection | null>(null);
 
   useEffect(() => {
     const t = window.setTimeout(() => setDebouncedSearch(search.trim()), 250);
     return () => window.clearTimeout(t);
   }, [search]);
 
-  const home = useQuery({ queryKey: ["mkt-home"], queryFn: marketplaceApi.home });
+  // Prefer /home when available; fall back to dashboard + list sorts (existing APIs).
+  const home = useQuery({
+    queryKey: ["mkt-home"],
+    queryFn: marketplaceApi.home,
+    retry: false
+  });
+  const dash = useQuery({
+    queryKey: ["mkt-dashboard"],
+    queryFn: marketplaceApi.dashboard,
+    enabled: home.isError || !home.data
+  });
+  const trendingFallback = useQuery({
+    queryKey: ["mkt-trending-fallback"],
+    queryFn: () => marketplaceApi.listPage({ sort: "installs", limit: 12 }),
+    enabled: home.isError || !home.data
+  });
+
+  const searching = Boolean(debouncedSearch);
   const templates = useQuery({
     queryKey: ["mkt-templates", debouncedSearch, selectedCategory, kindFilter, activeTab],
-    enabled: activeTab === "browse" || activeTab === "featured" || Boolean(debouncedSearch),
+    enabled: activeTab === "browse" || activeTab === "featured" || searching,
     queryFn: () =>
       marketplaceApi.listPage({
         q: debouncedSearch || undefined,
         category: selectedCategory || undefined,
         kind: kindFilter || undefined,
-        featured: activeTab === "featured" ? true : undefined,
-        sort: activeTab === "featured" ? "featured" : debouncedSearch ? "relevance" : "newest",
+        featured: activeTab === "featured" && !searching ? true : undefined,
+        sort:
+          activeTab === "featured" && !searching
+            ? "featured"
+            : searching
+              ? "relevance"
+              : "newest",
         limit: 48
       })
   });
-  const favorites = useQuery({
-    queryKey: ["mkt-favorites"],
-    queryFn: marketplaceApi.favorites
-  });
+  const favorites = useQuery({ queryKey: ["mkt-favorites"], queryFn: marketplaceApi.favorites });
   const installed = useQuery({ queryKey: ["mkt-installed"], queryFn: marketplaceApi.installed });
   const updates = useQuery({ queryKey: ["mkt-updates"], queryFn: marketplaceApi.updates });
-  const collectionDetail = useQuery({
-    queryKey: ["mkt-collection", collectionFocus?.slug],
-    enabled: Boolean(collectionFocus?.slug),
-    queryFn: () => marketplaceApi.collection(collectionFocus!.slug)
-  });
+
+  const featured = home.data?.featured || dash.data?.featured || [];
+  const newest = home.data?.newest || dash.data?.newest || [];
+  const trending = home.data?.trending?.length
+    ? home.data.trending
+    : home.data?.most_installed?.length
+      ? home.data.most_installed
+      : trendingFallback.data?.items || [];
+  const categories = home.data?.categories || dash.data?.categories || [];
+  const installedCount = home.data?.installed_count ?? dash.data?.installed_count ?? 0;
+  const updatesCount = home.data?.updates_count ?? dash.data?.updates_count ?? 0;
+
+  const browseCategories = useMemo(() => {
+    const withCount = categories.filter((c) => (c.count || 0) > 0 || c.slug === selectedCategory);
+    const featuredCats = categories.filter((c) => c.is_featured && !withCount.some((w) => w.slug === c.slug));
+    return [...withCount, ...featuredCats].slice(0, 24);
+  }, [categories, selectedCategory]);
+
+  const homeCategories = useMemo(() => {
+    const ranked = [...categories].sort((a, b) => {
+      const af = a.is_featured ? 0 : 1;
+      const bf = b.is_featured ? 0 : 1;
+      if (af !== bf) return af - bf;
+      return (b.count || 0) - (a.count || 0);
+    });
+    return ranked.filter((c) => (c.count || 0) > 0 || c.is_featured).slice(0, 12);
+  }, [categories]);
 
   const invalidateAll = () => {
     qc.invalidateQueries({ queryKey: ["mkt-templates"] });
     qc.invalidateQueries({ queryKey: ["mkt-installed"] });
     qc.invalidateQueries({ queryKey: ["mkt-home"] });
+    qc.invalidateQueries({ queryKey: ["mkt-dashboard"] });
+    qc.invalidateQueries({ queryKey: ["mkt-trending-fallback"] });
     qc.invalidateQueries({ queryKey: ["mkt-updates"] });
     qc.invalidateQueries({ queryKey: ["mkt-favorites"] });
   };
@@ -416,65 +513,16 @@ export default function MarketplacePage() {
     onError: (e: Error) => toast.error(e.message)
   });
 
-  const categories = home.data?.categories || [];
-  const featuredCategories = useMemo(
-    () =>
-      categories.filter((c) => c.is_featured || (c.count || 0) > 0).slice(0, 16),
-    [categories]
-  );
-
-  const shareTemplate = async (t: TemplateItem) => {
-    const url = `${window.location.origin}/app/templates/${t.slug}`;
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: t.name, text: t.description, url });
-      } else {
-        await navigator.clipboard.writeText(url);
-        toast.success("Link copied");
-      }
-    } catch {
-      try {
-        await navigator.clipboard.writeText(url);
-        toast.success("Link copied");
-      } catch {
-        toast.message(url);
-      }
-    }
-  };
-
-  const toggleCompare = (t: TemplateItem) => {
-    setCompareIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(t.id)) next.delete(t.id);
-      else if (next.size < 3) next.add(t.id);
-      else toast.message("Compare up to 3 templates");
-      return next;
-    });
-  };
-
-  const compareItems = useMemo(() => {
-    const pool = [
-      ...(home.data?.featured || []),
-      ...(home.data?.newest || []),
-      ...(home.data?.trending || []),
-      ...(templates.data?.items || []),
-      ...(favorites.data || [])
-    ];
-    const byId = new Map(pool.map((t) => [t.id, t]));
-    return [...compareIds].map((id) => byId.get(id)).filter(Boolean) as TemplateItem[];
-  }, [compareIds, home.data, templates.data, favorites.data]);
-
   const cardProps = {
+    categories,
     installing: install.isPending,
     favoriting: favorite.isPending,
     onInstall: setInstallTarget,
-    onToggleFavorite: (t: TemplateItem) => favorite.mutate(t),
-    onCompare: toggleCompare,
-    compareIds
+    onToggleFavorite: (t: TemplateItem) => favorite.mutate(t)
   };
 
   const tabs: Array<{ key: TabKey; label: string }> = [
-    { key: "home", label: "Store Home" },
+    { key: "home", label: "Home" },
     { key: "browse", label: "Browse" },
     { key: "featured", label: "Featured" },
     { key: "favorites", label: `Favorites (${favorites.data?.length || 0})` },
@@ -482,161 +530,210 @@ export default function MarketplacePage() {
     { key: "updates", label: `Updates (${updates.data?.length || 0})` }
   ];
 
-  const showSearchResults = Boolean(debouncedSearch) && activeTab === "home";
+  const clearSearch = () => {
+    setSearch("");
+    setDebouncedSearch("");
+  };
 
   return (
-    <div className="space-y-5">
+    <div className="mx-auto w-full max-w-7xl space-y-5 pb-8">
       <PageHeader
         title="Marketplace"
-        description="Discover, compare, and install AI templates for your workspace."
+        description="Browse featured, trending, and new AI templates for your workspace."
         action={
-          <div className="flex items-center gap-2 text-sm text-muted">
-            <span>{home.data?.installed_count || 0} installed</span>
-            {(home.data?.updates_count || 0) > 0 && (
-              <Badge tone="warn">{home.data?.updates_count} updates</Badge>
-            )}
+          <div className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            <span>{installedCount} installed</span>
+            {updatesCount > 0 && <Badge tone="warn">{updatesCount} updates</Badge>}
           </div>
         }
       />
 
-      <div className="rounded-2xl border border-line bg-gradient-to-br from-canvas via-panel to-canvas p-5 sm:p-7">
-        <h2 className="text-xl font-semibold text-ink sm:text-2xl">Find the right AI template</h2>
+      <section className="rounded-2xl border border-line bg-gradient-to-br from-canvas via-panel to-canvas p-4 sm:p-6 md:p-7">
+        <h2 className="text-xl font-semibold tracking-tight text-ink sm:text-2xl">
+          Discover templates
+        </h2>
         <p className="mt-1 max-w-2xl text-sm text-muted">
-          Search the catalog, browse curated collections, and install in minutes.
+          Search the catalog or jump into featured, trending, and newest picks.
         </p>
         <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center">
-          <Input
-            placeholder="Search templates, categories, or use cases…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="sm:max-w-md"
-          />
-          <Button
-            variant="secondary"
-            onClick={() => {
-              setActiveTab("browse");
-            }}
-          >
-            Browse all
-          </Button>
+          <div className="relative w-full sm:max-w-lg">
+            <Input
+              aria-label="Search marketplace templates"
+              placeholder="Search templates by name, tag, or use case…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                if (e.target.value.trim()) setActiveTab("home");
+              }}
+              className="w-full pr-20"
+            />
+            {search ? (
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg px-2 py-1 text-xs font-medium text-muted hover:bg-canvas hover:text-ink"
+              >
+                Clear
+              </button>
+            ) : null}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                clearSearch();
+                setSelectedCategory("");
+                setActiveTab("browse");
+              }}
+            >
+              Browse all
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                clearSearch();
+                setActiveTab("featured");
+              }}
+            >
+              Featured
+            </Button>
+          </div>
         </div>
-      </div>
+      </section>
 
-      <div className="flex gap-2 overflow-x-auto border-b border-line">
+      <div className="-mx-1 flex gap-1 overflow-x-auto border-b border-line px-1 [scrollbar-width:none]">
         {tabs.map((tab) => (
           <button
             key={tab.key}
             type="button"
             onClick={() => setActiveTab(tab.key)}
-            className={`-mb-px shrink-0 border-b-2 px-1 pb-3 text-sm font-medium transition ${
+            className={cn(
+              "-mb-px shrink-0 border-b-2 px-3 pb-3 text-sm font-medium transition",
               activeTab === tab.key
                 ? "border-brand text-brand"
                 : "border-transparent text-muted hover:text-ink"
-            }`}
+            )}
           >
             {tab.label}
           </button>
         ))}
       </div>
 
-      {compareItems.length > 0 && (
-        <Card className="space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-semibold text-ink">Compare ({compareItems.length}/3)</h3>
-            <Button size="sm" variant="ghost" onClick={() => setCompareIds(new Set())}>
-              Clear
-            </Button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-3">
-            {compareItems.map((t) => (
-              <div key={t.id} className="rounded-xl border border-line bg-canvas p-3 text-sm">
-                <p className="font-semibold text-ink">{t.name}</p>
-                <p className="mt-1 text-muted">
-                  {priceLabel(t.price, t.pricing_tier, t.pricing_badge)} · {t.install_count} installs
-                </p>
-                <p className="mt-1 text-muted">
-                  {t.rating_avg != null ? `★ ${t.rating_avg.toFixed(1)}` : "No ratings"}
-                </p>
-                <div className="mt-2 flex gap-2">
-                  <Button size="sm" variant="secondary" onClick={() => router.push(`/app/templates/${t.slug}`)}>
-                    Open
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => shareTemplate(t)}>
-                    Share
-                  </Button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </Card>
-      )}
-
-      {(activeTab === "home" || showSearchResults) && (
+      {activeTab === "home" && (
         <div className="space-y-8">
-          {showSearchResults ? (
+          {searching ? (
             <div className="space-y-4">
-              <h2 className="text-base font-semibold text-ink">
-                Search results{templates.data ? ` (${templates.data.total})` : ""}
-              </h2>
-              {!templates.data?.items.length && !templates.isLoading && (
-                <EmptyState title="No matches" description="Try a different query or browse categories." />
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h2 className="text-base font-semibold text-ink sm:text-lg">
+                  Search results
+                  {templates.data ? ` (${templates.data.total})` : ""}
+                </h2>
+                <Button size="sm" variant="ghost" onClick={clearSearch}>
+                  Clear search
+                </Button>
+              </div>
+              {templates.isLoading && <p className="text-sm text-muted">Searching…</p>}
+              {!templates.isLoading && !(templates.data?.items || []).length && (
+                <EmptyState
+                  title="No matches"
+                  description="Try another keyword, or browse categories below."
+                />
               )}
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
                 {(templates.data?.items || []).map((template) => (
-                  <TemplateCard key={template.id} template={template} {...cardProps} />
+                  <TemplateCard
+                    key={template.id}
+                    template={template}
+                    layout="grid"
+                    {...cardProps}
+                  />
                 ))}
               </div>
             </div>
           ) : (
             <>
               <section className="space-y-3">
-                <h2 className="text-base font-semibold text-ink">Categories</h2>
+                <div className="flex items-end justify-between gap-3">
+                  <div>
+                    <h2 className="text-base font-semibold text-ink sm:text-lg">Categories</h2>
+                    <p className="mt-0.5 text-sm text-muted">Filter the catalog by industry or use case</p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setSelectedCategory("");
+                      setActiveTab("browse");
+                    }}
+                  >
+                    View all
+                  </Button>
+                </div>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
-                  {featuredCategories.map((cat) => (
+                  {homeCategories.map((cat) => (
                     <button
                       key={cat.slug}
                       type="button"
                       onClick={() => {
                         setSelectedCategory(cat.slug);
+                        clearSearch();
                         setActiveTab("browse");
                       }}
-                      className="rounded-xl border border-line bg-panel px-3 py-3 text-left transition hover:border-brand/40"
+                      className={cn(
+                        "rounded-xl border border-line bg-panel px-3 py-3 text-left transition hover:border-brand/40 hover:bg-canvas",
+                        selectedCategory === cat.slug && "border-brand/50 bg-brand-soft/30"
+                      )}
                     >
-                      <p className="text-sm font-semibold text-ink">{cat.name}</p>
-                      <p className="mt-1 text-xs text-muted">{cat.count || 0} templates</p>
+                      <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-canvas text-[10px] font-bold uppercase tracking-wide text-brand">
+                        {CATEGORY_ICON[cat.slug] || cat.slug.slice(0, 2)}
+                      </span>
+                      <p className="mt-2 truncate text-sm font-semibold text-ink">{cat.name}</p>
+                      <p className="mt-0.5 text-xs text-muted">
+                        {cat.count || cat.template_count || 0} templates
+                      </p>
                     </button>
                   ))}
                 </div>
+                {!homeCategories.length && !home.isLoading && !dash.isLoading && (
+                  <EmptyState
+                    title="No categories yet"
+                    description="Seed marketplace templates to populate the catalog."
+                  />
+                )}
               </section>
 
-              {(home.data?.collections || []).length > 0 && (
-                <section className="space-y-3">
-                  <h2 className="text-base font-semibold text-ink">Collections</h2>
-                  <div className="flex gap-3 overflow-x-auto pb-1">
-                    {(home.data?.collections || []).map((col) => (
-                      <button
-                        key={col.id}
-                        type="button"
-                        onClick={() => setCollectionFocus(col)}
-                        className="min-w-[200px] rounded-xl border border-line bg-panel px-4 py-3 text-left transition hover:border-brand/40"
-                      >
-                        <p className="font-semibold text-ink">{col.name}</p>
-                        <p className="mt-1 line-clamp-2 text-xs text-muted">{col.description}</p>
-                        <p className="mt-2 text-xs text-muted">{col.item_count} items</p>
-                      </button>
-                    ))}
-                  </div>
-                </section>
-              )}
+              <TemplateRail
+                title="Featured"
+                subtitle="Hand-picked templates ready to install"
+                items={featured}
+                onSeeAll={() => setActiveTab("featured")}
+                {...cardProps}
+              />
+              <TemplateRail
+                title="Trending"
+                subtitle="Popular installs across workspaces"
+                items={trending}
+                onSeeAll={() => {
+                  setKindFilter("");
+                  setSelectedCategory("");
+                  setActiveTab("browse");
+                }}
+                {...cardProps}
+              />
+              <TemplateRail
+                title="New"
+                subtitle="Recently added to the catalog"
+                items={newest}
+                onSeeAll={() => setActiveTab("browse")}
+                {...cardProps}
+              />
 
-              <Rail title="Continue using" items={home.data?.continue_using || []} {...cardProps} />
-              <Rail title="Recently viewed" items={home.data?.recently_viewed || []} {...cardProps} />
-              <Rail title="Featured" items={home.data?.featured || []} {...cardProps} />
-              <Rail title="Editor’s choice" items={home.data?.editors_choice || []} {...cardProps} />
-              <Rail title="Trending" items={home.data?.trending || []} {...cardProps} />
-              <Rail title="Top rated" items={home.data?.top_rated || []} {...cardProps} />
-              <Rail title="Most installed" items={home.data?.most_installed || []} {...cardProps} />
-              <Rail title="Newest" items={home.data?.newest || []} {...cardProps} />
+              {!featured.length && !trending.length && !newest.length && !home.isLoading && (
+                <EmptyState
+                  title="Catalog is empty"
+                  description="Seed marketplace templates, then refresh this page."
+                />
+              )}
             </>
           )}
         </div>
@@ -646,10 +743,11 @@ export default function MarketplacePage() {
         <div className="space-y-5">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
             <Input
+              aria-label="Filter templates"
               placeholder="Search templates…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              className="lg:max-w-xs"
+              className="w-full lg:max-w-xs"
             />
             <div className="flex flex-wrap gap-2">
               {["", "package", "prompt", "agent"].map((kind) => (
@@ -659,48 +757,55 @@ export default function MarketplacePage() {
                   variant={kindFilter === kind ? "default" : "secondary"}
                   onClick={() => setKindFilter(kind)}
                 >
-                  {kind ? kind : "All kinds"}
+                  {kind || "All kinds"}
                 </Button>
               ))}
             </div>
           </div>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:thin]">
             <Button
               size="sm"
               variant={!selectedCategory ? "default" : "secondary"}
               onClick={() => setSelectedCategory("")}
+              className="shrink-0"
             >
               All categories
             </Button>
-            {categories
-              .filter((c) => c.count > 0 || selectedCategory === c.slug || c.is_featured)
-              .map((cat) => (
-                <Button
-                  key={cat.slug}
-                  size="sm"
-                  variant={selectedCategory === cat.slug ? "default" : "secondary"}
-                  onClick={() =>
-                    setSelectedCategory(cat.slug === selectedCategory ? "" : cat.slug)
-                  }
-                >
-                  {cat.name}
-                  {cat.count > 0 ? ` (${cat.count})` : ""}
-                </Button>
-              ))}
+            {browseCategories.map((cat) => (
+              <Button
+                key={cat.slug}
+                size="sm"
+                variant={selectedCategory === cat.slug ? "default" : "secondary"}
+                className="shrink-0"
+                onClick={() =>
+                  setSelectedCategory(cat.slug === selectedCategory ? "" : cat.slug)
+                }
+              >
+                {cat.name}
+                {(cat.count || 0) > 0 ? ` (${cat.count})` : ""}
+              </Button>
+            ))}
           </div>
 
-          {(templates.data?.items || []).length === 0 && !templates.isLoading && (
+          {templates.isLoading && <p className="text-sm text-muted">Loading templates…</p>}
+          {!templates.isLoading && !(templates.data?.items || []).length && (
             <EmptyState
               title="No templates found"
               description="Try a different search, kind, or category."
             />
           )}
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {(templates.data?.items || []).map((template) => (
-              <TemplateCard key={template.id} template={template} {...cardProps} />
+              <TemplateCard key={template.id} template={template} layout="grid" {...cardProps} />
             ))}
           </div>
+          {typeof templates.data?.total === "number" &&
+            templates.data.total > (templates.data.items?.length || 0) && (
+              <p className="text-sm text-muted">
+                Showing {templates.data.items.length} of {templates.data.total}
+              </p>
+            )}
         </div>
       )}
 
@@ -709,14 +814,15 @@ export default function MarketplacePage() {
           {!favorites.data?.length && !favorites.isLoading && (
             <EmptyState
               title="No favorites yet"
-              description="Favorite templates from Store Home to find them quickly here."
+              description="Favorite templates from Home or Browse to find them here."
             />
           )}
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {(favorites.data || []).map((template) => (
               <TemplateCard
                 key={template.id}
                 template={{ ...template, is_favorited: true }}
+                layout="grid"
                 {...cardProps}
               />
             ))}
@@ -767,44 +873,6 @@ export default function MarketplacePage() {
       )}
 
       <DialogShell
-        open={Boolean(collectionFocus)}
-        title={collectionFocus?.name || "Collection"}
-        onClose={() => setCollectionFocus(null)}
-      >
-        {collectionFocus && (
-          <div className="space-y-4">
-            <p className="text-sm text-muted">{collectionFocus.description}</p>
-            {collectionDetail.isLoading && <p className="text-sm text-muted">Loading…</p>}
-            <div className="grid gap-3">
-              {(collectionDetail.data?.items || []).map((template) => (
-                <div
-                  key={template.id}
-                  className="flex items-center justify-between gap-2 rounded-xl border border-line bg-canvas px-3 py-2"
-                >
-                  <div>
-                    <Link
-                      href={`/app/templates/${template.slug}`}
-                      className="font-medium text-ink hover:underline"
-                    >
-                      {template.name}
-                    </Link>
-                    <p className="text-xs text-muted">
-                      {priceLabel(template.price, template.pricing_tier, template.pricing_badge)}
-                    </p>
-                  </div>
-                  {!template.installed && (
-                    <Button size="sm" onClick={() => setInstallTarget(template)}>
-                      Install
-                    </Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </DialogShell>
-
-      <DialogShell
         open={Boolean(installTarget)}
         title="Install template"
         onClose={() => setInstallTarget(null)}
@@ -815,7 +883,7 @@ export default function MarketplacePage() {
               Install <span className="font-medium text-ink">{installTarget.name}</span> into your
               company workspace? You can update or uninstall later.
             </p>
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <Button variant="secondary" onClick={() => setInstallTarget(null)}>
                 Cancel
               </Button>
@@ -844,11 +912,13 @@ export default function MarketplacePage() {
             </p>
             {"changelog" in updateTarget && updateTarget.changelog ? (
               <div className="rounded-xl border border-line bg-canvas px-3 py-2">
-                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Release notes</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">
+                  Release notes
+                </p>
                 <p className="mt-1 whitespace-pre-wrap text-sm text-ink">{updateTarget.changelog}</p>
               </div>
             ) : null}
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <Button variant="secondary" onClick={() => setUpdateTarget(null)}>
                 Cancel
               </Button>
