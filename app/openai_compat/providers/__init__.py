@@ -53,6 +53,7 @@ def ensure_providers_registered() -> InferenceProviderRegistry:
     from app.openai_compat.providers.gemini import GeminiInferenceProvider
     from app.openai_compat.providers.ollama import OllamaInferenceProvider
     from app.openai_compat.providers.openai_provider import OpenAIInferenceProvider
+    from app.openai_compat.providers.openrouter import OpenRouterInferenceProvider
     from app.openai_compat.providers.vllm import VllmInferenceProvider
 
     registry = get_registry()
@@ -60,5 +61,6 @@ def ensure_providers_registered() -> InferenceProviderRegistry:
     registry.register("openai", OpenAIInferenceProvider)
     registry.register("gemini", GeminiInferenceProvider)
     registry.register("anthropic", AnthropicInferenceProvider)
+    registry.register("openrouter", OpenRouterInferenceProvider)
     registry.register("vllm", VllmInferenceProvider)
     return registry

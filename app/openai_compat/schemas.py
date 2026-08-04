@@ -10,6 +10,8 @@ class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool", "function"]
     content: Optional[Union[str, List[Dict[str, Any]]]] = None
     name: Optional[str] = None
+    tool_call_id: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
 
 
 class ChatCompletionRequest(BaseModel):
@@ -22,15 +24,28 @@ class ChatCompletionRequest(BaseModel):
     stream: bool = False
     stop: Optional[Union[str, List[str]]] = None
     user: Optional[str] = None
+    # Tool calling (OpenAI-compatible, additive)
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
     # THTWAAT extension: force provider when using gateway mode
     provider: Optional[str] = Field(
         default=None,
         description=(
-            "Optional THTWAAT extension — auto|ollama|openai|gemini|anthropic. "
+            "Optional THTWAAT extension — auto|ollama|openai|gemini|anthropic|openrouter. "
             "Default auto. On stream failures before the first token, "
             "STREAM_FALLBACK_ORDER providers are tried."
         ),
     )
+    # Additive enterprise extensions (ignored by pure OpenAI clients)
+    conversation_id: Optional[str] = Field(
+        default=None, description="THTWAAT: attach conversation memory when available"
+    )
+    rag_query: Optional[str] = Field(
+        default=None, description="THTWAAT: optional RAG query to prepend knowledge context"
+    )
+    knowledge_base_id: Optional[str] = None
+    stream_options: Optional[Dict[str, Any]] = None
+
 
 
 class CompletionUsage(BaseModel):

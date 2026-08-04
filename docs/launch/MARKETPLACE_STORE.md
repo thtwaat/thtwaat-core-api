@@ -59,3 +59,15 @@ Backend (additive on `/api/v1/agent-store`):
 - Admin moderation: approve / reject / suspend / feature / unfeature / verify
 
 Migration: `j4d5e6f7a8b9_publisher_portal` (additive columns + enum values only).
+
+## Enterprise AI Gateway (Phase 5)
+
+Canonical paths: `app/openai_compat` (`/v1/chat/completions`) + `app/ai` (`/api/v1/ai/*`).
+
+- Providers: OpenAI, Gemini, Anthropic, Ollama, **OpenRouter** (now on compat registry + SSE)
+- Workspace settings: `GET/PUT /api/v1/ai/workspace-settings`
+- Dashboard: `GET /api/v1/ai/gateway/dashboard`, `GET /api/v1/ai/gateway/health-detail`
+- Additive: tools/vision request fields, retry/timeout policy, capability map
+- SaaS board: `/app/providers` live health + cost/latency + workspace defaults
+
+Migration: `k5e6f7a8b9c0_ai_gateway_workspace`.

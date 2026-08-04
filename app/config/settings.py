@@ -134,6 +134,7 @@ class Settings(BaseSettings):
     INFERENCE_ENABLE_OPENAI: bool = True
     INFERENCE_ENABLE_GEMINI: bool = True
     INFERENCE_ENABLE_ANTHROPIC: bool = True
+    INFERENCE_ENABLE_OPENROUTER: bool = True
     INFERENCE_ENABLE_VLLM: bool = False
     VLLM_BASE_URL: Optional[str] = None
     # Sem03 Week 1 Day 3 — inference router policies / health cache
@@ -157,7 +158,11 @@ class Settings(BaseSettings):
     # provider=auto|ollama|openai|gemini|anthropic (request body; default auto)
     STREAM_DEFAULT_PROVIDER: str = "auto"
     # Comma list — tried after primary fails before first token
-    STREAM_FALLBACK_ORDER: str = "ollama,openai,gemini,anthropic"
+    STREAM_FALLBACK_ORDER: str = "ollama,openai,gemini,anthropic,openrouter"
+    # Enterprise gateway retry / timeout defaults (additive)
+    GATEWAY_RETRY_MAX_ATTEMPTS: int = 2
+    GATEWAY_RETRY_BACKOFF_MS: int = 200
+    GATEWAY_REQUEST_TIMEOUT_SECONDS: float = 60.0
     STREAM_CONNECT_TIMEOUT: float = 10.0
     STREAM_FIRST_TOKEN_TIMEOUT: float = 30.0
     STREAM_IDLE_TIMEOUT: float = 60.0

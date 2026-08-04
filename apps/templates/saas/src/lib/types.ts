@@ -97,6 +97,9 @@ export type KnowledgeDocument = {
 export type AiProvidersList = {
   providers: string[];
   default: string;
+  allowed_providers?: string[];
+  capabilities?: Record<string, string[]>;
+  routing_policy?: string;
 };
 
 /** GET /api/v1/ai/health — map of provider → configured | unconfigured | error */
@@ -111,6 +114,59 @@ export type AiProviderModel = {
 export type AiProviderModelsResponse = {
   provider: string;
   models: AiProviderModel[] | string[];
+};
+
+export type AiGatewayDashboard = {
+  window_days: number;
+  requests: number;
+  success: number;
+  failed: number;
+  success_rate: number;
+  tokens: number;
+  cost: number;
+  currency: string;
+  avg_latency_ms: number;
+  providers: Array<{
+    provider: string;
+    requests: number;
+    tokens: number;
+    cost: number;
+    error_rate: number;
+    avg_latency_ms: number;
+  }>;
+  live_routing?: Record<string, unknown>;
+  workspace?: AiWorkspaceSettings;
+  capabilities?: Record<string, string[]>;
+};
+
+export type AiWorkspaceSettings = {
+  company_id: string;
+  default_provider: string;
+  allowed_providers: string[];
+  monthly_token_limit?: number | null;
+  monthly_request_limit?: number | null;
+  monthly_cost_limit_usd?: number | null;
+  routing_policy: string;
+  retry_max_attempts: number;
+  timeout_seconds: number;
+  updated_at?: string | null;
+};
+
+export type AiGatewayHealthDetail = {
+  providers: Record<
+    string,
+    {
+      status: string;
+      avg_latency_ms?: number | null;
+      last_latency_ms?: number | null;
+      capabilities?: string[];
+    }
+  >;
+  success_rate?: number;
+  avg_latency_ms?: number;
+  cost?: number;
+  tokens?: number;
+  requests?: number;
 };
 
 export type Domain = {

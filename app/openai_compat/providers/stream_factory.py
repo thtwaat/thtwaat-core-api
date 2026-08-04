@@ -12,6 +12,7 @@ from app.openai_compat.providers.openai_stream import (
     OpenAIStreamingAdapter,
     SyntheticOpenAIStreamingAdapter,
 )
+from app.openai_compat.providers.openrouter_stream import OpenRouterStreamingAdapter
 from app.openai_compat.providers.streaming_adapter import StreamingAdapter
 
 
@@ -29,9 +30,11 @@ def get_streaming_adapter(provider_name: str) -> StreamingAdapter:
         return GeminiStreamingAdapter()
     if name == "anthropic":
         return AnthropicStreamingAdapter()
+    if name == "openrouter":
+        return OpenRouterStreamingAdapter()
     raise ProviderNotFoundError(
         f"Streaming is not implemented for provider '{provider_name}' "
-        f"(supported: ollama, openai, gemini, anthropic)"
+        f"(supported: ollama, openai, gemini, anthropic, openrouter)"
     )
 
 

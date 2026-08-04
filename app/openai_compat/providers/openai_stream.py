@@ -31,6 +31,18 @@ class OpenAIStreamingAdapter(StreamingAdapter):
         self._response: Optional[httpx.Response] = None
         self._cancelled = False
 
+    def _provider_enabled(self) -> bool:
+        return bool(getattr(settings, "INFERENCE_ENABLE_OPENAI", True))
+
+    def _resolve_api_key(self) -> str:
+        return (settings.OPENAI_API_KEY or "").strip()
+
+    def _auth_headers(self, api_key: str) -> Dict[str, str]:
+        return {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json",
+        }
+
     async def cancel(self) -> None:
         self._cancelled = True
         try:
@@ -55,11 +67,11 @@ class OpenAIStreamingAdapter(StreamingAdapter):
         max_tokens: Optional[int] = None,
         **kwargs: Any,
     ) -> AsyncIterator[StreamDelta]:
-        if not bool(getattr(settings, "INFERENCE_ENABLE_OPENAI", True)):
-            raise ProviderConfigError("openai provider is disabled")
-        api_key = (settings.OPENAI_API_KEY or "").strip()
+        if not self._provider_enabled():
+            raise ProviderConfigError(f"{self.name} provider is disabled")
+        api_key = self._resolve_api_key()
         if not api_key:
-            raise ProviderConfigError("OPENAI_API_KEY is not configured")
+            raise ProviderConfigError(f"{self.name} API key is not configured")
 
         body: Dict[str, Any] = {
             "model": model,
@@ -71,15 +83,16 @@ class OpenAIStreamingAdapter(StreamingAdapter):
             body["temperature"] = float(temperature)
         if max_tokens is not None:
             body["max_tokens"] = int(max_tokens)
+        if kwargs.get("tools"):
+            body["tools"] = kwargs["tools"]
+        if kwargs.get("tool_choice") is not None:
+            body["tool_choice"] = kwargs["tool_choice"]
 
         timeout = httpx.Timeout(connect=10.0, read=120.0, write=30.0, pool=10.0)
         self._cancelled = False
         self._client = httpx.AsyncClient(
             timeout=timeout,
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
+            headers=self._auth_headers(api_key),
         )
         try:
             req = self._client.build_request(

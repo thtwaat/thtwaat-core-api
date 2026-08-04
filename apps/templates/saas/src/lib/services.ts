@@ -5,6 +5,9 @@ import type {
   AiProviderHealthMap,
   AiProviderModelsResponse,
   AiProvidersList,
+  AiGatewayDashboard,
+  AiGatewayHealthDetail,
+  AiWorkspaceSettings,
   Company,
   Conversation,
   ConversationDetail,
@@ -1043,10 +1046,15 @@ export const productGeneratorApi = {
     })
 };
 
-/** AI Gateway provider status — read-only management surface */
+/** AI Gateway provider status — enterprise dashboard surface */
 export const aiProvidersApi = {
   list: () => api.v1<AiProvidersList>("/ai/providers"),
   health: () => api.v1<AiProviderHealthMap>("/ai/health"),
+  healthDetail: () => api.v1<AiGatewayHealthDetail>("/ai/gateway/health-detail"),
+  dashboard: () => api.v1<AiGatewayDashboard>("/ai/gateway/dashboard"),
+  workspaceSettings: () => api.v1<AiWorkspaceSettings>("/ai/workspace-settings"),
+  updateWorkspaceSettings: (body: Partial<AiWorkspaceSettings>) =>
+    api.v1<AiWorkspaceSettings>("/ai/workspace-settings", { method: "PUT", body }),
   models: (provider: string) =>
     api.v1<AiProviderModelsResponse>(`/ai/models?provider=${encodeURIComponent(provider)}`)
 };

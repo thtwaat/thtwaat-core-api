@@ -11,6 +11,11 @@ class ProviderCapability(str, Enum):
     IMAGE_GENERATION = "image_generation"
     SPEECH_TO_TEXT = "speech_to_text"
     TEXT_TO_SPEECH = "text_to_speech"
+    STREAMING = "streaming"
+    VISION = "vision"
+    TOOLS = "tools"
+    RAG = "rag"
+    MEMORY = "memory"
 
 
 def normalize_capabilities(values: Iterable[str | ProviderCapability]) -> Set[ProviderCapability]:

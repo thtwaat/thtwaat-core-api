@@ -12,7 +12,11 @@ from app.ai.model import AIRequestStatus
 # Requests
 class ChatMessage(BaseModel):
     role: str
-    content: str
+    content: Union[str, List[Dict[str, Any]]]
+    name: Optional[str] = None
+    tool_call_id: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+
 
 class ChatRequest(BaseModel):
     messages: List[ChatMessage]
@@ -22,6 +26,11 @@ class ChatRequest(BaseModel):
     max_tokens: Optional[int] = 1000
     conversation_id: Optional[str] = None
     app_id: Optional[uuid.UUID] = None
+    tools: Optional[List[Dict[str, Any]]] = None
+    tool_choice: Optional[Union[str, Dict[str, Any]]] = None
+    rag_query: Optional[str] = None
+    knowledge_base_id: Optional[uuid.UUID] = None
+    enable_fallback: bool = True
 
 class GenerateRequest(BaseModel):
     prompt: str
