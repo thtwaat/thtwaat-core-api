@@ -8,42 +8,58 @@ import { toast } from "sonner";
 import { AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { companiesApi, usersApi } from "@/lib/services";
+import { setTokens } from "@/lib/api";
+import { onboardingApi } from "@/lib/services";
 import { useAuth } from "@/lib/auth";
 import { signupSchema } from "@/lib/validators";
+import { clearOnboardingDraft, defaultOnboardingDraft, saveOnboardingDraft } from "@/lib/onboarding";
 import type { z } from "zod";
 
 type FormValues = z.infer<typeof signupSchema>;
 
 export default function SignupPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { refreshProfile } = useAuth();
   const form = useForm<FormValues>({ resolver: zodResolver(signupSchema) });
 
   async function onSubmit(values: FormValues) {
     try {
-      const company = await companiesApi.create({
-        name: values.company_name,
-        slug: values.company_slug
+      const started = await onboardingApi.start({
+        account: {
+          email: values.email,
+          password: values.password,
+          first_name: values.first_name,
+          last_name: values.last_name
+        },
+        company: {
+          name: values.company_name,
+          slug: values.company_slug,
+          display_name: values.company_name
+        },
+        send_verification: true
       });
-      await usersApi.create({
-        email: values.email,
-        password: values.password,
-        first_name: values.first_name,
-        last_name: values.last_name,
-        company_id: company.id,
-        role: "company_owner"
+      setTokens({
+        access_token: started.access_token,
+        refresh_token: started.refresh_token,
+        token_type: started.token_type || "bearer",
+        expires_in: started.expires_in
       });
-      await login(values.email, values.password);
-      toast.success("Workspace created");
-      router.replace("/app");
+      clearOnboardingDraft();
+      saveOnboardingDraft({
+        ...defaultOnboardingDraft(),
+        displayName: values.company_name,
+        uiStep: 1
+      });
+      await refreshProfile();
+      toast.success("Welcome — let's finish setup");
+      router.replace("/app/onboarding");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Signup failed");
     }
   }
 
   return (
-    <AuthShell title="Create workspace" subtitle="Company + owner account in one step">
+    <AuthShell title="Create workspace" subtitle="Company + owner account — then guided setup">
       <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
         <div className="grid gap-3 sm:grid-cols-2">
           <div>

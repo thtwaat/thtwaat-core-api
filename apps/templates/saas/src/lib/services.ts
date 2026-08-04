@@ -1,4 +1,5 @@
 import { api } from "@/lib/api";
+import { apiPaths } from "@/lib/config";
 import type {
   Agent,
   AiProviderHealthMap,
@@ -42,7 +43,9 @@ export const agentsApi = {
       body: { name: name || "Default" }
     }),
   embed: (id: string) => api.v1<Record<string, string>>(`/agents/${id}/embed`),
-  widget: (id: string) => api.v1<Record<string, unknown>>(`/agents/${id}/widget`)
+  widget: (id: string) => api.v1<Record<string, unknown>>(`/agents/${id}/widget`),
+  updateWidget: (id: string, body: Record<string, unknown>) =>
+    api.v1<Record<string, unknown>>(`/agents/${id}/widget`, { method: "PATCH", body })
 };
 
 export const knowledgeApi = {
@@ -61,8 +64,51 @@ export const knowledgeApi = {
       formData: form
     });
   },
+  /** XHR upload with progress events (same endpoint as upload). */
+  uploadWithProgress: (
+    baseId: string,
+    file: File,
+    onProgress?: (percent: number) => void
+  ): Promise<unknown> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const url = `${apiPaths.v2}/knowledge/upload?knowledge_base_id=${encodeURIComponent(baseId)}`;
+      xhr.open("POST", url);
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("tht_access_token") : null;
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable || !onProgress) return;
+        onProgress(Math.round((ev.loaded / ev.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(xhr.responseText ? JSON.parse(xhr.responseText) : {});
+          } catch {
+            resolve({});
+          }
+          return;
+        }
+        let message = `Upload failed (${xhr.status})`;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          message = body?.error || body?.detail || body?.message || message;
+          if (typeof body?.detail === "object" && body.detail?.error) message = body.detail.error;
+        } catch {
+          /* ignore */
+        }
+        reject(new Error(typeof message === "string" ? message : `Upload failed (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error("Upload network error"));
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
+    });
+  },
   deleteDocument: (_baseId: string, docId: string) =>
     api.v2(`/knowledge/documents/${docId}`, { method: "DELETE" }),
+  attach: (kbId: string, agentId: string) =>
+    api.v2<{ message?: string }>(`/knowledge/bases/${kbId}/agents/${agentId}`, { method: "POST" }),
   search: (baseId: string, q: string) =>
     api.v2<{ results: Array<{ text: string; score?: number; document_name?: string }> }>(
       "/knowledge/search",
@@ -152,6 +198,8 @@ export const conversationsApi = {
     const qs = sp.toString();
     return api.v2<Conversation[]>(`/conversations${qs ? `?${qs}` : ""}`);
   },
+  create: (body: { agent_id: string; title?: string; channel?: string }) =>
+    api.v2<Conversation>("/conversations", { method: "POST", body }),
   get: (id: string, markRead = true) =>
     api.v2<ConversationDetail>(`/conversations/${id}?mark_read=${markRead ? "true" : "false"}`),
   update: (
@@ -454,7 +502,10 @@ export const marketplaceApi = {
     api.v1(`/marketplace/templates/${encodeURIComponent(idOrSlug)}/favorite`, { method: "DELETE" }),
   installed: () => api.v1<Installation[]>("/marketplace/installed"),
   updates: () => api.v1<UpdateNotification[]>("/marketplace/updates"),
-  install: (idOrSlug: string, body?: { create_api_key?: boolean; config_overrides?: Record<string, unknown> }) =>
+  install: (
+    idOrSlug: string,
+    body?: { create_api_key?: boolean; config_overrides?: Record<string, unknown>; agent_id?: string }
+  ) =>
     api.v1<Installation>(`/marketplace/templates/${encodeURIComponent(idOrSlug)}/install`, {
       method: "POST",
       body: body || { create_api_key: false }
@@ -659,4 +710,157 @@ export const aiProvidersApi = {
   health: () => api.v1<AiProviderHealthMap>("/ai/health"),
   models: (provider: string) =>
     api.v1<AiProviderModelsResponse>(`/ai/models?provider=${encodeURIComponent(provider)}`)
+};
+
+/** Customer onboarding facade — delegates to existing platform services */
+export type OnboardingSession = {
+  id: string;
+  resume_token: string;
+  user_id: string;
+  company_id: string;
+  status: "in_progress" | "paused" | "completed" | "abandoned";
+  current_step: string;
+  completed_steps: string[];
+  skipped_steps: string[];
+  draft_data: Record<string, unknown>;
+  resource_ids: Record<string, unknown>;
+  checklist: Array<{
+    step: string;
+    title: string;
+    optional: boolean;
+    status: string;
+    estimated_minutes: number;
+    integration: string;
+  }>;
+  progress: {
+    current_step: string;
+    current_order: number;
+    total_steps: number;
+    completed_count: number;
+    skipped_count: number;
+    percent_complete: number;
+    estimated_minutes_total: number;
+    estimated_minutes_remaining: number;
+    status: string;
+  };
+  started_at: string;
+  last_active_at: string;
+  paused_at?: string | null;
+  completed_at?: string | null;
+  last_error?: string | null;
+};
+
+export type OnboardingStepAction = {
+  session: OnboardingSession;
+  result: Record<string, unknown>;
+  next_step?: string | null;
+};
+
+export type StartOnboardingResponse = {
+  session: OnboardingSession;
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  expires_in: number;
+  next_actions: string[];
+};
+
+export const onboardingApi = {
+  flow: () =>
+    api.v1<{
+      steps: Array<Record<string, unknown>>;
+      total_estimated_minutes: number;
+      optional_steps: string[];
+      integrations: string[];
+    }>("/onboarding/flow", { auth: false }),
+  start: (body: {
+    account: {
+      email: string;
+      password: string;
+      first_name: string;
+      last_name: string;
+    };
+    company: {
+      name: string;
+      slug: string;
+      display_name?: string;
+      industry?: string;
+      timezone?: string;
+    };
+    send_verification?: boolean;
+  }) =>
+    api.v1<StartOnboardingResponse>("/onboarding/start", {
+      method: "POST",
+      auth: false,
+      body
+    }),
+  me: () => api.v1<OnboardingSession>("/onboarding/me"),
+  autosave: (body: { step?: string; draft: Record<string, unknown> }) =>
+    api.v1<OnboardingSession>("/onboarding/me/autosave", { method: "POST", body }),
+  pause: () => api.v1<OnboardingSession>("/onboarding/me/pause", { method: "POST" }),
+  resume: () => api.v1<OnboardingSession>("/onboarding/me/resume", { method: "POST" }),
+  completeStep: (step: string, data: Record<string, unknown> = {}) =>
+    api.v1<OnboardingStepAction>(`/onboarding/me/steps/${encodeURIComponent(step)}/complete`, {
+      method: "POST",
+      body: { data }
+    }),
+  skipStep: (step: string, reason?: string) =>
+    api.v1<OnboardingStepAction>(`/onboarding/me/steps/${encodeURIComponent(step)}/skip`, {
+      method: "POST",
+      body: { reason: reason || null }
+    }),
+  uploadKnowledge: (file: File, knowledgeBaseId?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    const qs = knowledgeBaseId
+      ? `?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`
+      : "";
+    return api.v1<OnboardingStepAction>(`/onboarding/me/knowledge/upload${qs}`, {
+      method: "POST",
+      formData: form
+    });
+  },
+  uploadKnowledgeWithProgress: (
+    file: File,
+    onProgress?: (percent: number) => void,
+    knowledgeBaseId?: string
+  ): Promise<OnboardingStepAction> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const qs = knowledgeBaseId
+        ? `?knowledge_base_id=${encodeURIComponent(knowledgeBaseId)}`
+        : "";
+      xhr.open("POST", `${apiPaths.v1}/onboarding/me/knowledge/upload${qs}`);
+      const token =
+        typeof window !== "undefined" ? window.localStorage.getItem("tht_access_token") : null;
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable || !onProgress) return;
+        onProgress(Math.round((ev.loaded / ev.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(xhr.responseText ? JSON.parse(xhr.responseText) : ({} as OnboardingStepAction));
+          } catch {
+            reject(new Error("Invalid upload response"));
+          }
+          return;
+        }
+        let message = `Upload failed (${xhr.status})`;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          message = body?.error || body?.detail || body?.message || message;
+          if (typeof body?.detail === "object" && body.detail?.error) message = body.detail.error;
+        } catch {
+          /* ignore */
+        }
+        reject(new Error(typeof message === "string" ? message : `Upload failed (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error("Upload network error"));
+      const form = new FormData();
+      form.append("file", file);
+      xhr.send(form);
+    });
+  }
 };

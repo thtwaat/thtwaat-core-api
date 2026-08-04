@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { loginSchema } from "@/lib/validators";
+import { onboardingApi } from "@/lib/services";
+import { ApiError } from "@/lib/api";
 import type { z } from "zod";
 
 type FormValues = z.infer<typeof loginSchema>;
@@ -25,6 +27,21 @@ function safeNextPath(raw: string | null): string {
     return "/app";
   }
   return raw;
+}
+
+async function postLoginDestination(preferred: string): Promise<string> {
+  try {
+    let session = await onboardingApi.me();
+    if (session.status === "paused") {
+      session = await onboardingApi.resume();
+    }
+    if (session.status === "in_progress") return "/app/onboarding";
+  } catch (err) {
+    if (!(err instanceof ApiError && (err.status === 404 || err.status === 409))) {
+      /* fall through to preferred destination */
+    }
+  }
+  return preferred === "/app" || preferred.startsWith("/app/") ? preferred : "/app";
 }
 
 function LoginForm() {
@@ -44,7 +61,8 @@ function LoginForm() {
         return;
       }
       toast.success("Welcome back");
-      router.replace(safeNextPath(params.get("next")));
+      const dest = await postLoginDestination(safeNextPath(params.get("next")));
+      router.replace(dest);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Login failed");
     }
@@ -55,7 +73,8 @@ function LoginForm() {
     try {
       await completeMfa(mfaToken, totp);
       toast.success("MFA verified");
-      router.replace(safeNextPath(params.get("next")));
+      const dest = await postLoginDestination(safeNextPath(params.get("next")));
+      router.replace(dest);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Invalid MFA code");
     }

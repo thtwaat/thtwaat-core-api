@@ -21,11 +21,13 @@ import {
   Webhook,
   X
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
 import { canAccessAdmin, canManageWebhooks, canViewProviders } from "@/lib/permissions";
 import { site } from "@/lib/config";
 import { cn } from "@/lib/utils";
+import { ApiError } from "@/lib/api";
+import { onboardingApi } from "@/lib/services";
 import { Button } from "@/components/ui/button";
 
 const baseNav = [
@@ -49,6 +51,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const { user, logout, loading } = useAuth();
   const [open, setOpen] = useState(false);
+  const onOnboarding = pathname.startsWith("/app/onboarding");
 
   const nav = useMemo(() => {
     const filtered = baseNav.filter((item) => {
@@ -71,6 +74,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     return withAdmin;
   }, [user?.role]);
 
+  useEffect(() => {
+    if (!user || loading || onOnboarding) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const session = await onboardingApi.me();
+        if (cancelled) return;
+        if (session.status === "in_progress") {
+          router.replace("/app/onboarding");
+        }
+      } catch (err) {
+        if (err instanceof ApiError && (err.status === 404 || err.status === 409)) return;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [user, loading, onOnboarding, router]);
+
   if (loading) {
     return (
       <div className="grid min-h-screen place-items-center bg-canvas text-sm text-muted">Loading workspace…</div>
@@ -85,6 +107,10 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   async function onLogout() {
     await logout();
     router.replace("/login");
+  }
+
+  if (onOnboarding) {
+    return <div className="min-h-screen bg-canvas">{children}</div>;
   }
 
   const Sidebar = (
