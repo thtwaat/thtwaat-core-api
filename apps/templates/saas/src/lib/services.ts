@@ -1,6 +1,9 @@
 import { api } from "@/lib/api";
 import type {
   Agent,
+  AiProviderHealthMap,
+  AiProviderModelsResponse,
+  AiProvidersList,
   Company,
   Conversation,
   Domain,
@@ -609,4 +612,12 @@ export const productGeneratorApi = {
       method: "POST",
       body: { hostname: hostname || null }
     })
+};
+
+/** AI Gateway provider status — read-only management surface */
+export const aiProvidersApi = {
+  list: () => api.v1<AiProvidersList>("/ai/providers"),
+  health: () => api.v1<AiProviderHealthMap>("/ai/health"),
+  models: (provider: string) =>
+    api.v1<AiProviderModelsResponse>(`/ai/models?provider=${encodeURIComponent(provider)}`)
 };

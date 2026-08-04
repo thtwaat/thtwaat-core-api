@@ -23,3 +23,8 @@ export function canAccessAdmin(role?: string | null): boolean {
 export function canManageWebhooks(role?: string | null): boolean {
   return canManageTemplates(role);
 }
+
+/** AI provider status board — same operator roles as integrations */
+export function canViewProviders(role?: string | null): boolean {
+  return canManageTemplates(role);
+}

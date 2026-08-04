@@ -6,6 +6,7 @@ import {
   BarChart3,
   Bot,
   CreditCard,
+  Cpu,
   Globe2,
   LayoutDashboard,
   Library,
@@ -21,7 +22,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { useAuth } from "@/lib/auth";
-import { canAccessAdmin, canManageWebhooks } from "@/lib/permissions";
+import { canAccessAdmin, canManageWebhooks, canViewProviders } from "@/lib/permissions";
 import { site } from "@/lib/config";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -32,6 +33,7 @@ const baseNav = [
   { href: "/app/agents", label: "Agents", icon: Bot },
   { href: "/app/knowledge", label: "Knowledge", icon: Library },
   { href: "/app/templates", label: "Marketplace", icon: Store },
+  { href: "/app/providers", label: "AI Providers", icon: Cpu, requireProviders: true as const },
   { href: "/app/domains", label: "Domains", icon: Globe2 },
   { href: "/app/webhooks", label: "Webhooks", icon: Webhook, requireWebhooks: true as const },
   { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
@@ -50,6 +52,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const filtered = baseNav.filter((item) => {
       if ("requireWebhooks" in item && item.requireWebhooks) {
         return canManageWebhooks(user?.role);
+      }
+      if ("requireProviders" in item && item.requireProviders) {
+        return canViewProviders(user?.role);
       }
       return true;
     });

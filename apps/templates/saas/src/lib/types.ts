@@ -72,6 +72,26 @@ export type KnowledgeDocument = {
   file_size_bytes?: number;
 };
 
+/** AI Gateway provider list — GET /api/v1/ai/providers */
+export type AiProvidersList = {
+  providers: string[];
+  default: string;
+};
+
+/** GET /api/v1/ai/health — map of provider → configured | unconfigured | error */
+export type AiProviderHealthMap = Record<string, string>;
+
+export type AiProviderModel = {
+  id?: string;
+  name?: string;
+  [key: string]: unknown;
+};
+
+export type AiProviderModelsResponse = {
+  provider: string;
+  models: AiProviderModel[] | string[];
+};
+
 export type Domain = {
   id: string;
   hostname: string;
