@@ -42,6 +42,11 @@ class PublishProductRequest(BaseModel):
     hostname: Optional[str] = None
 
 
+REUSE_EXISTING_MESSAGE = (
+    "Template already installed. Opening your existing AI workspace."
+)
+
+
 class ProductGenerationResponse(BaseModel):
     id: UUID
     company_id: UUID
@@ -65,6 +70,9 @@ class ProductGenerationResponse(BaseModel):
     deployment_checklist: List[Dict[str, Any]] = Field(default_factory=list)
     result: Dict[str, Any] = Field(default_factory=dict)
     failure_reason: Optional[str] = None
+    # Idempotent reuse when marketplace template is already installed for the company
+    already_installed: bool = False
+    reuse_message: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

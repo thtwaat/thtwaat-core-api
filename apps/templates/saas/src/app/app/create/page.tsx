@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -8,10 +9,15 @@ import {
   type ProductGeneration,
   productGeneratorApi
 } from "@/lib/services";
-import { formatDate } from "@/lib/utils";
+import {
+  isAlreadyInstalledGeneration,
+  productReuseLinks,
+  reuseMessageFor
+} from "@/lib/product-generator-reuse";
+import { cn, formatDate } from "@/lib/utils";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
 import { Badge, Card, CardHeader } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Input, Textarea } from "@/components/ui/input";
 import {
   BarChart3,
@@ -122,6 +128,46 @@ function AnalysisCard({ analysis, onProceed, generating }: {
   );
 }
 
+function ExistingWorkspaceCard({ gen }: { gen: ProductGeneration }) {
+  const links = productReuseLinks(gen);
+  const message = reuseMessageFor(gen);
+  const [title, detail] = message.includes(".")
+    ? [message.split(".")[0] + ".", message.split(".").slice(1).join(".").trim()]
+    : [message, ""];
+
+  return (
+    <Card className="border-brand/30 bg-brand-soft/40">
+      <CardHeader
+        title={title || "Template already installed."}
+        description={detail || "Opening your existing AI workspace."}
+      />
+      <div className="flex flex-wrap gap-2">
+        <Link
+          href={links.agentHref || "/app/agents"}
+          className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+        >
+          Open Agent
+        </Link>
+        <Link
+          href={links.knowledgeHref || "/app/knowledge"}
+          className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+        >
+          Open Knowledge
+        </Link>
+        <Link
+          href={links.widgetHref || "/app/publish"}
+          className={cn(buttonVariants({ variant: "secondary", size: "sm" }))}
+        >
+          Open Widget
+        </Link>
+        <Link href={links.continueHref} className={cn(buttonVariants({ size: "sm" }))}>
+          Continue Editing
+        </Link>
+      </div>
+    </Card>
+  );
+}
+
 function ProductCard({ gen, onPublish, publishing }: {
   gen: ProductGeneration;
   onPublish: (id: string) => void;
@@ -129,6 +175,7 @@ function ProductCard({ gen, onPublish, publishing }: {
 }) {
   const [apiKeyCopied, setApiKeyCopied] = useState(false);
   const tone = STATUS_TONE[gen.status] ?? "neutral";
+  const reused = isAlreadyInstalledGeneration(gen);
 
   function copyKey() {
     if (!gen.api_key) return;
@@ -140,9 +187,12 @@ function ProductCard({ gen, onPublish, publishing }: {
 
   return (
     <div className="space-y-4">
+      {reused ? <ExistingWorkspaceCard gen={gen} /> : null}
+
       {/* Status bar */}
       <div className="flex flex-wrap items-center gap-3">
         <Badge tone={tone}>{gen.status.replace("_", " ")}</Badge>
+        {reused ? <Badge tone="brand">Existing workspace</Badge> : null}
         {gen.template_slug && <span className="text-sm text-muted">Template: {gen.template_slug}</span>}
         {gen.preview_url && (
           <a href={gen.preview_url} target="_blank" rel="noreferrer" className="flex items-center gap-1 text-sm text-brand hover:underline">
@@ -315,8 +365,12 @@ export default function ProductGeneratorPage() {
     }),
     onSuccess: (data) => {
       setGeneration(data);
-      setStep(data.status === "preview_ready" ? "preview" : "generate");
-      if (data.api_key) toast.message(`API key — copy now: ${data.api_key}`, { duration: 20000 });
+      setStep(data.status === "preview_ready" || data.status === "published" ? "preview" : "generate");
+      if (isAlreadyInstalledGeneration(data)) {
+        toast.message(reuseMessageFor(data).replace(". ", ".\n"), { duration: 8000 });
+      } else if (data.api_key) {
+        toast.message(`API key — copy now: ${data.api_key}`, { duration: 20000 });
+      }
       qc.invalidateQueries({ queryKey: ["gen-history"] });
     },
     onError: (e: Error) => toast.error(e.message)

@@ -714,6 +714,8 @@ export type ProductGeneration = {
   deployment_checklist: Array<{ key: string; label: string; done: boolean; href?: string | null }>;
   result: Record<string, unknown>;
   failure_reason?: string | null;
+  already_installed?: boolean;
+  reuse_message?: string | null;
   created_at: string;
   updated_at: string;
 };

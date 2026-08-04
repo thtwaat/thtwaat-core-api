@@ -27,6 +27,7 @@ from app.product_generator.analyzer import (
 )
 from app.product_generator.models import ProductGeneration, ProductGenerationStatus
 from app.product_generator.schemas import (
+    REUSE_EXISTING_MESSAGE,
     AnalysisResponse,
     GenerateRequest,
     ProductGenerationResponse,
@@ -157,6 +158,21 @@ class ProductGeneratorService:
             # STEP 4 config early (needed for agent prompt)
             config = build_product_config(analysis, payload.config_overrides)
             job.product_config = config
+
+            # Idempotent: marketplace blocks duplicate installs (409). Reuse existing
+            # agent/KB/widget instead of provisioning duplicates.
+            existing_install = self.marketplace.repo.get_install_for_template(
+                company_id, template.id
+            )
+            if existing_install:
+                return self._reuse_existing_install(
+                    job,
+                    company_id=company_id,
+                    template=template,
+                    install=existing_install,
+                    analysis=analysis,
+                    config=config,
+                )
 
             # STEP 3 — Provision resources
             job.status = ProductGenerationStatus.PROVISIONING
@@ -477,6 +493,106 @@ class ProductGeneratorService:
                 return items[0]
         return None
 
+    def _reuse_existing_install(
+        self,
+        job: ProductGeneration,
+        *,
+        company_id: UUID,
+        template,
+        install,
+        analysis,
+        config: Dict[str, Any],
+    ) -> ProductGenerationResponse:
+        """Map an existing marketplace install onto a generation job (no new resources)."""
+        from app.agent_platform.knowledge.models.knowledge_base import KnowledgeBaseAgent
+
+        job.template_id = template.id
+        job.template_slug = template.slug
+        job.installation_id = install.id
+        job.agent_id = install.agent_id
+        job.api_key_id = install.api_key_id
+        job.api_key_prefix = install.api_key_prefix
+        job.domain_id = install.domain_id
+
+        kb_id = None
+        cfg = install.config or {}
+        raw_kb = cfg.get("knowledge_base_id") or (cfg.get("bindings") or {}).get("knowledge_base_id")
+        if raw_kb:
+            try:
+                kb_id = UUID(str(raw_kb))
+            except (TypeError, ValueError):
+                kb_id = None
+
+        agent = None
+        if install.agent_id:
+            agent = (
+                self.db.query(AgentConfig)
+                .filter(
+                    AgentConfig.id == install.agent_id,
+                    AgentConfig.company_id == company_id,
+                )
+                .first()
+            )
+        if agent:
+            job.widget_id = agent.widget_id
+            if not kb_id:
+                attach = (
+                    self.db.query(KnowledgeBaseAgent)
+                    .filter(KnowledgeBaseAgent.agent_id == agent.id)
+                    .order_by(KnowledgeBaseAgent.created_at.desc())
+                    .first()
+                )
+                if attach:
+                    kb_id = attach.knowledge_base_id
+            try:
+                embed = self.publish.get_embed_snippets(agent.id, company_id)
+                job.preview_url = embed.preview_url or self.publish.build_public_chat_url()
+                job.widget_snippet = embed.script
+                if not job.widget_id:
+                    job.widget_id = embed.widget_id
+            except Exception as exc:
+                logger.warning("reuse embed skipped: %s", exc)
+
+        job.knowledge_base_id = kb_id
+        published = bool(install.published_at)
+        job.product_config = {
+            **config,
+            "reused_installation": True,
+            "bindings": {
+                "agent_id": str(job.agent_id) if job.agent_id else None,
+                "knowledge_base_id": str(job.knowledge_base_id) if job.knowledge_base_id else None,
+                "widget_id": job.widget_id,
+                "installation_id": str(install.id),
+                "api_key_id": str(job.api_key_id) if job.api_key_id else None,
+                "domain_id": str(job.domain_id) if job.domain_id else None,
+                "supports_billing": bool(getattr(template, "supports_billing", False)),
+                "supports_domains": bool(getattr(template, "supports_domains", False)),
+            },
+        }
+        job.status = ProductGenerationStatus.PREVIEW_READY
+        job.publish_status = "PUBLISHED" if published else "preview_ready"
+        job.deployment_checklist = self._checklist(job, published=published)
+        job.failure_reason = None
+        job.result = {
+            "already_installed": True,
+            "reuse_message": REUSE_EXISTING_MESSAGE,
+            "preview_url": job.preview_url,
+            "publish_status": job.publish_status,
+            "widget": {
+                "widget_id": job.widget_id,
+                "snippet": job.widget_snippet,
+            },
+            "api_key_prefix": job.api_key_prefix,
+            "agent_id": str(job.agent_id) if job.agent_id else None,
+            "installation_id": str(install.id),
+            "knowledge_base_id": str(job.knowledge_base_id) if job.knowledge_base_id else None,
+        }
+        # analysis already set by caller
+        _ = analysis
+        self.db.commit()
+        self.db.refresh(job)
+        return self._to_response(job, include_api_key=False)
+
     def _create_agent(self, company_id: UUID, config: Dict[str, Any]) -> AgentConfig:
         current_count = (
             self.db.query(AgentConfig).filter(AgentConfig.company_id == company_id).count()
@@ -616,6 +732,8 @@ class ProductGeneratorService:
             deployment_checklist=list(job.deployment_checklist or []),
             result=dict(job.result or {}),
             failure_reason=job.failure_reason,
+            already_installed=bool((job.result or {}).get("already_installed")),
+            reuse_message=(job.result or {}).get("reuse_message"),
             created_at=job.created_at,
             updated_at=job.updated_at,
         )

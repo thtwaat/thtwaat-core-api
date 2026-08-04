@@ -169,6 +169,67 @@ def test_generate_orchestrates_agent_and_kb(client, db_session):
         assert "deployment_checklist" in out
 
 
+def test_generate_reuses_existing_template_install(client, db_session):
+    """Second assemble for the same package must not 409; reuse agent/install."""
+    headers, company_id = _auth(client)
+    _enable(db_session, company_id)
+    _seed(db_session)
+
+    first = client.post(
+        "/api/v1/product-generator/generate",
+        json={
+            "prompt": "School admission portal with AI FAQ assistant",
+            "auto_publish": False,
+        },
+        headers=headers,
+    )
+    assert first.status_code == 201, first.text
+    first_body = first.json()
+    if first_body.get("status") != "preview_ready":
+        pytest.skip(f"First generate ended in {first_body.get('status')}: {first_body.get('failure_reason')}")
+
+    agent_id = first_body["agent_id"]
+    install_id = first_body["installation_id"]
+    template_slug = first_body["template_slug"]
+    assert agent_id and install_id and template_slug
+
+    from app.agent_platform.models.agent import AgentConfig
+
+    agents_before = (
+        db_session.query(AgentConfig)
+        .filter(AgentConfig.company_id == uuid.UUID(company_id))
+        .count()
+    )
+
+    second = client.post(
+        "/api/v1/product-generator/generate",
+        json={
+            "prompt": "School admission portal with AI FAQ assistant",
+            "template_slug": template_slug,
+            "auto_publish": False,
+        },
+        headers=headers,
+    )
+    assert second.status_code == 201, second.text
+    body = second.json()
+    assert body["status"] == "preview_ready"
+    assert body.get("already_installed") is True
+    assert "Opening your existing AI workspace" in (body.get("reuse_message") or "")
+    assert body["agent_id"] == agent_id
+    assert body["installation_id"] == install_id
+    assert body["template_slug"] == template_slug
+    assert body.get("failure_reason") in (None, "")
+
+    agents_after = (
+        db_session.query(AgentConfig)
+        .filter(AgentConfig.company_id == uuid.UUID(company_id))
+        .count()
+    )
+    assert agents_after == agents_before
+
+
+# ── Publish ───────────────────────────────────────────────────────────────────
+
 def test_generate_and_publish(client, db_session):
     headers, company_id = _auth(client)
     _enable(db_session, company_id)
