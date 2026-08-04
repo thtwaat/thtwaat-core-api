@@ -108,6 +108,7 @@ services:
       - thtwaat_net
     command: >
       bash -c "alembic upgrade head &&
+               python -m scripts.seed_marketplace --no-refresh &&
                uvicorn main:app --host 0.0.0.0 --port 8000 --proxy-headers --forwarded-allow-ips='172.16.0.0/12,10.0.0.0/8,192.168.0.0/16,127.0.0.1'"
     depends_on:
       db:

@@ -70,6 +70,22 @@ async def lifespan(app: FastAPI):
     
     redis_connection = redis.from_url(f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", encoding="utf-8", decode_responses=True)
     await FastAPILimiter.init(redis_connection)
+
+    # Marketplace catalog lives in JSON/SQL seeds — schema migrations do not INSERT it.
+    # Without this (or `python -m scripts.seed_marketplace`), Browse only shows manually
+    # created rows (the production "2 junk templates" symptom).
+    if getattr(settings, "MARKETPLACE_AUTO_SEED_ON_STARTUP", True):
+        try:
+            from app.marketplace.seed import ensure_marketplace_catalog_seeded
+
+            stats = ensure_marketplace_catalog_seeded()
+            print(
+                "Marketplace catalog seed: "
+                f"created={stats.created} upgraded={stats.upgraded} "
+                f"updated={stats.updated} skipped={stats.skipped}"
+            )
+        except Exception as exc:  # noqa: BLE001 — never block API boot on seed failure
+            print(f"Marketplace catalog seed skipped/failed: {exc}")
     
     yield
     # Shutdown event: Close connections, clean up resources, etc.

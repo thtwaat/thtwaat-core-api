@@ -93,9 +93,43 @@ def seed_marketplace_catalog(
     return merge_stats(*parts) if parts else SeedStats()
 
 
+def ensure_marketplace_catalog_seeded(
+    db: Session | None = None,
+    *,
+    refresh_same_version: bool | None = None,
+) -> SeedStats:
+    """Idempotently load package + prompt catalog into the DB (startup / deploy).
+
+    Safe to call on every boot: existing slugs are skipped unless versions differ.
+    """
+    from app.config.settings import settings
+    from app.database.database import SessionLocal
+
+    own_session = db is None
+    session = db or SessionLocal()
+    refresh = (
+        bool(settings.MARKETPLACE_AUTO_SEED_REFRESH_SAME_VERSION)
+        if refresh_same_version is None
+        else bool(refresh_same_version)
+    )
+    try:
+        return seed_marketplace_catalog(
+            session,
+            include_packages=True,
+            include_prompts=True,
+            upgrade=True,
+            refresh_same_version=refresh,
+            dry_run=False,
+        )
+    finally:
+        if own_session:
+            session.close()
+
+
 __all__ = [
     "REQUIRED_PACKAGE_SLUGS",
     "SEED_TEMPLATES",
+    "ensure_marketplace_catalog_seeded",
     "get_seed_templates",
     "seed_marketplace_catalog",
     "seed_marketplace_templates",

@@ -185,6 +185,12 @@ class Settings(BaseSettings):
     WEBHOOK_ALLOW_HTTP_URLS: bool = False
     WEBHOOK_URL_RESOLVE_DNS: bool = True
 
+    # Marketplace catalog — idempotent seed of JSON package + prompt starters on boot.
+    # Production Browse was empty because alembic creates schema only; without this
+    # (or `python -m scripts.seed_marketplace`) the DB never receives the catalog.
+    MARKETPLACE_AUTO_SEED_ON_STARTUP: bool = True
+    MARKETPLACE_AUTO_SEED_REFRESH_SAME_VERSION: bool = False
+
     # Embeddings (RAG pipeline). Model names are configurable so a retired
     # provider model can be swapped without a code change.
     EMBEDDING_DIMENSIONS: int = 768

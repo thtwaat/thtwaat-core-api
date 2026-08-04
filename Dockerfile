@@ -21,4 +21,5 @@ COPY . .
 EXPOSE 8000
 
 # JSON-form CMD (hadolint DL3025); shell via sh -c keeps ${PORT} expansion
-CMD ["sh", "-c", "alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Seed marketplace catalog after migrations — alembic alone leaves Browse empty.
+CMD ["sh", "-c", "alembic upgrade head && python -m scripts.seed_marketplace --no-refresh && uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}"]
