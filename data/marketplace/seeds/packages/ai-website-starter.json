@@ -1,0 +1,57 @@
+{
+  "id": "13612b59-e106-518d-9d6c-f1394612b33a",
+  "slug": "ai-website-starter",
+  "name": "AI Website Starter",
+  "description": "Multi-page AI website with chat, knowledge search, blog, and lead capture.",
+  "category": "website",
+  "industry": "general",
+  "icon": "globe",
+  "tags": [
+    "website",
+    "seo",
+    "chat",
+    "leads",
+    "package"
+  ],
+  "package_path": "apps/templates/website",
+  "thumbnail": "/templates/website.png",
+  "supports_billing": false,
+  "featured": true,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "shadcn"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "pages": [
+      "home",
+      "about",
+      "services",
+      "pricing",
+      "blog",
+      "contact",
+      "chat"
+    ],
+    "features": [
+      "widget",
+      "streaming_chat",
+      "knowledge_search",
+      "leads"
+    ]
+  },
+  "changelog": "Initial Website Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

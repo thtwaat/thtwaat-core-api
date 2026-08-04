@@ -1,0 +1,58 @@
+{
+  "id": "c7d0f642-b3e9-5be5-9f1d-d760a03017f1",
+  "slug": "hotel-website-starter",
+  "name": "Hotel Website Starter",
+  "description": "Hospitality website with AI concierge, room enquiry, and booking prompts.",
+  "category": "website",
+  "industry": "hotel",
+  "icon": "hotel",
+  "tags": [
+    "hotel",
+    "hospitality",
+    "booking",
+    "website",
+    "package"
+  ],
+  "package_path": "apps/templates/website",
+  "thumbnail": "/templates/hotel.png",
+  "supports_billing": true,
+  "featured": true,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "shadcn"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "pages": [
+      "home",
+      "rooms",
+      "amenities",
+      "dining",
+      "offers",
+      "contact",
+      "chat"
+    ],
+    "features": [
+      "widget",
+      "streaming_chat",
+      "booking",
+      "leads",
+      "knowledge"
+    ]
+  },
+  "changelog": "Initial Hotel Website Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

@@ -1,0 +1,59 @@
+{
+  "id": "074fc39c-f6ba-50a7-90da-f0fccfc4a20b",
+  "slug": "landing-page-starter",
+  "name": "Landing Page Starter",
+  "description": "High-converting single-page landing with inline AI assistant and demo booking.",
+  "category": "landing",
+  "industry": "growth",
+  "icon": "sparkles",
+  "tags": [
+    "landing",
+    "conversion",
+    "demo",
+    "faq",
+    "package"
+  ],
+  "package_path": "apps/templates/landing",
+  "thumbnail": "/templates/landing.png",
+  "supports_billing": true,
+  "featured": true,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "shadcn"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "sections": [
+      "hero",
+      "ai_chat_cta",
+      "features",
+      "benefits",
+      "pricing",
+      "testimonials",
+      "faq",
+      "book_demo",
+      "contact"
+    ],
+    "features": [
+      "widget",
+      "inline_assistant",
+      "streaming",
+      "leads"
+    ]
+  },
+  "changelog": "Initial Landing Page Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

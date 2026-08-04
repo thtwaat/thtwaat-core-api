@@ -90,20 +90,24 @@ def test_seed_prompt_upgrade_adds_version(db_session, tmp_path):
 
 
 def test_seed_marketplace_catalog_packages_only(db_session):
+    from app.marketplace.seed_loader import load_package_seed_docs
+
+    expected = len(load_package_seed_docs())
     stats = seed_marketplace_catalog(
         db_session,
         include_packages=True,
         include_prompts=False,
         refresh_same_version=False,
     )
-    assert stats.created == 3
+    assert stats.created == expected
     again = seed_marketplace_catalog(
         db_session,
         include_packages=True,
         include_prompts=False,
+        refresh_same_version=False,
     )
     assert again.created == 0
-    assert again.skipped == 3
+    assert again.skipped == expected
 
 
 def test_stable_seed_uuid_used(db_session):

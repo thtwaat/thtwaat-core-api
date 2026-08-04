@@ -1,0 +1,56 @@
+{
+  "id": "e5e0294c-8b8e-5109-b043-74ae80f47264",
+  "slug": "crm-starter",
+  "name": "CRM Starter",
+  "description": "CRM-oriented SaaS shell with pipeline, contacts, and AI sales assistant.",
+  "category": "crm",
+  "industry": "crm",
+  "icon": "contact",
+  "tags": [
+    "crm",
+    "sales",
+    "pipeline",
+    "saas",
+    "package"
+  ],
+  "package_path": "apps/templates/saas",
+  "thumbnail": "/templates/crm.png",
+  "supports_billing": true,
+  "featured": true,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "tanstack-query"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "modules": [
+      "pipeline",
+      "contacts",
+      "deals",
+      "agents",
+      "knowledge",
+      "settings"
+    ],
+    "features": [
+      "widget",
+      "streaming_chat",
+      "leads",
+      "usage_meter"
+    ]
+  },
+  "changelog": "Initial CRM Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

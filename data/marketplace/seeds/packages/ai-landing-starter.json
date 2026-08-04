@@ -1,0 +1,60 @@
+{
+  "id": "f3b6bef2-b4c0-5050-80a1-0a42976cfc1f",
+  "slug": "ai-landing-starter",
+  "name": "AI Landing Page Starter",
+  "description": "Legacy alias of Landing Page Starter — high-converting landing with AI assistant.",
+  "category": "landing",
+  "industry": "growth",
+  "icon": "sparkles",
+  "tags": [
+    "landing",
+    "conversion",
+    "demo",
+    "faq",
+    "package",
+    "legacy"
+  ],
+  "package_path": "apps/templates/landing",
+  "thumbnail": "/templates/landing.png",
+  "supports_billing": true,
+  "featured": false,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "shadcn"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "sections": [
+      "hero",
+      "ai_chat_cta",
+      "features",
+      "benefits",
+      "pricing",
+      "testimonials",
+      "faq",
+      "book_demo",
+      "contact"
+    ],
+    "features": [
+      "widget",
+      "inline_assistant",
+      "streaming",
+      "leads"
+    ]
+  },
+  "changelog": "Alias of landing-page-starter for backward compatibility",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

@@ -9,7 +9,7 @@ import json
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Literal
+from typing import Any, Dict, Iterable, List, Literal, Optional
 from uuid import UUID
 
 from sqlalchemy.orm import Session
@@ -28,6 +28,24 @@ from app.marketplace.service import MarketplaceService
 ROOT = Path(__file__).resolve().parents[2]
 SEEDS_DIR = ROOT / "data" / "marketplace" / "seeds"
 INDEX_PATH = SEEDS_DIR / "index.json"
+PACKAGES_DIR = SEEDS_DIR / "packages"
+PACKAGES_INDEX_PATH = PACKAGES_DIR / "index.json"
+
+# Required production package starters (Product Generator assemble dependency).
+REQUIRED_PACKAGE_SLUGS = frozenset(
+    {
+        "ai-website-starter",
+        "ecommerce-starter",
+        "hotel-website-starter",
+        "restaurant-starter",
+        "portfolio-starter",
+        "blog-starter",
+        "saas-starter",
+        "crm-starter",
+        "documentation-site",
+        "landing-page-starter",
+    }
+)
 
 SeedAction = Literal["created", "upgraded", "updated", "skipped"]
 
@@ -103,6 +121,55 @@ def load_prompt_seed_docs(*, seeds_dir: Path = SEEDS_DIR) -> List[Dict[str, Any]
         doc = json.loads(path.read_text(encoding="utf-8"))
         docs.append(doc)
     return docs
+
+
+def package_doc_to_create(doc: Dict[str, Any]) -> TemplateCreate:
+    visibility = (doc.get("visibility") or "public").lower()
+    return TemplateCreate(
+        slug=doc["slug"],
+        name=doc["name"],
+        category=doc["category"],
+        kind=doc.get("kind") or "package",
+        pricing_tier=doc.get("pricing_tier") or "free",
+        industry=doc.get("industry"),
+        description=doc.get("description") or "",
+        version=doc.get("version") or "1.0.0",
+        thumbnail=doc.get("thumbnail"),
+        icon=doc.get("icon") or "package",
+        tags=list(doc.get("tags") or []),
+        author=doc.get("author") or "THTWAAT",
+        price=Decimal(str(doc.get("price", "0"))),
+        is_public=visibility == "public",
+        is_featured=bool(doc.get("featured", False)),
+        supports_agents=bool(doc.get("supports_agents", True)),
+        supports_domains=bool(doc.get("supports_domains", True)),
+        supports_billing=bool(doc.get("supports_billing", False)),
+        supports_mobile=bool(doc.get("supports_mobile", False)),
+        package_path=doc.get("package_path"),
+        default_config=copy.deepcopy(doc.get("default_config") or {}),
+        changelog=doc.get("changelog") or f"Seed {doc.get('version') or '1.0.0'}",
+        publish=bool(doc.get("publish", visibility == "public")),
+    )
+
+
+def load_package_seed_docs(*, packages_dir: Path = PACKAGES_DIR) -> List[Dict[str, Any]]:
+    index_path = packages_dir / "index.json"
+    if not index_path.exists():
+        raise FileNotFoundError(f"Missing package seed index: {index_path}")
+    index = json.loads(index_path.read_text(encoding="utf-8"))
+    docs: List[Dict[str, Any]] = []
+    for entry in index.get("templates") or []:
+        rel = entry.get("file")
+        if not rel:
+            continue
+        path = packages_dir / rel
+        doc = json.loads(path.read_text(encoding="utf-8"))
+        docs.append(doc)
+    return docs
+
+
+def load_package_seed_payloads(*, packages_dir: Path = PACKAGES_DIR) -> List[TemplateCreate]:
+    return [package_doc_to_create(doc) for doc in load_package_seed_docs(packages_dir=packages_dir)]
 
 
 def _parse_enum(enum_cls, value: str, field_name: str):
@@ -252,25 +319,39 @@ def seed_prompt_templates(
 
 def seed_package_templates(
     db: Session,
-    packages: Iterable[TemplateCreate],
+    packages: Optional[Iterable[TemplateCreate]] = None,
     *,
     upgrade: bool = True,
     dry_run: bool = False,
+    packages_dir: Path = PACKAGES_DIR,
+    refresh_same_version: bool = False,
 ) -> SeedStats:
+    """Idempotently seed package starters from JSON catalog (or explicit payloads)."""
     service = MarketplaceService(db)
     stats = SeedStats()
-    for payload in packages:
+    payloads = list(packages) if packages is not None else load_package_seed_payloads(packages_dir=packages_dir)
+    docs_by_slug = {
+        d["slug"]: d for d in load_package_seed_docs(packages_dir=packages_dir)
+    } if packages is None else {}
+
+    for payload in payloads:
         existing = service.repo.get_by_slug(payload.slug)
         if dry_run:
             if not existing:
                 stats.record(payload.slug, "created")
             elif existing.version != payload.version:
                 stats.record(payload.slug, "upgraded" if upgrade else "skipped")
+            elif refresh_same_version:
+                stats.record(payload.slug, "updated")
             else:
                 stats.record(payload.slug, "skipped")
             continue
         if not existing:
-            service.create_template(payload)
+            doc = docs_by_slug.get(payload.slug)
+            if doc and doc.get("id"):
+                _create_with_stable_id(service, doc, payload)
+            else:
+                service.create_template(payload)
             stats.record(payload.slug, "created")
             continue
         if existing.version != payload.version:
@@ -288,6 +369,15 @@ def seed_package_templates(
                 ),
             )
             stats.record(payload.slug, "upgraded")
+            continue
+        if refresh_same_version:
+            service.update_template(existing.id, _metadata_update(payload))
+            latest = service.repo.get_latest_version(existing.id)
+            if latest and latest.version == payload.version:
+                latest.changelog = payload.changelog or latest.changelog
+                latest.config = copy.deepcopy(payload.default_config or {})
+                service.repo.commit()
+            stats.record(payload.slug, "updated")
             continue
         stats.record(payload.slug, "skipped")
     return stats

@@ -37,20 +37,46 @@ from app.usage.service import UsageService
 
 logger = logging.getLogger(__name__)
 
-# Preferred marketplace slugs by category (seeded templates)
+PACKAGE_TEMPLATE_MISSING = {
+    "error": "Marketplace package template not installed",
+    "code": "PACKAGE_TEMPLATE_MISSING",
+}
+
+# Preferred marketplace package slugs by category (seeded starters).
 CATEGORY_TEMPLATE_SLUGS: Dict[str, List[str]] = {
-    "website": ["ai-website-starter"],
-    "landing": ["ai-landing-starter"],
-    "saas": ["ai-saas-starter"],
-    "crm": ["ai-saas-starter"],
-    "helpdesk": ["ai-saas-starter"],
-    "ecommerce": ["ai-website-starter"],
-    "education": ["ai-saas-starter"],
-    "healthcare": ["ai-saas-starter"],
-    "real_estate": ["ai-landing-starter"],
-    "restaurant": ["ai-website-starter"],
-    "finance": ["ai-saas-starter"],
-    "legal": ["ai-website-starter"],
+    "website": [
+        "ai-website-starter",
+        "hotel-website-starter",
+        "restaurant-starter",
+        "portfolio-starter",
+        "blog-starter",
+        "documentation-site",
+    ],
+    "landing": ["landing-page-starter", "ai-landing-starter"],
+    "saas": ["saas-starter", "ai-saas-starter"],
+    "crm": ["crm-starter", "saas-starter", "ai-saas-starter"],
+    "helpdesk": ["saas-starter", "ai-saas-starter"],
+    "ecommerce": ["ecommerce-starter", "ai-website-starter"],
+    "education": ["saas-starter", "documentation-site", "ai-saas-starter"],
+    "healthcare": ["saas-starter", "ai-saas-starter"],
+    "real_estate": ["landing-page-starter", "ai-landing-starter"],
+    "restaurant": ["restaurant-starter", "ai-website-starter"],
+    "finance": ["saas-starter", "ai-saas-starter"],
+    "legal": ["ai-website-starter", "documentation-site"],
+}
+
+# Industry → preferred package slug (Product Generator assemble discovery).
+INDUSTRY_TEMPLATE_SLUGS: Dict[str, List[str]] = {
+    "hotel": ["hotel-website-starter", "ai-website-starter"],
+    "hospitality": ["hotel-website-starter", "ai-website-starter"],
+    "restaurant": ["restaurant-starter", "ai-website-starter"],
+    "ecommerce": ["ecommerce-starter", "ai-website-starter"],
+    "crm": ["crm-starter", "saas-starter"],
+    "saas": ["saas-starter", "ai-saas-starter"],
+    "creative": ["portfolio-starter", "ai-website-starter"],
+    "content": ["blog-starter", "ai-website-starter"],
+    "developer": ["documentation-site", "ai-website-starter"],
+    "growth": ["landing-page-starter", "ai-landing-starter"],
 }
 
 
@@ -70,7 +96,9 @@ class ProductGeneratorService:
 
     def analyze(self, prompt: str, company_id: Optional[UUID] = None) -> AnalysisResponse:
         analysis = analyze_prompt(prompt)
-        template = self._pick_template(analysis.category, company_id)
+        template = self._pick_template(
+            analysis.category, company_id, industry=analysis.industry
+        )
         return AnalysisResponse(
             **analysis.to_dict(),
             recommended_template_slug=template.slug if template else None,
@@ -114,13 +142,14 @@ class ProductGeneratorService:
             template = None
             if payload.template_slug:
                 template = self.marketplace.repo.get_by_slug(payload.template_slug)
+                if template and getattr(template.kind, "value", template.kind) != "package":
+                    template = None
             if not template:
-                template = self._pick_template(analysis.category, company_id)
-            if not template:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"No marketplace template for category '{analysis.category}'. Seed marketplace first.",
+                template = self._pick_template(
+                    analysis.category, company_id, industry=analysis.industry
                 )
+            if not template:
+                raise HTTPException(status_code=404, detail=PACKAGE_TEMPLATE_MISSING)
             job.template_id = template.id
             job.template_slug = template.slug
             self.db.flush()
@@ -257,7 +286,10 @@ class ProductGeneratorService:
 
         except HTTPException as exc:
             job.status = ProductGenerationStatus.FAILED
-            job.failure_reason = str(exc.detail)
+            if isinstance(exc.detail, dict) and exc.detail.get("error"):
+                job.failure_reason = str(exc.detail["error"])
+            else:
+                job.failure_reason = str(exc.detail)
             self.db.commit()
             raise
         except Exception as exc:
@@ -402,20 +434,48 @@ class ProductGeneratorService:
             raise HTTPException(status_code=404, detail="Product generation not found")
         return job
 
-    def _pick_template(self, category: str, company_id: Optional[UUID]):
+    def _pick_template(
+        self,
+        category: str,
+        company_id: Optional[UUID],
+        *,
+        industry: Optional[str] = None,
+    ):
+        """Discover a published package template for Product Generator assemble.
+
+        Order: industry preferred slugs → category preferred slugs →
+        published packages in category → any featured package → any published package.
+        """
+        _ = company_id
         cat = TYPE_TO_CATEGORY.get(category, category)
-        preferred = CATEGORY_TEMPLATE_SLUGS.get(cat, [])
+        preferred: List[str] = []
+        if industry:
+            preferred.extend(INDUSTRY_TEMPLATE_SLUGS.get(industry, []))
+        preferred.extend(CATEGORY_TEMPLATE_SLUGS.get(cat, []))
+
+        seen: set[str] = set()
         for slug in preferred:
+            if slug in seen:
+                continue
+            seen.add(slug)
             t = self.marketplace.repo.get_by_slug(slug)
-            if t and getattr(t.status, "value", t.status) == "published":
+            if not t:
+                continue
+            if getattr(t.kind, "value", t.kind) != "package":
+                continue
+            if getattr(t.status, "value", t.status) == "published":
                 return t
-        # Fallback: first published in category
-        items = self.marketplace.repo.list_templates(category=cat, limit=5)
-        if items:
-            return items[0]
-        # Absolute fallback: any featured
-        featured = self.marketplace.repo.list_templates(featured=True, limit=1)
-        return featured[0] if featured else None
+
+        # Auto-discover published packages by category, then featured, then any package.
+        for kwargs in (
+            {"category": cat, "kind": "package", "limit": 10},
+            {"kind": "package", "featured": True, "limit": 10},
+            {"kind": "package", "limit": 10},
+        ):
+            items, _total = self.marketplace.repo.list_templates(**kwargs)
+            if items:
+                return items[0]
+        return None
 
     def _create_agent(self, company_id: UUID, config: Dict[str, Any]) -> AgentConfig:
         current_count = (

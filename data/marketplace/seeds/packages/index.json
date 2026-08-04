@@ -1,0 +1,127 @@
+{
+  "version": "1.0.0",
+  "count": 12,
+  "kind": "package",
+  "templates": [
+    {
+      "id": "13612b59-e106-518d-9d6c-f1394612b33a",
+      "slug": "ai-website-starter",
+      "category": "website",
+      "name": "AI Website Starter",
+      "file": "ai-website-starter.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "9c83f7bb-9e02-5419-94be-9dc54e128e9b",
+      "slug": "ecommerce-starter",
+      "category": "ecommerce",
+      "name": "Ecommerce Starter",
+      "file": "ecommerce-starter.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "c7d0f642-b3e9-5be5-9f1d-d760a03017f1",
+      "slug": "hotel-website-starter",
+      "category": "website",
+      "name": "Hotel Website Starter",
+      "file": "hotel-website-starter.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "abae812e-931c-5b03-90fd-d680f766b587",
+      "slug": "restaurant-starter",
+      "category": "restaurant",
+      "name": "Restaurant Starter",
+      "file": "restaurant-starter.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "b90a85ba-ada6-5e5b-8f7c-5ff49b188c64",
+      "slug": "portfolio-starter",
+      "category": "website",
+      "name": "Portfolio Starter",
+      "file": "portfolio-starter.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "17c6ef3f-e40f-5768-b9e5-eeb55c3c5f4a",
+      "slug": "blog-starter",
+      "category": "website",
+      "name": "Blog Starter",
+      "file": "blog-starter.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "48291637-cabe-5931-9f7d-3fd850510fab",
+      "slug": "saas-starter",
+      "category": "saas",
+      "name": "SaaS Starter",
+      "file": "saas-starter.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "e5e0294c-8b8e-5109-b043-74ae80f47264",
+      "slug": "crm-starter",
+      "category": "crm",
+      "name": "CRM Starter",
+      "file": "crm-starter.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "170835ca-adce-5eea-baf1-975233a820d4",
+      "slug": "documentation-site",
+      "category": "website",
+      "name": "Documentation Site",
+      "file": "documentation-site.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "074fc39c-f6ba-50a7-90da-f0fccfc4a20b",
+      "slug": "landing-page-starter",
+      "category": "landing",
+      "name": "Landing Page Starter",
+      "file": "landing-page-starter.json",
+      "featured": true,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "f3b6bef2-b4c0-5050-80a1-0a42976cfc1f",
+      "slug": "ai-landing-starter",
+      "category": "landing",
+      "name": "AI Landing Page Starter",
+      "file": "ai-landing-starter.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "6b67097f-f837-58ab-be80-d7f767a3d59c",
+      "slug": "ai-saas-starter",
+      "category": "saas",
+      "name": "AI SaaS Starter",
+      "file": "ai-saas-starter.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    }
+  ]
+}

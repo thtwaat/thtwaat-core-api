@@ -14,9 +14,15 @@ from sqlalchemy.exc import SQLAlchemyError
 logger = logging.getLogger(__name__)
 
 async def http_exception_handler(request: Request, exc: StarletteHTTPException):
+    detail = exc.detail
+    # Allow structured API errors: {"error": "...", "code": "STRING_CODE"}
+    if isinstance(detail, dict) and "error" in detail:
+        content = dict(detail)
+        content.setdefault("code", exc.status_code)
+        return JSONResponse(status_code=exc.status_code, content=content)
     return JSONResponse(
         status_code=exc.status_code,
-        content={"error": exc.detail, "code": exc.status_code}
+        content={"error": detail, "code": exc.status_code},
     )
 
 async def validation_exception_handler(request: Request, exc: RequestValidationError):

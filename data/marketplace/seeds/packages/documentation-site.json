@@ -1,0 +1,55 @@
+{
+  "id": "170835ca-adce-5eea-baf1-975233a820d4",
+  "slug": "documentation-site",
+  "name": "Documentation Site",
+  "description": "Developer docs site with AI search over knowledge bases and API guides.",
+  "category": "website",
+  "industry": "developer",
+  "icon": "book-open",
+  "tags": [
+    "docs",
+    "documentation",
+    "developer",
+    "website",
+    "package"
+  ],
+  "package_path": "apps/templates/website",
+  "thumbnail": "/templates/docs.png",
+  "supports_billing": false,
+  "featured": false,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "mdx"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "pages": [
+      "home",
+      "docs",
+      "guides",
+      "api",
+      "changelog",
+      "chat"
+    ],
+    "features": [
+      "widget",
+      "streaming_chat",
+      "knowledge_search"
+    ]
+  },
+  "changelog": "Initial Documentation Site release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

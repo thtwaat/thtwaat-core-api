@@ -1,0 +1,57 @@
+{
+  "id": "abae812e-931c-5b03-90fd-d680f766b587",
+  "slug": "restaurant-starter",
+  "name": "Restaurant Starter",
+  "description": "Restaurant website with AI menu assistant, ordering, and table booking.",
+  "category": "restaurant",
+  "industry": "restaurant",
+  "icon": "utensils",
+  "tags": [
+    "restaurant",
+    "menu",
+    "ordering",
+    "booking",
+    "package"
+  ],
+  "package_path": "apps/templates/website",
+  "thumbnail": "/templates/restaurant.png",
+  "supports_billing": true,
+  "featured": true,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "shadcn"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "pages": [
+      "home",
+      "menu",
+      "reservations",
+      "about",
+      "contact",
+      "chat"
+    ],
+    "features": [
+      "widget",
+      "streaming_chat",
+      "ordering",
+      "booking",
+      "leads"
+    ]
+  },
+  "changelog": "Initial Restaurant Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

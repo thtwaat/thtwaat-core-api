@@ -7,6 +7,8 @@ Usage:
   python -m scripts.seed_marketplace --dry-run
   python -m scripts.seed_marketplace --no-upgrade
   python -m scripts.seed_marketplace --no-refresh
+
+Packages are loaded from data/marketplace/seeds/packages/ (JSON + SQL mirrors).
 """
 from __future__ import annotations
 

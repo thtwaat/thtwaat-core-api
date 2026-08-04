@@ -1,0 +1,61 @@
+{
+  "id": "48291637-cabe-5931-9f7d-3fd850510fab",
+  "slug": "saas-starter",
+  "name": "SaaS Starter",
+  "description": "Full SaaS dashboard: auth, agents, knowledge, domains, billing, analytics.",
+  "category": "saas",
+  "industry": "b2b",
+  "icon": "layout-dashboard",
+  "tags": [
+    "saas",
+    "dashboard",
+    "billing",
+    "auth",
+    "package"
+  ],
+  "package_path": "apps/templates/saas",
+  "thumbnail": "/templates/saas.png",
+  "supports_billing": true,
+  "featured": true,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "tanstack-query",
+      "rhf",
+      "zod"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "modules": [
+      "auth",
+      "dashboard",
+      "agents",
+      "knowledge",
+      "domains",
+      "billing",
+      "analytics",
+      "settings",
+      "marketplace"
+    ],
+    "features": [
+      "jwt",
+      "otp",
+      "usage_meter",
+      "publish"
+    ]
+  },
+  "changelog": "Initial SaaS Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

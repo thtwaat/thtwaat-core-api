@@ -1,0 +1,58 @@
+{
+  "id": "9c83f7bb-9e02-5419-94be-9dc54e128e9b",
+  "slug": "ecommerce-starter",
+  "name": "Ecommerce Starter",
+  "description": "AI-assisted ecommerce storefront with catalog, cart flows, and shopping assistant.",
+  "category": "ecommerce",
+  "industry": "ecommerce",
+  "icon": "shopping-bag",
+  "tags": [
+    "ecommerce",
+    "shop",
+    "catalog",
+    "chat",
+    "package"
+  ],
+  "package_path": "apps/templates/website",
+  "thumbnail": "/templates/ecommerce.png",
+  "supports_billing": true,
+  "featured": true,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "shadcn"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "pages": [
+      "home",
+      "shop",
+      "product",
+      "cart",
+      "checkout",
+      "account",
+      "chat"
+    ],
+    "features": [
+      "widget",
+      "streaming_chat",
+      "catalog",
+      "leads",
+      "payments"
+    ]
+  },
+  "changelog": "Initial Ecommerce Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

@@ -1,0 +1,56 @@
+{
+  "id": "17c6ef3f-e40f-5768-b9e5-eeb55c3c5f4a",
+  "slug": "blog-starter",
+  "name": "Blog Starter",
+  "description": "Content-first blog with AI writing assistant and knowledge search.",
+  "category": "website",
+  "industry": "content",
+  "icon": "pen-line",
+  "tags": [
+    "blog",
+    "content",
+    "seo",
+    "website",
+    "package"
+  ],
+  "package_path": "apps/templates/website",
+  "thumbnail": "/templates/blog.png",
+  "supports_billing": false,
+  "featured": false,
+  "default_config": {
+    "stack": [
+      "nextjs15",
+      "tailwind",
+      "shadcn"
+    ],
+    "env": [
+      "NEXT_PUBLIC_API_URL",
+      "NEXT_PUBLIC_AGENT_API_KEY"
+    ],
+    "pages": [
+      "home",
+      "blog",
+      "authors",
+      "topics",
+      "about",
+      "chat"
+    ],
+    "features": [
+      "widget",
+      "streaming_chat",
+      "knowledge_search",
+      "leads"
+    ]
+  },
+  "changelog": "Initial Blog Starter release",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": true,
+  "supports_domains": true,
+  "supports_mobile": false,
+  "publish": true
+}

@@ -12,6 +12,7 @@ from typing import Any, Dict, List, Optional
 
 INDUSTRY_KEYWORDS: Dict[str, List[str]] = {
     "restaurant": ["restaurant", "cafe", "food", "dining", "menu", "ordering", "kitchen", "chef"],
+    "hotel": ["hotel", "resort", "hospitality", "guest", "check-in", "rooms", "concierge"],
     "healthcare": ["clinic", "hospital", "doctor", "patient", "medical", "health", "dental", "pharmacy"],
     "real_estate": ["real estate", "property", "realtor", "housing", "apartment", "listing", "broker"],
     "education": ["school", "university", "college", "admission", "student", "course", "tuition", "campus"],
@@ -77,6 +78,7 @@ TYPE_TO_CATEGORY: Dict[str, str] = {
 
 INDUSTRY_DEFAULT_TYPE: Dict[str, str] = {
     "restaurant": "website",
+    "hotel": "website",
     "healthcare": "saas",
     "real_estate": "landing",
     "education": "saas",
@@ -90,6 +92,7 @@ INDUSTRY_DEFAULT_TYPE: Dict[str, str] = {
 
 INDUSTRY_COLORS: Dict[str, Dict[str, str]] = {
     "restaurant": {"primary": "#C2410C", "accent": "#FDBA74", "theme": "warm"},
+    "hotel": {"primary": "#0F766E", "accent": "#99F6E4", "theme": "light"},
     "healthcare": {"primary": "#0F766E", "accent": "#99F6E4", "theme": "light"},
     "real_estate": {"primary": "#1E3A5F", "accent": "#93C5FD", "theme": "light"},
     "education": {"primary": "#1D4ED8", "accent": "#BFDBFE", "theme": "light"},
