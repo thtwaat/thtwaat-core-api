@@ -7,12 +7,15 @@ __pycache__
 .env.*
 !.env.prod.example
 !.env.production.example
-!.env.test.example
 
-# Local runtime / build artifacts — never send into the image context
-data/
+# Local runtime / build artifacts — never send into the image context.
+# Keep marketplace seed catalogs (JSON) — required by scripts.seed_marketplace
+# and MARKETPLACE_AUTO_SEED_ON_STARTUP. Blanket `data/` hid packages/index.json
+# and left Browse empty in production.
+data/uploads/
+data/knowledge/
+data/backups/
 tmp/
-*.sql
 *.sql.gz
 *.tar.gz
 build-out*.txt

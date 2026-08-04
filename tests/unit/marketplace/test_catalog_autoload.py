@@ -41,19 +41,13 @@ def test_dockerfile_and_compose_run_seed_after_alembic():
 def test_dockerignore_keeps_marketplace_seed_catalog():
     """Production Browse empty when `data/` is blanket-ignored from the image."""
     text = (ROOT / ".dockerignore").read_text(encoding="utf-8")
-    assert "data/marketplace" not in [
-        line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")
-    ] or any(
-        line.strip().startswith("!") and "marketplace" in line
-        for line in text.splitlines()
-    )
-    # Must not ignore the entire data/ tree (that dropped packages/index.json).
     ignored = {
         line.strip()
         for line in text.splitlines()
         if line.strip() and not line.strip().startswith("#") and not line.strip().startswith("!")
     }
     assert "data/" not in ignored
+    assert "data/uploads/" in ignored or "data/uploads" in ignored
     assert (ROOT / "data" / "marketplace" / "seeds" / "packages" / "index.json").exists()
     assert (ROOT / "data" / "marketplace" / "seeds" / "index.json").exists()
 
