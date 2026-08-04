@@ -53,5 +53,6 @@ def test_main_lifespan_wires_auto_seed():
 def test_seed_marketplace_cli_registers_orm_before_session():
     src = (ROOT / "scripts" / "seed_marketplace.py").read_text(encoding="utf-8")
     assert "register_orm_models" in src
-    # Must register before SessionLocal usage to resolve Company.users -> User.
+    # Must register before SessionLocal / marketplace seed import.
     assert src.index("register_orm_models") < src.index("SessionLocal")
+    assert src.index("register_orm_models") < src.index("seed_marketplace_catalog")

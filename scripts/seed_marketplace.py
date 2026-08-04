@@ -15,7 +15,13 @@ from __future__ import annotations
 import argparse
 
 
+# Ensure /app is importable — register ORM before any marketplace/seed imports.
+# (MarketplaceService → UsageService → Company without User breaks mappers.)
 def main() -> None:
+    from app.database.orm_bootstrap import register_orm_models
+
+    register_orm_models()
+
     parser = argparse.ArgumentParser(description="Idempotent marketplace seed (packages + prompts)")
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--prompts-only", action="store_true", help="Seed JSON prompt catalog only")
@@ -33,11 +39,6 @@ def main() -> None:
     )
     parser.add_argument("-v", "--verbose", action="store_true", help="Print per-slug actions")
     args = parser.parse_args()
-
-    # CLI does not load main.py — register Company/User/etc. before any Session.
-    from app.database.orm_bootstrap import register_orm_models
-
-    register_orm_models()
 
     from app.database.database import SessionLocal
     from app.marketplace.seed import seed_marketplace_catalog

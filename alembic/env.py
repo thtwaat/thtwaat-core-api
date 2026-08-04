@@ -6,10 +6,10 @@ from alembic import context
 
 # Import our settings and base metadata
 from app.config.settings import settings
+import app.users.model  # noqa: F401 — User before Company
+import app.apps.model  # noqa: F401 — App before Company
 import app.companies.model
-import app.users.model
 import app.auth.model
-import app.apps.model
 import app.storage.model
 import app.notifications.model
 import app.payments.model

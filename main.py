@@ -19,10 +19,10 @@ from sqlalchemy.exc import SQLAlchemyError
 from prometheus_fastapi_instrumentator import Instrumentator
 
 # Ensure all models are imported before Base.metadata.create_all
+import app.users.model  # noqa: F401 — User before Company relationships resolve
+import app.apps.model  # noqa: F401 — App before Company.apps
 import app.companies.model
-import app.users.model
 import app.auth.model
-import app.apps.model
 import app.storage.model
 import app.notifications.model
 import app.payments.model

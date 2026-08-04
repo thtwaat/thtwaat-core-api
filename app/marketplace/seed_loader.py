@@ -23,7 +23,12 @@ from app.marketplace.models import (
     TemplateVersion,
 )
 from app.marketplace.schemas import TemplateCreate, TemplateUpdate, TemplateVersionCreate
-from app.marketplace.service import MarketplaceService
+
+# NOTE: Do NOT import MarketplaceService at module level.
+# MarketplaceService → UsageService → CompanyRepository → Company, which registers
+# Company.relationship("User") before User is imported and breaks configure_mappers()
+# in CLI/scripts that do not load main.py.
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SEEDS_DIR = ROOT / "data" / "marketplace" / "seeds"
@@ -179,7 +184,7 @@ def _parse_enum(enum_cls, value: str, field_name: str):
         raise ValueError(f"Invalid {field_name}: {value}") from exc
 
 
-def _create_with_stable_id(service: MarketplaceService, doc: Dict[str, Any], payload: TemplateCreate) -> None:
+def _create_with_stable_id(service: Any, doc: Dict[str, Any], payload: TemplateCreate) -> None:
     template = MarketplaceTemplate(
         id=UUID(str(doc["id"])),
         slug=payload.slug,
@@ -245,8 +250,14 @@ def _metadata_update(payload: TemplateCreate) -> TemplateUpdate:
     )
 
 
+def _marketplace_service(db: Session) -> "MarketplaceService":
+    from app.marketplace.service import MarketplaceService
+
+    return MarketplaceService(db)
+
+
 def upsert_prompt_doc(
-    service: MarketplaceService,
+    service: "MarketplaceService",
     doc: Dict[str, Any],
     *,
     upgrade: bool = True,
@@ -294,7 +305,7 @@ def seed_prompt_templates(
     seeds_dir: Path = SEEDS_DIR,
     dry_run: bool = False,
 ) -> SeedStats:
-    service = MarketplaceService(db)
+    service = _marketplace_service(db)
     stats = SeedStats()
     for doc in load_prompt_seed_docs(seeds_dir=seeds_dir):
         if dry_run:
@@ -327,7 +338,7 @@ def seed_package_templates(
     refresh_same_version: bool = False,
 ) -> SeedStats:
     """Idempotently seed package starters from JSON catalog (or explicit payloads)."""
-    service = MarketplaceService(db)
+    service = _marketplace_service(db)
     stats = SeedStats()
     payloads = list(packages) if packages is not None else load_package_seed_payloads(packages_dir=packages_dir)
     docs_by_slug = {
