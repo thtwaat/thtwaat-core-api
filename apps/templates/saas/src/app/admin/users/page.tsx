@@ -3,17 +3,21 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { usersApi } from "@/lib/services";
+import { platformAdminApi, usersApi } from "@/lib/services";
 import { USER_ROLE_OPTIONS } from "@/lib/super-admin";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
-import { Badge } from "@/components/ui/card";
+import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input, Select } from "@/components/ui/input";
+import { Input, Label, Select } from "@/components/ui/input";
 
 export default function AdminUsersPage() {
   const [q, setQ] = useState("");
   const [role, setRole] = useState("");
   const [busy, setBusy] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteCompanyId, setInviteCompanyId] = useState("");
+  const [inviteRole, setInviteRole] = useState("employee");
+  const [tempSecret, setTempSecret] = useState<string | null>(null);
 
   const listQ = useQuery({
     queryKey: ["admin-users", q, role],
@@ -59,9 +63,93 @@ export default function AdminUsersPage() {
     }
   }
 
+  async function resetPassword(id: string) {
+    setBusy(true);
+    try {
+      const res = await platformAdminApi.resetPassword(id);
+      setTempSecret(res.temporary_password);
+      toast.success(`Temporary password issued for ${res.email}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Reset failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function inviteUser() {
+    if (!inviteEmail || !inviteCompanyId) {
+      toast.error("Email and company id are required");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await platformAdminApi.inviteUser({
+        email: inviteEmail,
+        company_id: inviteCompanyId,
+        role: inviteRole
+      });
+      setTempSecret(res.temporary_password);
+      toast.success(`Invited ${inviteEmail}`);
+      setInviteEmail("");
+      await listQ.refetch();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Invite failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Users" description="Search users, change roles, enable or disable accounts." />
+      <PageHeader
+        title="Users"
+        description="Search users, invite, change roles, disable accounts, reset passwords."
+      />
+
+      <Card className="grid gap-3 sm:grid-cols-4">
+        <div>
+          <Label htmlFor="invite-email">Invite email</Label>
+          <Input
+            id="invite-email"
+            value={inviteEmail}
+            onChange={(e) => setInviteEmail(e.target.value)}
+            placeholder="user@company.com"
+          />
+        </div>
+        <div>
+          <Label htmlFor="invite-company">Company ID</Label>
+          <Input
+            id="invite-company"
+            value={inviteCompanyId}
+            onChange={(e) => setInviteCompanyId(e.target.value)}
+            placeholder="uuid"
+          />
+        </div>
+        <div>
+          <Label htmlFor="invite-role">Role</Label>
+          <Select
+            id="invite-role"
+            value={inviteRole}
+            onChange={(e) => setInviteRole(e.target.value)}
+          >
+            {USER_ROLE_OPTIONS.map((r) => (
+              <option key={r} value={r}>
+                {r}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex items-end">
+          <Button className="w-full" disabled={busy} onClick={() => void inviteUser()}>
+            Invite user
+          </Button>
+        </div>
+        {tempSecret && (
+          <p className="sm:col-span-4 rounded-xl bg-canvas p-3 text-sm">
+            Temporary password (copy now): <span className="font-mono">{tempSecret}</span>
+          </p>
+        )}
+      </Card>
 
       <div className="grid gap-3 sm:grid-cols-3">
         <Input
@@ -130,15 +218,30 @@ export default function AdminUsersPage() {
                     </Badge>
                   </td>
                   <td className="px-4 py-3">
-                    {active ? (
-                      <Button size="sm" variant="secondary" disabled={busy} onClick={() => void setActive(id, false)}>
-                        Disable
+                    <div className="flex flex-wrap gap-1">
+                      {active ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() => void setActive(id, false)}
+                        >
+                          Disable
+                        </Button>
+                      ) : (
+                        <Button size="sm" disabled={busy} onClick={() => void setActive(id, true)}>
+                          Enable
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        disabled={busy}
+                        onClick={() => void resetPassword(id)}
+                      >
+                        Reset password
                       </Button>
-                    ) : (
-                      <Button size="sm" disabled={busy} onClick={() => void setActive(id, true)}>
-                        Enable
-                      </Button>
-                    )}
+                    </div>
                   </td>
                 </tr>
               );

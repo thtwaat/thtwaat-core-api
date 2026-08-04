@@ -2,8 +2,12 @@
 
 export const SUPER_ADMIN_NAV = [
   { href: "/admin", label: "Dashboard", exact: true as boolean },
-  { href: "/admin/companies", label: "Companies", exact: false as boolean },
+  { href: "/admin/companies", label: "Workspaces", exact: false as boolean },
   { href: "/admin/users", label: "Users", exact: false as boolean },
+  { href: "/admin/ai", label: "AI Analytics", exact: false as boolean },
+  { href: "/admin/marketplace", label: "Marketplace", exact: false as boolean },
+  { href: "/admin/logs", label: "Logs", exact: false as boolean },
+  { href: "/admin/operations", label: "Operations", exact: false as boolean },
   { href: "/admin/plans", label: "Plans", exact: false as boolean },
   { href: "/admin/health", label: "System Health", exact: false as boolean }
 ] as const;
@@ -44,6 +48,15 @@ export const QUOTA_FIELDS = [
   { key: "max_templates", label: "Max templates" }
 ] as const;
 
+export const LOG_CATEGORIES = [
+  { value: "all", label: "All" },
+  { value: "audit", label: "Audit" },
+  { value: "payment", label: "Payments" },
+  { value: "webhook", label: "Webhooks" },
+  { value: "auth", label: "Authentication" },
+  { value: "ai", label: "AI" }
+] as const;
+
 export function planLabel(plan?: string | null): string {
   const row = COMPANY_PLAN_OPTIONS.find((p) => p.value === plan);
   return row?.label || plan || "—";
@@ -60,7 +73,7 @@ export function healthComponentStatus(component: Record<string, unknown> | undef
 export function healthTone(status: string): "success" | "warn" | "danger" | "neutral" {
   const s = status.toLowerCase();
   if (["ok", "healthy", "up", "configured", "ready"].includes(s)) return "success";
-  if (["degraded", "warn", "warning", "slow"].includes(s)) return "warn";
+  if (["degraded", "warn", "warning", "slow", "backlog"].includes(s)) return "warn";
   if (["error", "down", "unhealthy", "fail", "failed"].includes(s)) return "danger";
   return "neutral";
 }
@@ -72,6 +85,35 @@ export function formatRevenue(amount?: number | null): string {
     currency: "USD",
     maximumFractionDigits: 0
   }).format(Number(amount));
+}
+
+export function formatPct(value?: number | null): string {
+  if (value == null || Number.isNaN(Number(value))) return "—";
+  return `${Number(value).toFixed(1)}%`;
+}
+
+export function downloadAdminExport(payload: {
+  filename: string;
+  content: string;
+  encoding: string;
+  content_type: string;
+}): void {
+  if (typeof window === "undefined") return;
+  let blob: Blob;
+  if (payload.encoding === "base64") {
+    const binary = atob(payload.content);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    blob = new Blob([bytes], { type: payload.content_type });
+  } else {
+    blob = new Blob([payload.content], { type: payload.content_type });
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = payload.filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 export const ADMIN_BACKUP_KEY = "tht_admin_session_backup_v1";

@@ -1291,10 +1291,71 @@ export type SystemHealth = {
   storage: Record<string, unknown>;
   workers: Record<string, unknown>;
   ai_providers: Record<string, unknown>;
+  email_queue?: Record<string, unknown>;
+  background_jobs?: Record<string, unknown>;
+};
+
+export type ExecutiveDashboard = {
+  generated_at: string;
+  workspaces: number;
+  active_users: number;
+  new_signups: number;
+  active_agents: number;
+  knowledge_bases: number;
+  widgets: number;
+  ai_requests: number;
+  token_usage: number;
+  api_usage: number;
+  ai_cost: number;
+  revenue: number;
+  mrr: number;
+  arr: number;
+  active_subscriptions: number;
+  churn: number;
+  conversion_rate: number;
+  signups_24h: number;
+  signups_7d: number;
+  signups_30d: number;
 };
 
 export const platformAdminApi = {
   overview: () => api.v1<PlatformOverview>("/admin/overview"),
+  executive: () => api.v1<ExecutiveDashboard>("/admin/executive"),
+  aiAnalytics: (days = 30) => api.v1<Record<string, unknown>>(`/admin/ai-analytics?days=${days}`),
+  workspaceOps: (companyId: string) =>
+    api.v1<Record<string, unknown>>(`/admin/workspaces/${companyId}/ops`),
+  logs: (category = "all", limit = 50) =>
+    api.v1<{ category: string; total: number; items: Array<Record<string, unknown>> }>(
+      `/admin/logs?category=${encodeURIComponent(category)}&limit=${limit}`
+    ),
+  marketplaceAnalytics: (days = 30) =>
+    api.v1<Record<string, unknown>>(`/admin/marketplace-analytics?days=${days}`),
+  inviteUser: (body: {
+    email: string;
+    company_id: string;
+    role: string;
+    first_name?: string;
+    last_name?: string;
+  }) =>
+    api.v1<{ user: Record<string, unknown>; temporary_password: string; note: string }>(
+      "/admin/users/invite",
+      { method: "POST", body }
+    ),
+  resetPassword: (userId: string) =>
+    api.v1<{ user_id: string; email: string; temporary_password: string }>(
+      `/admin/users/${userId}/reset-password`,
+      { method: "POST" }
+    ),
+  export: (kind: string, format: "csv" | "xlsx" | "pdf" = "csv") =>
+    api.v1<{
+      format: string;
+      filename: string;
+      content_type: string;
+      encoding: string;
+      content: string;
+      row_count: number;
+    }>("/admin/export", { method: "POST", body: { kind, format } }),
+  jobs: (limit = 50) => api.v1<Record<string, unknown>>(`/operations/jobs?limit=${limit}`),
   observability: () => api.v1<Record<string, unknown>>("/monitoring/observability"),
   health: () => api.v1<SystemHealth>("/monitoring/health"),
   impersonateCompany: (company_id: string, reason?: string) =>

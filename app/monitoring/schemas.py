@@ -37,6 +37,8 @@ class SystemHealthResponse(BaseModel):
     storage: Dict[str, Any]
     workers: Dict[str, Any]
     ai_providers: Dict[str, Any] = Field(default_factory=dict)
+    email_queue: Dict[str, Any] = Field(default_factory=dict)
+    background_jobs: Dict[str, Any] = Field(default_factory=dict)
 
 
 class ObservabilityResponse(BaseModel):
@@ -194,6 +196,42 @@ class PlatformReportResponse(BaseModel):
     revenue_summary: Dict[str, Any]
     usage_trends: Dict[str, Any]
     generated_at: datetime
+
+
+class ExecutiveDashboardResponse(BaseModel):
+    generated_at: datetime
+    workspaces: int = 0
+    active_users: int = 0
+    new_signups: int = 0
+    active_agents: int = 0
+    knowledge_bases: int = 0
+    widgets: int = 0
+    ai_requests: int = 0
+    token_usage: int = 0
+    api_usage: int = 0
+    ai_cost: float = 0.0
+    revenue: float = 0.0
+    mrr: float = 0.0
+    arr: float = 0.0
+    active_subscriptions: int = 0
+    churn: float = 0.0
+    conversion_rate: float = 0.0
+    signups_24h: int = 0
+    signups_7d: int = 0
+    signups_30d: int = 0
+
+
+class AdminInviteUserRequest(BaseModel):
+    email: str = Field(..., min_length=3, max_length=255)
+    company_id: UUID
+    role: str = Field(default="employee", min_length=2, max_length=64)
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
+
+
+class AdminExportRequest(BaseModel):
+    kind: str = Field(..., pattern="^(executive|dashboard|ai|ai-analytics|logs|audit|workspaces|companies)$")
+    format: str = Field(default="csv", pattern="^(csv|xlsx|excel|pdf)$")
 
 
 class ImpersonateCompanyRequest(BaseModel):

@@ -83,3 +83,17 @@ Canonical path: `app/payments` + `app/usage` (no parallel `app/billing`).
 - Admin: `GET /api/v1/payments/admin/analytics` (MRR/ARR/revenue/AI costs)
 - Customer UI: `/app/billing` · Admin tab: Billing
 - Migration: `l6f7a8b9c0d1_enterprise_billing`
+
+## Enterprise Admin Analytics & Operations (Phase 7)
+
+Canonical path: `app/monitoring` Super Admin facade (no parallel `app/admin` package).
+
+- Executive KPIs: `GET /api/v1/admin/executive`
+- AI analytics: `GET /api/v1/admin/ai-analytics`
+- Workspace ops: `GET /api/v1/admin/workspaces/{id}/ops`
+- Unified logs: `GET /api/v1/admin/logs`
+- Marketplace rollup: `GET /api/v1/admin/marketplace-analytics`
+- Invite / reset password: `POST /api/v1/admin/users/invite`, `POST /api/v1/admin/users/{id}/reset-password`
+- Export CSV/Excel/PDF: `POST /api/v1/admin/export`
+- SaaS Super Admin: `/admin`, `/admin/ai`, `/admin/logs`, `/admin/marketplace`, `/admin/operations`, workspaces/users/health
+- Migration: none (reuses existing tables)

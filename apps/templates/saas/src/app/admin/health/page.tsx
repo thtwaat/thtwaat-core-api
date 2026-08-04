@@ -24,13 +24,15 @@ export default function AdminHealthPage() {
 
   const data = healthQ.data;
   const components = [
+    ["API", data?.api],
     ["PostgreSQL", data?.database],
     ["Redis", data?.redis],
     ["Workers", data?.workers],
-    ["Queue", data?.queue],
-    ["AI Providers", data?.ai_providers],
-    ["API", data?.api],
-    ["Storage", data?.storage]
+    ["Queue / webhooks", data?.queue],
+    ["Email queue", data?.email_queue],
+    ["Background jobs", data?.background_jobs],
+    ["Storage", data?.storage],
+    ["AI Providers", data?.ai_providers]
   ] as const;
 
   return (

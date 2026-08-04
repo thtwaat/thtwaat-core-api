@@ -20,24 +20,35 @@ Customer `/app` UI was not redesigned. Marketplace remains at `/app/admin`.
 
 ## Routes (SaaS)
 
-- `/admin` — dashboard
-- `/admin/companies`
-- `/admin/users`
-- `/admin/plans`
-- `/admin/health`
+- `/admin` — executive dashboard
+- `/admin/companies` — workspaces (suspend/activate/delete, quotas, billing/AI ops)
+- `/admin/users` — invite, roles, disable, reset password
+- `/admin/ai` — AI analytics
+- `/admin/marketplace` — catalog + publisher moderation
+- `/admin/logs` — unified ops logs
+- `/admin/operations` — jobs / queues
+- `/admin/plans` — plan limits
+- `/admin/health` — system health
 
 Access: authenticated `super_admin` only.
 
-## Key APIs reused
+## Key APIs reused / added (Phase 7)
 
 - `GET /api/v1/admin/overview`
-- `POST /api/v1/admin/impersonate/company` *(new thin facade)*
+- `GET /api/v1/admin/executive` *(Phase 7)*
+- `GET /api/v1/admin/ai-analytics` *(Phase 7)*
+- `GET /api/v1/admin/workspaces/{id}/ops` *(Phase 7)*
+- `GET /api/v1/admin/logs` *(Phase 7)*
+- `GET /api/v1/admin/marketplace-analytics` *(Phase 7)*
+- `POST /api/v1/admin/users/invite` *(Phase 7)*
+- `POST /api/v1/admin/users/{id}/reset-password` *(Phase 7)*
+- `POST /api/v1/admin/export` *(Phase 7 — csv|xlsx|pdf)*
+- `POST /api/v1/admin/impersonate/company`
 - `GET /api/v1/monitoring/health`
-- `GET /api/v1/companies/?q=&status=&plan=&include_inactive=`
-- `PATCH /api/v1/companies/{id}/admin`
-- `GET /api/v1/users/?q=&role=&include_inactive=`
-- `PATCH|DELETE /api/v1/users/{id}`
-- `GET|PATCH /api/v1/payments/plans/`
+- `GET /api/v1/operations/jobs`
+- `GET/PATCH /companies…/admin`
+- `GET/PATCH/DELETE /users`
+- Agent-store moderation + marketplace admin analytics
 
 ## Plan naming
 
@@ -47,7 +58,7 @@ Company enum uses `growth` for the Pro tier. UI labels it **Pro**. Billing plan 
 
 ```bash
 cd apps/templates/saas && npm test -- --run src/lib/super-admin.test.ts
-pytest tests/monitoring/test_monitoring.py tests/companies -q
+pytest tests/monitoring/test_monitoring.py tests/unit/monitoring/test_enterprise_ops.py -q
 ```
 
 ## Notes

@@ -1,8 +1,15 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { platformAdminApi } from "@/lib/services";
-import { formatRevenue, healthComponentStatus, healthTone } from "@/lib/super-admin";
+import {
+  downloadAdminExport,
+  formatPct,
+  formatRevenue,
+  healthComponentStatus,
+  healthTone
+} from "@/lib/super-admin";
 import { PageHeader, Stat, EmptyState } from "@/components/ui/misc";
 import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -15,60 +22,71 @@ function toneClass(tone: string) {
 }
 
 export default function AdminDashboardPage() {
-  const overviewQ = useQuery({ queryKey: ["admin-overview"], queryFn: platformAdminApi.overview });
+  const execQ = useQuery({ queryKey: ["admin-executive"], queryFn: platformAdminApi.executive });
   const healthQ = useQuery({ queryKey: ["admin-health"], queryFn: platformAdminApi.health });
-  const obsQ = useQuery({
-    queryKey: ["admin-observability"],
-    queryFn: platformAdminApi.observability
-  });
 
-  const o = overviewQ.data;
-  const volume = (obsQ.data?.request_volume || {}) as Record<string, unknown>;
-  const apiRequests = Number(volume.total ?? volume.count ?? volume.api_requests ?? 0) || 0;
-  const aiRequests = Number(volume.ai_requests ?? volume.messages ?? o?.product_generations ?? 0) || 0;
+  const e = execQ.data;
+
+  async function exportKind(kind: string, format: "csv" | "xlsx" | "pdf") {
+    try {
+      const payload = await platformAdminApi.export(kind, format);
+      downloadAdminExport(payload);
+      toast.success(`Exported ${payload.filename}`);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Export failed");
+    }
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Super Admin Dashboard"
-        description="Platform overview from existing /admin/overview and /monitoring APIs."
+        title="Executive Dashboard"
+        description="Platform KPIs from /admin/executive — workspaces, AI usage, revenue, churn."
         action={
-          <Button
-            variant="secondary"
-            onClick={() => {
-              void overviewQ.refetch();
-              void healthQ.refetch();
-              void obsQ.refetch();
-            }}
-          >
-            Refresh
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => {
+                void execQ.refetch();
+                void healthQ.refetch();
+              }}
+            >
+              Refresh
+            </Button>
+            <Button variant="secondary" onClick={() => void exportKind("executive", "csv")}>
+              CSV
+            </Button>
+            <Button variant="secondary" onClick={() => void exportKind("executive", "xlsx")}>
+              Excel
+            </Button>
+            <Button variant="secondary" onClick={() => void exportKind("executive", "pdf")}>
+              PDF
+            </Button>
+          </div>
         }
       />
 
-      {(overviewQ.isError || healthQ.isError) && (
-        <EmptyState
-          title="Could not load dashboard"
-          description={(overviewQ.error as Error)?.message || (healthQ.error as Error)?.message}
-        />
+      {execQ.isError && (
+        <EmptyState title="Could not load dashboard" description={(execQ.error as Error)?.message} />
       )}
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <Stat label="Companies" value={String(o?.companies ?? "—")} />
-        <Stat label="Users" value={String(o?.active_users ?? "—")} />
-        <Stat label="Revenue" value={formatRevenue(o?.billing_summary?.revenue_paid)} />
-        <Stat label="Active agents" value={String(o?.published_agents ?? o?.agents ?? "—")} />
-        <Stat label="AI requests" value={String(aiRequests || "—")} hint="From observability / generations" />
-        <Stat label="API requests" value={String(apiRequests || "—")} hint="From observability snapshot" />
-        <Stat
-          label="System health"
-          value={(healthQ.data?.status || "—").toString()}
-          hint={healthQ.isFetching ? "Checking…" : undefined}
-        />
-        <Stat
-          label="Subscriptions"
-          value={String(o?.billing_summary?.active_subscriptions ?? "—")}
-        />
+        <Stat label="Workspaces" value={String(e?.workspaces ?? "—")} />
+        <Stat label="Active users" value={String(e?.active_users ?? "—")} />
+        <Stat label="New signups (7d)" value={String(e?.new_signups ?? "—")} />
+        <Stat label="Active agents" value={String(e?.active_agents ?? "—")} />
+        <Stat label="Knowledge bases" value={String(e?.knowledge_bases ?? "—")} />
+        <Stat label="Widgets" value={String(e?.widgets ?? "—")} />
+        <Stat label="AI requests" value={String(e?.ai_requests ?? "—")} />
+        <Stat label="Token usage" value={String(e?.token_usage ?? "—")} />
+        <Stat label="Revenue" value={formatRevenue(e?.revenue)} />
+        <Stat label="MRR" value={formatRevenue(e?.mrr)} />
+        <Stat label="ARR" value={formatRevenue(e?.arr)} />
+        <Stat label="Active subscriptions" value={String(e?.active_subscriptions ?? "—")} />
+        <Stat label="Churn" value={formatPct(e?.churn)} />
+        <Stat label="Conversion" value={formatPct(e?.conversion_rate)} />
+        <Stat label="AI cost" value={formatRevenue(e?.ai_cost)} />
+        <Stat label="System health" value={(healthQ.data?.status || "—").toString()} />
       </div>
 
       <Card className="space-y-3">
@@ -76,10 +94,14 @@ export default function AdminDashboardPage() {
         <div className="flex flex-wrap gap-2">
           {(
             [
+              ["API", healthQ.data?.api],
               ["PostgreSQL", healthQ.data?.database],
               ["Redis", healthQ.data?.redis],
               ["Workers", healthQ.data?.workers],
-              ["AI Providers", healthQ.data?.ai_providers]
+              ["Storage", healthQ.data?.storage],
+              ["AI Providers", healthQ.data?.ai_providers],
+              ["Email queue", healthQ.data?.email_queue],
+              ["Jobs", healthQ.data?.background_jobs]
             ] as const
           ).map(([label, component]) => {
             const status = healthComponentStatus(component as Record<string, unknown>);

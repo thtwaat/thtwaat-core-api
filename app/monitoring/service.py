@@ -291,6 +291,17 @@ class MonitoringOpsService:
             "status": full.get("status"),
             "uptime_seconds": metrics_mod.snapshot().get("uptime_seconds"),
         }
+        email_queue = {"ok": True, "status": "not_configured", "depth": 0}
+        try:
+            # Best-effort: reuse Redis job queue stats as background/email worker signal
+            email_queue = {
+                "ok": True,
+                "status": "ok" if int(qstats.get("queued") or 0) < 1000 else "backlog",
+                "depth": int(qstats.get("queued") or 0),
+                "note": "Uses ops job queue depth; dedicated email queue not separately instrumented.",
+            }
+        except Exception:
+            pass
         return SystemHealthResponse(
             status=full.get("status") or "unknown",
             api=api,
@@ -300,6 +311,8 @@ class MonitoringOpsService:
             storage=checks.get("storage") or {},
             workers=checks.get("workers") or {},
             ai_providers=checks.get("ai_providers") or {},
+            email_queue=email_queue,
+            background_jobs=qstats,
         )
 
     def observability(self) -> ObservabilityResponse:

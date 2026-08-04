@@ -42,6 +42,12 @@ export default function AdminCompaniesPage() {
       })
   });
 
+  const opsQ = useQuery({
+    queryKey: ["admin-workspace-ops", selected],
+    queryFn: () => platformAdminApi.workspaceOps(selected!),
+    enabled: Boolean(selected)
+  });
+
   const rows = listQ.data?.results || [];
   const selectedRow = useMemo(
     () => rows.find((r) => r.id === selected) || null,
@@ -107,8 +113,8 @@ export default function AdminCompaniesPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Companies"
-        description="Search, suspend/activate, change plan, override quotas, login as company."
+        title="Workspaces"
+        description="Search, suspend/activate/delete, change plan, quotas, billing and AI usage."
       />
 
       <div className="grid gap-3 sm:grid-cols-4">
@@ -216,6 +222,16 @@ export default function AdminCompaniesPage() {
                     <Button size="sm" disabled={busy} onClick={() => void loginAs(row.id)}>
                       Login as
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      disabled={busy}
+                      onClick={() =>
+                        void patchCompany(row.id, { is_active: false, status: "cancelled" }, "Company deactivated")
+                      }
+                    >
+                      Delete
+                    </Button>
                   </div>
                 </td>
               </tr>
@@ -253,6 +269,37 @@ export default function AdminCompaniesPage() {
           <Button onClick={() => void applyQuotas()} disabled={busy}>
             Apply quota overrides
           </Button>
+
+          <div className="border-t border-line pt-4">
+            <h3 className="mb-2 text-sm font-semibold text-ink">Workspace ops detail</h3>
+            {opsQ.isLoading && <p className="text-sm text-muted">Loading quotas / billing / AI usage…</p>}
+            {opsQ.isError && (
+              <p className="text-sm text-danger">{(opsQ.error as Error).message}</p>
+            )}
+            {opsQ.data && (
+              <div className="grid gap-3 sm:grid-cols-3 text-sm">
+                <div>
+                  <p className="text-xs uppercase text-muted">Billing</p>
+                  <p>{String((opsQ.data.billing as Record<string, unknown>)?.plan_name || "—")}</p>
+                  <p className="text-muted">
+                    {String((opsQ.data.billing as Record<string, unknown>)?.subscription_status || "—")}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted">Usage</p>
+                  <pre className="max-h-40 overflow-auto rounded-xl bg-canvas p-2 text-xs">
+                    {JSON.stringify(opsQ.data.usage || {}, null, 2)}
+                  </pre>
+                </div>
+                <div>
+                  <p className="text-xs uppercase text-muted">Remaining quota</p>
+                  <pre className="max-h-40 overflow-auto rounded-xl bg-canvas p-2 text-xs">
+                    {JSON.stringify(opsQ.data.remaining_quota || {}, null, 2)}
+                  </pre>
+                </div>
+              </div>
+            )}
+          </div>
         </Card>
       )}
     </div>

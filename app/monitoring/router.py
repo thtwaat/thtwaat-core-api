@@ -1,7 +1,7 @@
 """Admin, Operations, and Monitoring API routes (PLATFORM_ADMIN)."""
 from __future__ import annotations
 
-from typing import Optional
+from typing import Any, Dict, Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -10,8 +10,11 @@ from sqlalchemy.orm import Session
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
 from app.database.database import get_db
+from app.monitoring.enterprise_ops import EnterpriseOpsService
 from app.monitoring.models import AlertSeverity, AlertStatus
 from app.monitoring.schemas import (
+    AdminExportRequest,
+    AdminInviteUserRequest,
     AlertAckRequest,
     AlertCreateRequest,
     AlertListResponse,
@@ -22,6 +25,7 @@ from app.monitoring.schemas import (
     CancelJobRequest,
     DeploymentEventResponse,
     EnqueueJobRequest,
+    ExecutiveDashboardResponse,
     ImpersonateCompanyRequest,
     ImpersonateCompanyResponse,
     JobListResponse,
@@ -45,6 +49,10 @@ def get_ops_service(db: Session = Depends(get_db)) -> MonitoringOpsService:
     return MonitoringOpsService(db)
 
 
+def get_enterprise_ops(db: Session = Depends(get_db)) -> EnterpriseOpsService:
+    return EnterpriseOpsService(db)
+
+
 def require_platform_admin(user: UserProfileResponse = Depends(get_current_user)):
     RequirePermission(Permission.PLATFORM_ADMIN)(user.role)
     return user
@@ -66,6 +74,111 @@ def admin_overview(
     service: MonitoringOpsService = Depends(get_ops_service),
 ):
     return service.platform_overview()
+
+
+@admin_router.get(
+    "/executive",
+    response_model=ExecutiveDashboardResponse,
+    summary="Executive KPI dashboard (MRR/ARR/churn/AI usage/…)",
+)
+def admin_executive(
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+):
+    return service.executive_dashboard()
+
+
+@admin_router.get(
+    "/ai-analytics",
+    summary="AI analytics (requests, providers, latency, top prompts/agents)",
+)
+def admin_ai_analytics(
+    days: int = Query(30, ge=1, le=90),
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+) -> Dict[str, Any]:
+    return service.ai_analytics(days=days)
+
+
+@admin_router.get(
+    "/workspaces/{company_id}/ops",
+    summary="Workspace quotas, billing, AI and API usage for admin ops",
+)
+def admin_workspace_ops(
+    company_id: UUID,
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+) -> Dict[str, Any]:
+    return service.workspace_ops(company_id)
+
+
+@admin_router.get(
+    "/logs",
+    summary="Unified admin logs (audit/payment/webhook/auth/ai)",
+)
+def admin_unified_logs(
+    category: str = Query("all", pattern="^(all|audit|payment|payments|webhook|webhooks|auth|authentication|ai)$"),
+    limit: int = Query(50, ge=1, le=200),
+    company_id: Optional[UUID] = Query(default=None),
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+) -> Dict[str, Any]:
+    return service.unified_logs(category=category, limit=limit, company_id=company_id)
+
+
+@admin_router.get(
+    "/marketplace-analytics",
+    summary="Platform marketplace + publisher store analytics",
+)
+def admin_marketplace_analytics(
+    days: int = Query(30, ge=1, le=90),
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+) -> Dict[str, Any]:
+    return service.marketplace_ops_analytics(days=days)
+
+
+@admin_router.post(
+    "/users/invite",
+    summary="Invite / create a user in a workspace (platform admin)",
+)
+def admin_invite_user(
+    payload: AdminInviteUserRequest,
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+) -> Dict[str, Any]:
+    return service.invite_user(
+        actor_id=user.id,
+        email=payload.email,
+        company_id=payload.company_id,
+        role=payload.role,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+    )
+
+
+@admin_router.post(
+    "/users/{user_id}/reset-password",
+    summary="Issue a temporary password for a user (platform admin)",
+)
+def admin_reset_user_password(
+    user_id: UUID,
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+) -> Dict[str, Any]:
+    return service.admin_reset_password(actor_id=user.id, user_id=user_id)
+
+
+@admin_router.post(
+    "/export",
+    summary="Export executive / AI / logs / workspaces as CSV, Excel, or PDF",
+)
+def admin_export(
+    payload: AdminExportRequest,
+    user: UserProfileResponse = Depends(require_platform_admin),
+    service: EnterpriseOpsService = Depends(get_enterprise_ops),
+) -> Dict[str, Any]:
+    return service.export_dataset(payload.kind, payload.format)
 
 
 @admin_router.get(

@@ -145,3 +145,38 @@ def admin_billing_analytics(
         "gross_margin": gross_margin,
         "providers": billing_providers_status(),
     }
+
+
+@router.get("/webhook-events")
+def admin_billing_webhook_events(
+    limit: int = 50,
+    _: UserProfileResponse = Depends(require_platform_admin),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """List recent billing webhook events (idempotency log)."""
+    limit = max(1, min(int(limit or 50), 200))
+    try:
+        from app.payments.billing_extras import BillingWebhookEvent
+
+        rows = (
+            db.query(BillingWebhookEvent)
+            .order_by(BillingWebhookEvent.created_at.desc())
+            .limit(limit)
+            .all()
+        )
+        return {
+            "total": len(rows),
+            "items": [
+                {
+                    "id": str(r.id),
+                    "provider": r.provider,
+                    "event_id": r.event_id,
+                    "event_type": r.event_type,
+                    "processed": bool(r.processed),
+                    "created_at": r.created_at.isoformat() if r.created_at else None,
+                }
+                for r in rows
+            ],
+        }
+    except Exception as exc:
+        return {"total": 0, "items": [], "error": str(exc)}
