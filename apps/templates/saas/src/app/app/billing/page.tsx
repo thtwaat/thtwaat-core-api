@@ -8,6 +8,10 @@ import { site } from "@/lib/config";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatNumber } from "@/lib/utils";
 import {
+  pickBillingCheckoutProvider,
+  resolveRazorpayCheckoutKey
+} from "@/lib/billing-providers";
+import {
   loadRazorpayCheckoutScript,
   openRazorpayCheckout,
   runRazorpayCheckout
@@ -26,6 +30,15 @@ export default function BillingPage() {
   const invoices = useQuery({ queryKey: ["invoices"], queryFn: billingApi.invoices });
   const usage = useQuery({ queryKey: ["usage-current"], queryFn: usageApi.current });
   const providers = useQuery({ queryKey: ["billing-providers"], queryFn: billingApi.providers });
+
+  const razorpayKey = useMemo(
+    () => resolveRazorpayCheckoutKey(providers.data, site.razorpayKey),
+    [providers.data]
+  );
+  const checkoutProvider = useMemo(
+    () => pickBillingCheckoutProvider(providers.data, site.razorpayKey),
+    [providers.data]
+  );
 
   async function refreshBillingState() {
     await Promise.all([
@@ -54,10 +67,12 @@ export default function BillingPage() {
         });
       }
 
-      const stripeOk = providers.data?.stripe?.available;
-      const razorpayOk = providers.data?.razorpay?.available || Boolean(site.razorpayKey);
+      // Always refresh provider status so we don't rely on a stale/empty cache.
+      const providerStatus = (await billingApi.providers()) || providers.data;
+      const chosen = pickBillingCheckoutProvider(providerStatus, site.razorpayKey);
+      const key = resolveRazorpayCheckoutKey(providerStatus, site.razorpayKey);
 
-      if (razorpayOk && site.razorpayKey) {
+      if (chosen === "razorpay" && key) {
         const customerName =
           [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
           user?.email?.split("@")[0] ||
@@ -70,7 +85,7 @@ export default function BillingPage() {
           customerName,
           customerEmail,
           deps: {
-            razorpayKey: site.razorpayKey,
+            razorpayKey: key,
             createOrder: (body) =>
               billingApi.razorpayOrder({
                 ...body,
@@ -83,7 +98,7 @@ export default function BillingPage() {
         });
       }
 
-      if (stripeOk) {
+      if (chosen === "stripe") {
         const success_url = `${window.location.origin}/app/billing?upgraded=1`;
         const cancel_url = `${window.location.origin}/app/billing?cancelled=1`;
         const session = await billingApi.stripeCheckout({
@@ -99,7 +114,7 @@ export default function BillingPage() {
       }
 
       throw new Error(
-        "No payment provider available. Enable Stripe or Razorpay (BILLING_ENABLE_* + secrets)."
+        "No payment provider available. Enable Stripe or Razorpay (BILLING_ENABLE_* + secrets), and ensure Razorpay key_id is returned by /payments/subscriptions/providers."
       );
     },
     onSuccess: async (result) => {
@@ -197,7 +212,8 @@ export default function BillingPage() {
         </p>
         <p className="mt-2 text-xs text-muted">
           Providers: Stripe {providers.data?.stripe?.available ? "on" : "off"} · Razorpay{" "}
-          {providers.data?.razorpay?.available || site.razorpayKey ? "on" : "off"}
+          {checkoutProvider === "razorpay" || providers.data?.razorpay?.available ? "on" : "off"}
+          {razorpayKey ? ` · key ${razorpayKey.slice(0, 10)}…` : ""}
         </p>
         <div className="mt-4 space-y-3">
           {(usage.data?.progress || []).slice(0, 8).map((p) => (
@@ -258,7 +274,7 @@ export default function BillingPage() {
                       price: plan.price
                     })
                   }
-                  disabled={upgrade.isPending}
+                  disabled={upgrade.isPending || (Number(price) > 0 && providers.isLoading)}
                 >
                   {upgrade.isPending ? "Processing…" : `Choose ${plan.name}`}
                 </Button>

@@ -273,6 +273,7 @@ class Settings(BaseSettings):
     STRIPE_CURRENCY: str = "usd"
     RAZORPAY_KEY_ID: Optional[str] = None
     RAZORPAY_KEY_SECRET: Optional[str] = None
+    RAZORPAY_WEBHOOK_SECRET: Optional[str] = None
     # Feature flags — either provider can be enabled independently
     BILLING_ENABLE_STRIPE: bool = True
     BILLING_ENABLE_RAZORPAY: bool = True

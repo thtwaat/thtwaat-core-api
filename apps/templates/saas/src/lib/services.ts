@@ -153,7 +153,12 @@ export const billingApi = {
   providers: () =>
     api.v1<{
       stripe: { available: boolean; configured: boolean; flag_enabled: boolean };
-      razorpay: { available: boolean; configured: boolean; flag_enabled: boolean };
+      razorpay: {
+        available: boolean;
+        configured: boolean;
+        flag_enabled: boolean;
+        key_id?: string | null;
+      };
       default: string;
     }>("/payments/subscriptions/providers"),
   razorpayOrder: (body: {

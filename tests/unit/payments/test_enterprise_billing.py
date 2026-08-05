@@ -41,6 +41,7 @@ def test_provider_flags_respect_settings(monkeypatch):
     status = billing_providers_status()
     assert status["stripe"]["available"] is True
     assert status["razorpay"]["available"] is False
+    assert status["razorpay"].get("key_id") is None
 
 
 @pytest.mark.unit
