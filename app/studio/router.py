@@ -1,4 +1,4 @@
-"""THTWAAT Studio API — /api/v2/studio (Phase 1: save prompts only)."""
+"""THTWAAT Studio API — /api/v2/studio (prompts + AI Product Architect)."""
 from __future__ import annotations
 
 from uuid import UUID
@@ -10,6 +10,10 @@ from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
 from app.database.database import get_db
 from app.studio.schemas import (
+    StudioAnalyzeResponse,
+    StudioBlueprintResponse,
+    StudioBlueprintUpdate,
+    StudioBlueprintVersionList,
     StudioProjectCreate,
     StudioProjectListResponse,
     StudioProjectResponse,
@@ -80,3 +84,75 @@ def delete_project(
 ):
     service.delete(user, project_id)
     return None
+
+
+@router.post(
+    "/projects/{project_id}/analyze",
+    response_model=StudioAnalyzeResponse,
+    summary="Analyze prompt into a Product Blueprint (no code generation)",
+)
+async def analyze_project(
+    project_id: UUID,
+    use_ai: bool = Query(True, description="Try AI Gateway enrichment; falls back to heuristic"),
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    project, blueprint = await service.analyze(user, project_id, use_ai=use_ai)
+    return StudioAnalyzeResponse(
+        project=StudioProjectResponse.model_validate(project),
+        blueprint=blueprint,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/blueprint",
+    response_model=StudioBlueprintResponse,
+    summary="Get current blueprint",
+)
+def get_blueprint(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_blueprint(user, project_id)
+
+
+@router.put(
+    "/projects/{project_id}/blueprint",
+    response_model=StudioBlueprintResponse,
+    summary="Save edited blueprint as a new version",
+)
+def put_blueprint(
+    project_id: UUID,
+    payload: StudioBlueprintUpdate,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.update_blueprint(user, project_id, payload)
+
+
+@router.get(
+    "/projects/{project_id}/versions",
+    response_model=StudioBlueprintVersionList,
+    summary="List blueprint versions",
+)
+def list_versions(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.list_versions(user, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/restore/{version}",
+    response_model=StudioBlueprintResponse,
+    summary="Restore a blueprint version (creates a new current version)",
+)
+def restore_version(
+    project_id: UUID,
+    version: int,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.restore_version(user, project_id, version)

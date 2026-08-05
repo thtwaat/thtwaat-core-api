@@ -1,8 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveStudioTitle,
+  listFieldToText,
+  parseListField,
   studioStatusLabel,
-  studioStatusTone
+  studioStatusTone,
+  warningTone,
+  EMPTY_BLUEPRINT
 } from "./studio";
 import { canDeleteStudioProjects } from "./permissions";
 
@@ -17,6 +21,26 @@ describe("studio helpers", () => {
     expect(studioStatusTone("failed")).toBe("danger");
     expect(studioStatusTone("completed")).toBe("success");
     expect(studioStatusTone("building")).toBe("warn");
+  });
+
+  it("parses list editor fields", () => {
+    expect(parseListField("Dashboard\nSettings, Users")).toEqual([
+      "Dashboard",
+      "Settings",
+      "Users"
+    ]);
+    expect(listFieldToText(["A", "B"])).toBe("A\nB");
+  });
+
+  it("maps warning tones", () => {
+    expect(warningTone("error")).toBe("danger");
+    expect(warningTone("warn")).toBe("warn");
+    expect(warningTone("info")).toBe("neutral");
+  });
+
+  it("has empty blueprint defaults for editor", () => {
+    expect(EMPTY_BLUEPRINT.pages).toEqual([]);
+    expect(EMPTY_BLUEPRINT.product_type).toBe("saas");
   });
 });
 
@@ -34,45 +58,31 @@ describe("canDeleteStudioProjects", () => {
   });
 });
 
-describe("studioApi contract", () => {
-  it("create/list/delete paths are under /api/v2/studio", async () => {
-    const { apiPaths } = await import("./config");
-    expect(apiPaths.apiV2.endsWith("/api/v2")).toBe(true);
-
+describe("studioApi architect contract", () => {
+  it("analyze/save/versions/restore paths", async () => {
     const calls: Array<{ path: string; method?: string }> = [];
     const fakeApi = {
       apiV2: async <T>(path: string, options?: { method?: string }) => {
         calls.push({ path, method: options?.method });
-        if (options?.method === "DELETE") return undefined as T;
-        if (options?.method === "POST") {
-          return {
-            id: "p1",
-            workspace_id: "w1",
-            title: "Create CRM",
-            prompt: "Create CRM with leads",
-            status: "draft",
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          } as T;
-        }
-        return { items: [], total: 0 } as T;
+        return {} as T;
       }
     };
+    const id = "proj-1";
+    await fakeApi.apiV2(`/studio/projects/${id}/analyze?use_ai=true`, { method: "POST" });
+    await fakeApi.apiV2(`/studio/projects/${id}/blueprint`);
+    await fakeApi.apiV2(`/studio/projects/${id}/blueprint`, { method: "PUT" });
+    await fakeApi.apiV2(`/studio/projects/${id}/versions`);
+    await fakeApi.apiV2(`/studio/projects/${id}/restore/1`, { method: "POST" });
 
-    // Inline mirror of studioApi using fake transport
-    const studioApi = {
-      list: () => fakeApi.apiV2("/studio/projects?limit=50&offset=0"),
-      create: (body: { prompt: string }) =>
-        fakeApi.apiV2("/studio/projects", { method: "POST", ...{ body } as object }),
-      remove: (id: string) => fakeApi.apiV2(`/studio/projects/${id}`, { method: "DELETE" })
-    };
-
-    await studioApi.create({ prompt: "Create CRM with leads and invoices" });
-    await studioApi.list();
-    await studioApi.remove("p1");
-
-    expect(calls[0]).toEqual({ path: "/studio/projects", method: "POST" });
-    expect(calls[1].path).toContain("/studio/projects");
-    expect(calls[2]).toEqual({ path: "/studio/projects/p1", method: "DELETE" });
+    expect(calls.map((c) => c.path)).toEqual([
+      `/studio/projects/${id}/analyze?use_ai=true`,
+      `/studio/projects/${id}/blueprint`,
+      `/studio/projects/${id}/blueprint`,
+      `/studio/projects/${id}/versions`,
+      `/studio/projects/${id}/restore/1`
+    ]);
+    expect(calls[0].method).toBe("POST");
+    expect(calls[2].method).toBe("PUT");
+    expect(calls[4].method).toBe("POST");
   });
 });

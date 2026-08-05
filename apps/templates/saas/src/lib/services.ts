@@ -1176,7 +1176,7 @@ export const productGeneratorApi = {
     })
 };
 
-/** THTWAAT Studio — Phase 1 prompt workspace (no codegen). */
+/** THTWAAT Studio — prompt workspace + AI Product Architect. */
 export const studioApi = {
   list: (limit = 50, offset = 0) =>
     api.apiV2<import("@/lib/studio").StudioProjectList>(
@@ -1188,8 +1188,28 @@ export const studioApi = {
       method: "POST",
       body
     }),
-  remove: (id: string) =>
-    api.apiV2<void>(`/studio/projects/${id}`, { method: "DELETE" })
+  remove: (id: string) => api.apiV2<void>(`/studio/projects/${id}`, { method: "DELETE" }),
+  analyze: (id: string, useAi = true) =>
+    api.apiV2<import("@/lib/studio").StudioAnalyzeResult>(
+      `/studio/projects/${id}/analyze?use_ai=${useAi ? "true" : "false"}`,
+      { method: "POST" }
+    ),
+  getBlueprint: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioBlueprint>(`/studio/projects/${id}/blueprint`),
+  saveBlueprint: (id: string, blueprint: import("@/lib/studio").ProductBlueprint) =>
+    api.apiV2<import("@/lib/studio").StudioBlueprint>(`/studio/projects/${id}/blueprint`, {
+      method: "PUT",
+      body: { blueprint }
+    }),
+  versions: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioBlueprintVersionList>(
+      `/studio/projects/${id}/versions`
+    ),
+  restore: (id: string, version: number) =>
+    api.apiV2<import("@/lib/studio").StudioBlueprint>(
+      `/studio/projects/${id}/restore/${version}`,
+      { method: "POST" }
+    )
 };
 
 /** AI Gateway provider status — enterprise dashboard surface */
