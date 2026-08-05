@@ -1176,6 +1176,22 @@ export const productGeneratorApi = {
     })
 };
 
+/** THTWAAT Studio — Phase 1 prompt workspace (no codegen). */
+export const studioApi = {
+  list: (limit = 50, offset = 0) =>
+    api.apiV2<import("@/lib/studio").StudioProjectList>(
+      `/studio/projects?limit=${limit}&offset=${offset}`
+    ),
+  get: (id: string) => api.apiV2<import("@/lib/studio").StudioProject>(`/studio/projects/${id}`),
+  create: (body: { prompt: string; title?: string }) =>
+    api.apiV2<import("@/lib/studio").StudioProject>("/studio/projects", {
+      method: "POST",
+      body
+    }),
+  remove: (id: string) =>
+    api.apiV2<void>(`/studio/projects/${id}`, { method: "DELETE" })
+};
+
 /** AI Gateway provider status — enterprise dashboard surface */
 export const aiProvidersApi = {
   list: () => api.v1<AiProvidersList>("/ai/providers"),

@@ -13,6 +13,7 @@ import {
   Library,
   LogOut,
   Menu,
+  Palette,
   Rocket,
   Settings,
   Shield,
@@ -33,6 +34,7 @@ import { Button } from "@/components/ui/button";
 
 const baseNav = [
   { href: "/app", label: "Overview", icon: LayoutDashboard },
+  { href: "/app/studio", label: "Studio", icon: Palette },
   { href: "/app/create", label: "Create Product", icon: Sparkles },
   { href: "/app/inbox", label: "Inbox", icon: Inbox },
   { href: "/app/agents", label: "Agents", icon: Bot },

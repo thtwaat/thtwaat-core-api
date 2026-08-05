@@ -9,5 +9,6 @@ export const site = {
 export const apiPaths = {
   v1: `${site.apiUrl}/api/v1`,
   v2: `${site.apiUrl}/v2`,
+  apiV2: `${site.apiUrl}/api/v2`,
   public: `${site.apiUrl}/public/v1`
 } as const;

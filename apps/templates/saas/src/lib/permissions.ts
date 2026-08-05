@@ -7,6 +7,8 @@ const TEMPLATE_MANAGE_ROLES = new Set([
   "developer"
 ]);
 
+const STUDIO_DELETE_ROLES = new Set(["super_admin", "company_owner", "admin"]);
+
 export function canManageTemplates(role?: string | null): boolean {
   return Boolean(role && TEMPLATE_MANAGE_ROLES.has(role));
 }
@@ -27,4 +29,9 @@ export function canManageWebhooks(role?: string | null): boolean {
 /** AI provider status board — same operator roles as integrations */
 export function canViewProviders(role?: string | null): boolean {
   return canManageTemplates(role);
+}
+
+/** Studio project delete — owners/admins only (matches can_manage_company_users). */
+export function canDeleteStudioProjects(role?: string | null): boolean {
+  return Boolean(role && STUDIO_DELETE_ROLES.has(role));
 }

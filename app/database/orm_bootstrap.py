@@ -39,6 +39,7 @@ def register_orm_models() -> None:
     import app.domains.models  # noqa: F401
     import app.marketplace.models  # noqa: F401
     import app.product_generator.models  # noqa: F401
+    import app.studio.models  # noqa: F401
     import app.branding.models  # noqa: F401
     import app.enterprise.models  # noqa: F401
     import app.onboarding.models  # noqa: F401

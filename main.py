@@ -203,6 +203,9 @@ app.include_router(leads_router)
 from app.agent_platform.routers.analytics_router import router as agent_analytics_router
 app.include_router(agent_analytics_router)
 
+from app.studio.router import router as studio_router
+app.include_router(studio_router)
+
 from app.branding.public_router import router as branding_public_router
 app.include_router(branding_public_router)
 

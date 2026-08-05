@@ -157,6 +157,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 export const api = {
   v1: <T>(path: string, options?: RequestOptions) => apiRequest<T>(`${apiPaths.v1}${path}`, options),
   v2: <T>(path: string, options?: RequestOptions) => apiRequest<T>(`${apiPaths.v2}${path}`, options),
+  apiV2: <T>(path: string, options?: RequestOptions) =>
+    apiRequest<T>(`${apiPaths.apiV2}${path}`, options),
   public: <T>(path: string, options?: RequestOptions) =>
     apiRequest<T>(`${apiPaths.public}${path}`, { ...options, auth: false })
 };
