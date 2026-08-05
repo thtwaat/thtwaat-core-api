@@ -1,15 +1,20 @@
-"""Seed canonical SaaS plans (Free → Enterprise). Idempotent upsert by name."""
+"""Seed canonical SaaS plans (Free → Enterprise). Idempotent upsert by name.
+
+Usage:
+  python -m scripts.seed_billing_plans
+"""
 from __future__ import annotations
 
 from typing import Dict
 
 from sqlalchemy.orm import Session
 
-from app.payments.plan_catalog import CANONICAL_PLANS
-from app.payments.plans.model import Plan
-
 
 def seed_billing_plans(db: Session) -> Dict[str, int]:
+    """Upsert CANONICAL_PLANS. Caller must ensure ORM mappers are registered."""
+    from app.payments.plan_catalog import CANONICAL_PLANS
+    from app.payments.plans.model import Plan
+
     created = updated = 0
     for spec in CANONICAL_PLANS:
         row = db.query(Plan).filter(Plan.name == spec["name"]).first()
@@ -27,7 +32,12 @@ def seed_billing_plans(db: Session) -> Dict[str, int]:
     return {"created": created, "updated": updated}
 
 
-if __name__ == "__main__":
+def main() -> None:
+    # Same bootstrap as worker / scheduler / seed_marketplace — before Session.
+    from app.database.orm_bootstrap import register_orm_models
+
+    register_orm_models()
+
     from app.database.database import SessionLocal
 
     session = SessionLocal()
@@ -35,3 +45,7 @@ if __name__ == "__main__":
         print(seed_billing_plans(session))
     finally:
         session.close()
+
+
+if __name__ == "__main__":
+    main()
