@@ -1,0 +1,149 @@
+{
+  "status": "passed",
+  "rows": [
+    {
+      "title": "chromium › flows\\01-auth-onboarding.spec.ts › 01 — Registration / Verification / Workspace › User registration + workspace creation via API",
+      "status": "skipped",
+      "durationMs": 324,
+      "workflow": "1. User Registration"
+    },
+    {
+      "title": "chromium › flows\\01-auth-onboarding.spec.ts › 01 — Registration / Verification / Workspace › Email verification endpoint is reachable",
+      "status": "skipped",
+      "durationMs": 32,
+      "workflow": "2. Email Verification"
+    },
+    {
+      "title": "chromium › flows\\01-auth-onboarding.spec.ts › 01 — Registration / Verification / Workspace › Login UI accepts seeded credentials when provided",
+      "status": "skipped",
+      "durationMs": 2570,
+      "workflow": "1. User Registration (UI login)"
+    },
+    {
+      "title": "chromium › flows\\01-auth-onboarding.spec.ts › 01 — Registration / Verification / Workspace › Injected session reaches app shell",
+      "status": "skipped",
+      "durationMs": 333,
+      "workflow": "3. Workspace Creation (session)"
+    },
+    {
+      "title": "chromium › flows\\02-agent-knowledge-widget.spec.ts › 02 — Providers / Agent / Knowledge / Widget › AI provider selection surface responds",
+      "status": "skipped",
+      "durationMs": 8,
+      "workflow": "4. AI Provider Selection"
+    },
+    {
+      "title": "chromium › flows\\02-agent-knowledge-widget.spec.ts › 02 — Providers / Agent / Knowledge / Widget › AI agent creation",
+      "status": "skipped",
+      "durationMs": 7,
+      "workflow": "5. AI Agent Creation"
+    },
+    {
+      "title": "chromium › flows\\02-agent-knowledge-widget.spec.ts › 02 — Providers / Agent / Knowledge / Widget › Knowledge upload path exists",
+      "status": "skipped",
+      "durationMs": 7,
+      "workflow": "6. Knowledge Upload"
+    },
+    {
+      "title": "chromium › flows\\02-agent-knowledge-widget.spec.ts › 02 — Providers / Agent / Knowledge / Widget › Widget generation via publish",
+      "status": "skipped",
+      "durationMs": 6,
+      "workflow": "7. Widget Generation"
+    },
+    {
+      "title": "chromium › flows\\03-chat-memory-handoff-leads.spec.ts › 03 — Chat / Memory / Handoff / Leads › Chat conversation + memory via public API when published",
+      "status": "skipped",
+      "durationMs": 6,
+      "workflow": "9. Chat Conversation"
+    },
+    {
+      "title": "chromium › flows\\03-chat-memory-handoff-leads.spec.ts › 03 — Chat / Memory / Handoff / Leads › Human handoff keyword path",
+      "status": "skipped",
+      "durationMs": 6,
+      "workflow": "11. Human Handoff"
+    },
+    {
+      "title": "chromium › flows\\03-chat-memory-handoff-leads.spec.ts › 03 — Chat / Memory / Handoff / Leads › Lead capture endpoint",
+      "status": "skipped",
+      "durationMs": 5,
+      "workflow": "12. Lead Capture"
+    },
+    {
+      "title": "chromium › flows\\03-chat-memory-handoff-leads.spec.ts › 03 — Chat / Memory / Handoff / Leads › Inbox conversations list for authenticated user",
+      "status": "skipped",
+      "durationMs": 4,
+      "workflow": "10. Conversation Memory (inbox)"
+    },
+    {
+      "title": "chromium › flows\\04-billing-checkout.spec.ts › 04 — Billing / Checkout / Quotas › Billing plans and providers",
+      "status": "skipped",
+      "durationMs": 4,
+      "workflow": "13. Billing Upgrade"
+    },
+    {
+      "title": "chromium › flows\\04-billing-checkout.spec.ts › 04 — Billing / Checkout / Quotas › Checkout endpoints reject unsafe unpaid payloads safely",
+      "status": "skipped",
+      "durationMs": 8,
+      "workflow": "16. Subscription Activation"
+    },
+    {
+      "title": "chromium › flows\\04-billing-checkout.spec.ts › 04 — Billing / Checkout / Quotas › Usage quotas endpoint",
+      "status": "skipped",
+      "durationMs": 5,
+      "workflow": "17. Usage Quotas"
+    },
+    {
+      "title": "chromium › flows\\04-billing-checkout.spec.ts › 04 — Billing / Checkout / Quotas › Billing UI loads for authenticated session",
+      "status": "skipped",
+      "durationMs": 385,
+      "workflow": "13. Billing Upgrade (UI)"
+    },
+    {
+      "title": "chromium › flows\\05-marketplace-publisher-admin.spec.ts › 05 — Marketplace / Publisher / Super Admin › Marketplace catalog browse",
+      "status": "skipped",
+      "durationMs": 5,
+      "workflow": "18. Marketplace Purchase"
+    },
+    {
+      "title": "chromium › flows\\05-marketplace-publisher-admin.spec.ts › 05 — Marketplace / Publisher / Super Admin › Publisher profile endpoints for authenticated user",
+      "status": "skipped",
+      "durationMs": 5,
+      "workflow": "19. Publisher Flow"
+    },
+    {
+      "title": "chromium › flows\\05-marketplace-publisher-admin.spec.ts › 05 — Marketplace / Publisher / Super Admin › Super Admin analytics APIs",
+      "status": "skipped",
+      "durationMs": 3,
+      "workflow": "20. Super Admin Analytics"
+    },
+    {
+      "title": "chromium › flows\\05-marketplace-publisher-admin.spec.ts › 05 — Marketplace / Publisher / Super Admin › Super Admin UI route exists",
+      "status": "skipped",
+      "durationMs": 284,
+      "workflow": "20. Super Admin Analytics (UI)"
+    },
+    {
+      "title": "chromium › flows\\05-marketplace-publisher-admin.spec.ts › 05 — Marketplace / Publisher / Super Admin › Publisher UI route loads when authenticated",
+      "status": "skipped",
+      "durationMs": 267,
+      "workflow": "19. Publisher Flow (UI)"
+    },
+    {
+      "title": "chromium › smoke\\health.spec.ts › Launch smoke — health › API liveness and status",
+      "status": "skipped",
+      "durationMs": 4,
+      "workflow": "System Health / API Health"
+    },
+    {
+      "title": "chromium › smoke\\health.spec.ts › Launch smoke — health › SaaS site responds",
+      "status": "skipped",
+      "durationMs": 317,
+      "workflow": "Website availability"
+    },
+    {
+      "title": "chromium › smoke\\health.spec.ts › Launch smoke — health › API base URL is configured",
+      "status": "passed",
+      "durationMs": 5
+    }
+  ],
+  "elapsedMs": 9281
+}

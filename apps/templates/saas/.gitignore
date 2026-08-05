@@ -9,3 +9,10 @@ dist
 *.tsbuildinfo
 npm-debug.log*
 .DS_Store
+
+# Playwright / launch readiness
+playwright-report/
+test-results/
+playwright-results.json
+e2e-reports/
+blob-report/

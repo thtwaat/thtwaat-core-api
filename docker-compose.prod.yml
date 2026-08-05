@@ -91,6 +91,8 @@ services:
       - .env.prod
     environment:
       APP_ENV: production
+      # Ops must set CORS_ORIGINS in .env.prod to explicit origins (never *).
+      # Settings refuse startup if CORS_ORIGINS contains * under APP_ENV=production.
       SSL_MODE: ${SSL_MODE:-simulate}
       REDIS_HOST: redis
       DB_HOST: db
