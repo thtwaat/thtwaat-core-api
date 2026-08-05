@@ -433,9 +433,21 @@ export default function MarketplacePage() {
         limit: 48
       })
   });
-  const favorites = useQuery({ queryKey: ["mkt-favorites"], queryFn: marketplaceApi.favorites });
-  const installed = useQuery({ queryKey: ["mkt-installed"], queryFn: marketplaceApi.installed });
-  const updates = useQuery({ queryKey: ["mkt-updates"], queryFn: marketplaceApi.updates });
+  const favorites = useQuery({
+    queryKey: ["mkt-favorites"],
+    queryFn: marketplaceApi.favorites,
+    enabled: activeTab === "favorites"
+  });
+  const installed = useQuery({
+    queryKey: ["mkt-installed"],
+    queryFn: marketplaceApi.installed,
+    enabled: activeTab === "installed" || activeTab === "home"
+  });
+  const updates = useQuery({
+    queryKey: ["mkt-updates"],
+    queryFn: marketplaceApi.updates,
+    enabled: activeTab === "updates" || activeTab === "home"
+  });
 
   const featured =
     home.data?.featured?.length

@@ -59,6 +59,30 @@ def test_claim_webhook_event_idempotent():
 
 
 @pytest.mark.unit
+def test_mark_webhook_failed_keeps_unprocessed():
+    from app.payments import billing_extras as be
+
+    db = MagicMock()
+    row = MagicMock()
+    row.processed = False
+    be.mark_webhook_failed(db, row, "boom")
+    assert row.processed is False
+    assert row.processing_error == "boom"
+    db.commit.assert_called()
+
+
+@pytest.mark.unit
+def test_mark_webhook_processed_sets_flag():
+    from app.payments import billing_extras as be
+
+    db = MagicMock()
+    row = MagicMock()
+    be.mark_webhook_processed(db, row)
+    assert row.processed is True
+    db.commit.assert_called()
+
+
+@pytest.mark.unit
 def test_plan_create_allows_zero_amount():
     from app.payments.plans.schema import PlanCreate
 

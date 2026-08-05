@@ -29,8 +29,11 @@ def create_agent(
         )
     except HTTPException:
         raise
-    except Exception:
-        pass
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Quota service unavailable; agent creation blocked until metering recovers.",
+        ) from exc
 
     new_agent = AgentConfig(
         company_id=company_id,
@@ -58,6 +61,7 @@ def create_agent(
             source="agent_create",
         )
     except Exception:
+        # Metering lag is non-fatal after create; quota already enforced above.
         pass
     return new_agent
 
@@ -68,7 +72,11 @@ def list_agents(
     auth_data: dict = Depends(get_current_user_and_company)
 ):
     company_id = auth_data.get("company_id")
-    query = db.query(AgentConfig).filter(AgentConfig.company_id == company_id)
+    query = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.company_id == company_id)
+        .order_by(AgentConfig.created_at.desc())
+    )
     if is_template:
         query = query.filter(AgentConfig.is_template == True)
     return query.all()

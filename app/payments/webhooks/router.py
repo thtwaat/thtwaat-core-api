@@ -56,7 +56,11 @@ async def stripe_webhook(
 
     logger.info(f"[Stripe Webhook] Received event: {event_type}")
 
-    from app.payments.billing_extras import claim_webhook_event, mark_webhook_processed
+    from app.payments.billing_extras import (
+        claim_webhook_event,
+        mark_webhook_failed,
+        mark_webhook_processed,
+    )
     from app.payments.subscriptions.service import SubscriptionService
     from app.payments.invoices.repository import InvoiceRepository
     from app.payments.invoices.model import InvoiceStatus
@@ -174,9 +178,9 @@ async def stripe_webhook(
         mark_webhook_processed(db, claimed)
     except Exception as e:
         logger.error(f"[Stripe Webhook] Error processing event {event_type}: {e}", exc_info=True)
-        mark_webhook_processed(db, claimed, error=str(e))
-        # Return 200 anyway so Stripe doesn't retry indefinitely for processing errors
-        return {"received": True, "warning": str(e)}
+        mark_webhook_failed(db, claimed, str(e))
+        # 5xx so Stripe retries; event stays unprocessed for reclaim.
+        raise HTTPException(status_code=500, detail="Webhook processing failed; retry later")
 
     return {"received": True, "event": event_type}
 
@@ -228,7 +232,11 @@ async def razorpay_webhook(
     )
     logger.info(f"[Razorpay Webhook] Received event: {event_type}")
 
-    from app.payments.billing_extras import claim_webhook_event, mark_webhook_processed
+    from app.payments.billing_extras import (
+        claim_webhook_event,
+        mark_webhook_failed,
+        mark_webhook_processed,
+    )
     from app.notifications.events import NotificationEventBus
     from app.payments.subscriptions.service import SubscriptionService
     from app.payments.subscriptions.model import SubscriptionStatus
@@ -429,7 +437,8 @@ async def razorpay_webhook(
         mark_webhook_processed(db, claimed)
     except Exception as e:
         logger.error(f"[Razorpay Webhook] Error processing {event_type}: {e}", exc_info=True)
-        mark_webhook_processed(db, claimed, error=str(e))
+        mark_webhook_failed(db, claimed, str(e))
+        raise HTTPException(status_code=500, detail="Webhook processing failed; retry later")
 
     return {"received": True, "event": event_type}
 

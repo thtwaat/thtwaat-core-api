@@ -15,7 +15,11 @@ from app.features.ai_platform.schemas.ai_schemas import (
 )
 from app.features.ai_platform.services.ai_services import AiPlatformService
 
-router = APIRouter(prefix="/ai-platform", tags=["AI Platform"])
+router = APIRouter(
+    prefix="/ai-platform",
+    tags=["AI Platform (deprecated)"],
+    deprecated=True,
+)
 
 # Providers
 @router.post("/providers", response_model=AiProviderResponse)

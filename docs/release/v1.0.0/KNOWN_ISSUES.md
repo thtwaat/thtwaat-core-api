@@ -1,32 +1,28 @@
 # Known Issues — v1.0.0
 
-| ID | Severity | Issue | Workaround |
-|----|----------|-------|------------|
-| K1 | High | CORS `*` + credentials unsafe if misconfigured | Set explicit `CORS_ORIGINS` in prod |
-| K2 | Medium | Email/SMS/Push providers stubbed | Use in-app notifications; wire providers before customer email alerts |
-| K3 | Medium | Grafana dashboards not shipped as JSON panels | Build panels against Prometheus datasource manually |
-| K4 | Medium | Full pytest suite errors without Redis | Run Redis locally or use `not integration` + module unit tests |
-| K5 | Medium | `SSL_MODE=simulate` default in compose | Set `certbot` for real TLS |
+| ID | Severity | Issue | Workaround / Status |
+|----|----------|-------|---------------------|
+| K1 | High | CORS `*` unsafe if misconfigured in non-hardened env | Hardened envs refuse `*`; wildcard path now uses `allow_credentials=False`. Still set explicit origins in prod. |
+| K2 | Medium | Email/SMS/Push providers may be stubbed | Wire SMTP/SendGrid before public signup OTP |
+| K3 | Medium | Grafana dashboards not shipped as JSON panels | Build panels against Prometheus manually |
+| K4 | Medium | Full pytest suite errors without Redis | Redis is a hard dependency for API boot |
+| K5 | Medium | `SSL_MODE=simulate` default in examples | Set `certbot` or edge TLS for public hosts |
 | K6 | Low | No OpenTelemetry tracing | Use Prometheus + structured logs |
-| K7 | Low | Gemini provider migration TODO | Functional via current provider; plan google-genai migration |
-| K8 | Low | DB restore is operational (pg_restore/psql), not a one-click API | Follow Operations Guide restore |
+| K7 | Low | Gemini provider migration TODO | Functional via current provider |
+| K8 | Low | DB restore is operational (scripts), not a one-click API | Follow `docs/ops/RECOVERY_GUIDE.md` |
 | K9 | Low | iOS starter builds require macOS/Xcode | CI on macOS runners |
-| K10 | Info | README root still mentions older RBAC wording | Prefer `docs/release/v1.0.0` guides |
+| K10 | Info | Legacy `/api/v1/ai-platform/*` still mounted | Deprecated in OpenAPI; use `/v2/agents` |
 
-## Test run snapshot (packaging host)
+## Fixed in Launch Freeze
 
-Recorded 2026-07-30 during release packaging:
+| Was | Fix |
+|-----|-----|
+| Billing webhook failures marked processed + HTTP 200 (no retry) | Failures stay unprocessed + HTTP 500 |
+| Agent create fail-open on quota errors | Fail closed with 503 |
+| Orphan agent analytics router | Mounted + SQL aggregate optimized |
+| AI gateway rate limit stub | Redis RPM limiter |
+| Monitoring alerts never scheduled | Scheduler tick calls `evaluate_and_raise` |
 
-```
-# Broad suite (needs Redis for TestClient lifespan)
-pytest tests app/agent_platform/tests -m "not integration"
-→ 75 passed, 14 failed, 145 errors (predominantly redis.exceptions.ConnectionError)
+## Launch readiness snapshot
 
-# Focused modules
-pytest tests/copilot tests/enterprise tests/onboarding tests/monitoring \
-  tests/branding tests/marketplace tests/domains tests/usage tests/deploy tests/agent_platform \
-  -m "not integration"
-→ 63 passed, 1 failed, 18 errors (Redis-backed TestClient cases)
-```
-
-Pure unit modules (copilot/enterprise/onboarding/monitoring NLU/service units) are green when Redis is not required.
+See `docs/launch/reports/` — Conditional PASS (prod GET smoke green; full Playwright write-path pending staging credentials).

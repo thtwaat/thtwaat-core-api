@@ -117,7 +117,8 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         # Official iframe embed page (sdk/widget/EMBED.md) must be frameable.
         if path.startswith("/public/v1/widget/embed"):
-            response.headers.pop("X-Frame-Options", None)
+            if "X-Frame-Options" in response.headers:
+                del response.headers["X-Frame-Options"]
             response.headers["Content-Security-Policy"] = (
                 "default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; "
                 "frame-ancestors *; object-src 'none'"
@@ -151,10 +152,12 @@ app.add_middleware(MetricsAccessMiddleware)
 from app.domains.cors import DynamicCORSMiddleware, PublicWidgetCORSMiddleware
 
 if "*" in (settings.CORS_ORIGINS or []):
+    # Browsers reject Access-Control-Allow-Origin: * with credentials.
+    # Never pair wildcard origins with allow_credentials=True.
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=True,
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -196,6 +199,9 @@ app.include_router(public_leads_router)
 app.include_router(knowledge_router)
 app.include_router(conversation_router)
 app.include_router(leads_router)
+
+from app.agent_platform.routers.analytics_router import router as agent_analytics_router
+app.include_router(agent_analytics_router)
 
 from app.branding.public_router import router as branding_public_router
 app.include_router(branding_public_router)

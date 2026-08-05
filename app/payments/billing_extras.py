@@ -100,8 +100,16 @@ def claim_webhook_event(
 
 
 def mark_webhook_processed(db: Session, row: BillingWebhookEvent, error: Optional[str] = None) -> None:
+    """Mark success. Do not use for failures — providers must retry those."""
     row.processed = True
     row.processing_error = error
+    db.commit()
+
+
+def mark_webhook_failed(db: Session, row: BillingWebhookEvent, error: str) -> None:
+    """Keep processed=False so claim_webhook_event reclaims on provider retry."""
+    row.processed = False
+    row.processing_error = (error or "")[:2000]
     db.commit()
 
 

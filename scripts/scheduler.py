@@ -65,6 +65,22 @@ def tick(r):
                 logger.error("backup_failed %s", exc)
                 enqueue(r, {"type": "backup.full"})
 
+        # Monitoring alert evaluation (idempotent fingerprints inside service)
+        alert_key = f"thtwaat:alerts:eval:{datetime.now(timezone.utc).strftime('%Y%m%d%H')}"
+        # At most once per hour unless interval is long; use tick-based throttle via Redis TTL
+        alert_tick = "thtwaat:alerts:eval:tick"
+        if not r.get(alert_tick):
+            try:
+                from app.monitoring.service import MonitoringOpsService
+
+                raised = MonitoringOpsService(db).evaluate_and_raise()
+                r.setex(alert_tick, 300, "1")
+                if raised:
+                    logger.info("alerts_raised count=%s", len(raised))
+                    r.setex(alert_key, 3600, str(len(raised)))
+            except Exception as exc:
+                logger.error("alert_evaluate_failed %s", exc)
+
         # Daily enterprise retention application reuses the existing scheduler.
         retention_key = (
             f"thtwaat:enterprise:retention:"

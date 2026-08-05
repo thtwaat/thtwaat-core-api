@@ -32,22 +32,44 @@ class AIService:
         self.repo = AIRepository(db)
 
     def _check_rate_limits(self, company_id: uuid.UUID, user_id: uuid.UUID) -> None:
-        """
-        Rate Limit Ready:
-        Implementation नहीं, लेकिन structure रखो:
-        company_limit, daily_limit, monthly_limit
-        """
-        # Placeholder for Rate Limiting
-        # e.g., if cache.get(f"rate_limit:{company_id}") > max_limit: raise HTTP 429
-        pass
+        """Enforce per-company RPM via Redis when available; fail open only if Redis is down."""
+        try:
+            from app.openai_compat.cache import get_redis_client
+
+            redis = get_redis_client()
+            if redis is None:
+                return
+            key = f"tht:ai:rl:{company_id}:{int(time.time() // 60)}"
+            count = redis.incr(key)
+            if count == 1:
+                redis.expire(key, 70)
+            # Soft default: 120 RPM per company on the tenant AI gateway
+            limit = int(getattr(settings, "AI_GATEWAY_RPM", 120) or 120)
+            if count > limit:
+                raise HTTPException(
+                    status_code=429,
+                    detail=f"AI gateway rate limit exceeded ({limit} requests/minute).",
+                )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning("AI gateway rate limit check skipped: %s", exc)
 
     def _calculate_estimated_cost(self, model: str, input_tokens: int, output_tokens: int) -> float:
-        """
-        Placeholder cost calculation.
-        In a real scenario, fetch pricing table.
-        """
-        # Placeholder: $0.0001 per 1k input, $0.0002 per 1k output
-        return (input_tokens / 1000.0 * 0.0001) + (output_tokens / 1000.0 * 0.0002)
+        """Rough USD estimate from model family heuristics (usage meter remains source of truth)."""
+        model_l = (model or "").lower()
+        # per 1k tokens
+        if "gpt-4o" in model_l or "claude-3-5" in model_l or "claude-sonnet" in model_l:
+            in_rate, out_rate = 0.0025, 0.01
+        elif "gpt-4" in model_l or "claude-3-opus" in model_l:
+            in_rate, out_rate = 0.01, 0.03
+        elif "gemini-1.5-pro" in model_l or "gemini-2" in model_l:
+            in_rate, out_rate = 0.00125, 0.005
+        elif "ollama" in model_l or "llama" in model_l or "mistral" in model_l:
+            in_rate, out_rate = 0.0, 0.0
+        else:
+            in_rate, out_rate = 0.00015, 0.0006
+        return (input_tokens / 1000.0 * in_rate) + (output_tokens / 1000.0 * out_rate)
 
     def _estimate_upfront_cost(self, model: str, prompt_length: int, max_tokens: int) -> float:
         max_input = max(prompt_length / 4, 10)

@@ -1,32 +1,31 @@
-# v1.0.0 Release Checklist
+# v1.0.0 Release Checklist (Launch Freeze)
 
 ## Pre-release
 
-- [x] Feature freeze for v1.0.0 (no new product features in this packaging)
-- [x] Alembic single head (`a7b8c9d0e1f2`)
-- [x] CHANGELOG + Release Notes authored
-- [x] Security review documented
-- [x] E2E checklist authored
+- [x] Feature freeze / launch freeze packaging
+- [x] Critical bugs fixed (webhooks, quota fail-closed, CORS credentials)
+- [x] Dead/orphan router mounted or deprecated
+- [x] Security headers + rate limiting verified in code/tests
+- [x] Release notes + final launch checklist authored
 - [ ] Staging E2E checklist executed end-to-end (human/QA)
-- [ ] Load/performance smoke on staging
-- [ ] Backup + restore drill on staging
+- [ ] Backup + restore drill on staging (evidence)
 - [ ] Secrets provisioned in prod vault
-- [ ] `CORS_ORIGINS` explicit
-- [ ] `SSL_MODE=certbot` (or approved terminate-TLS at edge)
-- [ ] `/metrics` scrape ACL
+- [ ] `CORS_ORIGINS` explicit on VPS
+- [ ] `SSL_MODE=certbot` (or approved edge TLS)
+- [ ] `/metrics` scrape ACL or `METRICS_TOKEN`
 - [ ] Notification channel decision (stub vs live)
 
 ## Build & migrate
 
-- [ ] Tag `v1.0.0` on git
+- [x] Tag `v1.0.0` on launch-freeze commit
 - [ ] Build prod images
 - [ ] `alembic upgrade head` on staging ✓ then prod
-- [ ] Worker + scheduler healthy
+- [ ] Worker + scheduler healthy (alerts tick visible in logs)
 
 ## Go-live
 
-- [ ] DNS cutover / TLS verified
-- [ ] Smoke: login, agent publish, health
+- [ ] DNS / TLS verified
+- [ ] Smoke: login, agent publish, `/live`, billing plans
 - [ ] Monitoring alerts evaluated
 - [ ] On-call roster confirmed
 

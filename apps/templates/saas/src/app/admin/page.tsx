@@ -1,18 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  Area,
-  AreaChart,
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis
-} from "recharts";
 import { toast } from "sonner";
 import { billingApi, platformAdminApi } from "@/lib/services";
 import {
@@ -24,8 +14,16 @@ import {
 } from "@/lib/super-admin";
 import { formatNumber } from "@/lib/utils";
 import { PageHeader, Stat, EmptyState } from "@/components/ui/misc";
-import { Badge, Card, CardHeader } from "@/components/ui/card";
+import { Badge, Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+
+const AdminCharts = dynamic(
+  () => import("@/components/admin/admin-charts").then((m) => m.AdminCharts),
+  {
+    ssr: false,
+    loading: () => <p className="text-sm text-muted">Loading charts…</p>
+  }
+);
 
 const REALTIME_MS = 15_000;
 
@@ -155,51 +153,7 @@ export default function AdminDashboardPage() {
         <Stat label="Churn" value={formatPct(e?.churn)} />
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card>
-          <CardHeader title="Monthly Revenue" description="Paid invoice totals by month" />
-          <div className="h-64 w-full">
-            {revenueChart.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={revenueChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Area
-                    type="monotone"
-                    dataKey="revenue"
-                    stroke="#0f766e"
-                    fill="#99f6e4"
-                    fillOpacity={0.55}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted">No revenue series yet.</p>
-            )}
-          </div>
-        </Card>
-
-        <Card>
-          <CardHeader title="AI Usage (14d)" description="Completion requests and tokens" />
-          <div className="h-64 w-full">
-            {aiChart.length ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={aiChart}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                  <XAxis dataKey="period" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="requests" fill="#0f766e" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <p className="text-sm text-muted">No AI series yet.</p>
-            )}
-          </div>
-        </Card>
-      </div>
+      <AdminCharts revenueChart={revenueChart} aiChart={aiChart} />
 
       <Card className="space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
