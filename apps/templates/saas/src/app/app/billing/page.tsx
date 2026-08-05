@@ -8,7 +8,9 @@ import { site } from "@/lib/config";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatNumber } from "@/lib/utils";
 import {
+  formatPlanPrice,
   pickBillingCheckoutProvider,
+  resolvePlanDisplayAmount,
   resolveRazorpayCheckoutKey
 } from "@/lib/billing-providers";
 import {
@@ -30,14 +32,19 @@ export default function BillingPage() {
   const invoices = useQuery({ queryKey: ["invoices"], queryFn: billingApi.invoices });
   const usage = useQuery({ queryKey: ["usage-current"], queryFn: usageApi.current });
   const providers = useQuery({ queryKey: ["billing-providers"], queryFn: billingApi.providers });
+  const billingCtx = useQuery({
+    queryKey: ["billing-context"],
+    queryFn: billingApi.billingContext
+  });
 
+  const displayCurrency = (billingCtx.data?.currency || providers.data?.region?.currency || "USD").toUpperCase();
   const razorpayKey = useMemo(
     () => resolveRazorpayCheckoutKey(providers.data, site.razorpayKey),
     [providers.data]
   );
   const checkoutProvider = useMemo(
-    () => pickBillingCheckoutProvider(providers.data, site.razorpayKey),
-    [providers.data]
+    () => pickBillingCheckoutProvider(providers.data, site.razorpayKey, billingCtx.data),
+    [providers.data, billingCtx.data]
   );
 
   async function refreshBillingState() {
@@ -58,7 +65,16 @@ export default function BillingPage() {
   }, [usage.data]);
 
   const upgrade = useMutation({
-    mutationFn: async (plan: { id: string; name: string; amount?: number; price?: number }) => {
+    mutationFn: async (plan: {
+      id: string;
+      name: string;
+      amount?: number;
+      price?: number;
+      is_custom_pricing?: boolean;
+    }) => {
+      if (plan.is_custom_pricing) {
+        throw new Error("Enterprise uses custom pricing. Contact sales.");
+      }
       const price = Number(plan.amount ?? plan.price ?? 0);
       if (!(price > 0)) {
         return billingApi.changePlan({
@@ -67,9 +83,9 @@ export default function BillingPage() {
         });
       }
 
-      // Always refresh provider status so we don't rely on a stale/empty cache.
       const providerStatus = (await billingApi.providers()) || providers.data;
-      const chosen = pickBillingCheckoutProvider(providerStatus, site.razorpayKey);
+      const context = (await billingApi.billingContext()) || billingCtx.data;
+      const chosen = pickBillingCheckoutProvider(providerStatus, site.razorpayKey, context);
       const key = resolveRazorpayCheckoutKey(providerStatus, site.razorpayKey);
 
       if (chosen === "razorpay" && key) {
@@ -211,8 +227,9 @@ export default function BillingPage() {
           {sub.data?.current_period_end ? ` · renews ${formatDate(sub.data.current_period_end)}` : ""}
         </p>
         <p className="mt-2 text-xs text-muted">
-          Providers: Stripe {providers.data?.stripe?.available ? "on" : "off"} · Razorpay{" "}
-          {checkoutProvider === "razorpay" || providers.data?.razorpay?.available ? "on" : "off"}
+          Region: {billingCtx.data?.region || providers.data?.region?.code || "—"} · Currency{" "}
+          {displayCurrency} · Providers: Stripe {providers.data?.stripe?.available ? "on" : "off"} ·
+          Razorpay {checkoutProvider === "razorpay" || providers.data?.razorpay?.available ? "on" : "off"}
           {razorpayKey ? ` · key ${razorpayKey.slice(0, 10)}…` : ""}
         </p>
         <div className="mt-4 space-y-3">
@@ -252,17 +269,27 @@ export default function BillingPage() {
         <h2 className="mb-3 text-lg font-semibold">Upgrade / change plan</h2>
         <div className="grid gap-4 md:grid-cols-3">
           {(plans.data || []).map((plan) => {
-            const price = plan.amount ?? plan.price ?? 0;
+            const currency = (plan.display_currency || displayCurrency).toUpperCase();
+            const price = resolvePlanDisplayAmount(plan, currency);
+            const custom = Boolean(plan.is_custom_pricing);
             return (
               <Card key={plan.id}>
                 <h3 className="text-lg font-semibold">{plan.name}</h3>
                 <p className="mt-1 text-sm text-muted">{plan.description || plan.interval || "monthly"}</p>
                 <p className="my-4 text-3xl font-semibold">
-                  ${price}
-                  <span className="text-sm font-normal text-muted">/{plan.interval || "mo"}</span>
+                  {custom ? "Custom" : formatPlanPrice(price, currency)}
+                  {!custom ? (
+                    <span className="text-sm font-normal text-muted">/{plan.interval || "mo"}</span>
+                  ) : null}
                 </p>
-                {plan.yearly_amount != null ? (
-                  <p className="mb-3 text-xs text-muted">Yearly ${plan.yearly_amount}</p>
+                {plan.yearly_amount != null && !custom ? (
+                  <p className="mb-3 text-xs text-muted">
+                    Yearly{" "}
+                    {formatPlanPrice(
+                      currency === "INR" ? plan.yearly_price_inr ?? null : plan.yearly_price_usd ?? plan.yearly_amount,
+                      currency
+                    )}
+                  </p>
                 ) : null}
                 <Button
                   className="w-full"
@@ -270,13 +297,18 @@ export default function BillingPage() {
                     upgrade.mutate({
                       id: plan.id,
                       name: plan.name,
-                      amount: plan.amount,
-                      price: plan.price
+                      amount: price ?? 0,
+                      price: price ?? 0,
+                      is_custom_pricing: custom
                     })
                   }
-                  disabled={upgrade.isPending || (Number(price) > 0 && providers.isLoading)}
+                  disabled={upgrade.isPending || custom || ((price ?? 0) > 0 && providers.isLoading)}
                 >
-                  {upgrade.isPending ? "Processing…" : `Choose ${plan.name}`}
+                  {custom
+                    ? "Contact sales"
+                    : upgrade.isPending
+                      ? "Processing…"
+                      : `Choose ${plan.name}`}
                 </Button>
               </Card>
             );

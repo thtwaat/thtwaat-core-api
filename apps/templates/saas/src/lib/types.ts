@@ -202,6 +202,14 @@ export type Plan = {
   price?: number;
   amount?: number;
   yearly_amount?: number | null;
+  price_inr?: number | null;
+  price_usd?: number | null;
+  yearly_price_inr?: number | null;
+  yearly_price_usd?: number | null;
+  is_custom_pricing?: boolean;
+  display_amount?: number | null;
+  display_currency?: string | null;
+  resolved_provider?: string | null;
   currency?: string;
   interval?: string;
   description?: string;

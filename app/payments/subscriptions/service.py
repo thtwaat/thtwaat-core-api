@@ -29,6 +29,11 @@ from app.payments.billing_extras import (
     apply_coupon_discount,
     get_active_coupon,
 )
+from app.payments.region_pricing import (
+    plan_currency_for_region,
+    plan_price_for_region,
+)
+from app.payments.billing_region import resolve_region_for_company
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +75,13 @@ class SubscriptionService:
 
     # ─── Stripe ────────────────────────────────────────────────────────────
 
-    def create_stripe_checkout_session(self, company_id: uuid.UUID, data: StripeCheckoutRequest) -> CheckoutSessionResponse:
+    def create_stripe_checkout_session(
+        self,
+        company_id: uuid.UUID,
+        data: StripeCheckoutRequest,
+        *,
+        request=None,
+    ) -> CheckoutSessionResponse:
         """Creates a Stripe Checkout Session for a plan subscription."""
         from decimal import Decimal
 
@@ -82,11 +93,22 @@ class SubscriptionService:
         if not plan or not plan.is_active:
             raise HTTPException(status_code=404, detail="Plan not found or inactive.")
 
-        # Free / $0: no Stripe required (old SaaS builds still call this endpoint).
-        try:
-            amount = Decimal(str(plan.amount if plan.amount is not None else 0))
-        except Exception:
-            amount = Decimal("0")
+        if getattr(plan, "is_custom_pricing", False):
+            raise HTTPException(
+                status_code=400,
+                detail="Enterprise plan uses custom pricing. Contact sales.",
+            )
+
+        region = resolve_region_for_company(self.db, company_id, request)
+        # India workspace should use Razorpay/INR checkout, not Stripe.
+        if region.region == "IN" and razorpay_enabled():
+            raise HTTPException(
+                status_code=400,
+                detail="Indian workspaces checkout with Razorpay (INR). Use the Razorpay order flow.",
+            )
+
+        use_yearly = (data.interval or plan.interval or "month").lower() == "year"
+        amount = plan_price_for_region(plan, region, interval="year" if use_yearly else "month")
         if amount <= 0:
             try:
                 existing = self.sub_repo.get_active_by_company(company_id)
@@ -122,7 +144,6 @@ class SubscriptionService:
             raise HTTPException(status_code=503, detail="Stripe billing is not enabled or configured.")
         stripe.api_key = settings.STRIPE_SECRET_KEY
 
-        use_yearly = (data.interval or plan.interval or "month").lower() == "year"
         price_id = plan.stripe_yearly_price_id if use_yearly else plan.stripe_price_id
         if not price_id:
             raise HTTPException(
@@ -138,9 +159,18 @@ class SubscriptionService:
             "line_items": [{"price": price_id, "quantity": 1}],
             "success_url": data.success_url,
             "cancel_url": data.cancel_url,
-            "metadata": {"company_id": str(company_id), "plan_id": str(plan.id)},
+            "metadata": {
+                "company_id": str(company_id),
+                "plan_id": str(plan.id),
+                "billing_region": region.region,
+                "billing_currency": "USD",
+            },
             "subscription_data": {
-                "metadata": {"company_id": str(company_id), "plan_id": str(plan.id)}
+                "metadata": {
+                    "company_id": str(company_id),
+                    "plan_id": str(plan.id),
+                    "billing_region": region.region,
+                }
             },
         }
         trial_days = data.trial_days
@@ -168,7 +198,7 @@ class SubscriptionService:
                 "provider": SubscriptionProvider.STRIPE,
                 "provider_customer_id": customer_id,
                 "status": SubscriptionStatus.INCOMPLETE,
-                "metadata_": {"checkout_session_id": session.id}
+                "metadata_": {"checkout_session_id": session.id, "billing_region": region.region}
             })
 
         return CheckoutSessionResponse(checkout_url=session.url, provider="stripe")
@@ -258,15 +288,25 @@ class SubscriptionService:
         return sub
 
     def change_plan(
-        self, company_id: uuid.UUID, data: ChangePlanRequest
+        self, company_id: uuid.UUID, data: ChangePlanRequest, *, request=None
     ) -> CheckoutSessionResponse:
         """
         Upgrade/downgrade via checkout for paid providers, or immediate activate for free.
+        Region selects provider: India → Razorpay/INR, International → Stripe/USD.
         """
         plan = self.plan_repo.get_by_id(data.plan_id)
         if not plan or not plan.is_active:
             raise HTTPException(status_code=404, detail="Plan not found or inactive.")
-        amount = float(plan.amount or 0)
+
+        if getattr(plan, "is_custom_pricing", False):
+            raise HTTPException(
+                status_code=400,
+                detail="Enterprise plan uses custom pricing. Contact sales.",
+            )
+
+        region = resolve_region_for_company(self.db, company_id, request)
+        use_yearly = (data.interval or plan.interval or "month").lower() == "year"
+        amount = float(plan_price_for_region(plan, region, interval="year" if use_yearly else "month"))
         if amount <= 0:
             existing = self.sub_repo.get_active_by_company(company_id)
             if existing:
@@ -291,9 +331,19 @@ class SubscriptionService:
             self._activate_company_plan(company_id, plan)
             return CheckoutSessionResponse(checkout_url=None, provider="manual")
 
-        # Paid: route through checkout
+        # Paid: route by region
         success = data.success_url or "https://app.thtwaat.com/app/billing?upgraded=1"
         cancel = data.cancel_url or "https://app.thtwaat.com/app/billing?cancelled=1"
+        if region.region == "IN":
+            if not razorpay_enabled():
+                raise HTTPException(
+                    status_code=503,
+                    detail="Razorpay is required for Indian (INR) billing but is not configured.",
+                )
+            raise HTTPException(
+                status_code=400,
+                detail="Use Razorpay order+verify flow for Indian plan changes.",
+            )
         if stripe_enabled():
             return self.create_stripe_checkout_session(
                 company_id,
@@ -304,6 +354,7 @@ class SubscriptionService:
                     coupon_code=data.coupon_code,
                     interval=data.interval,
                 ),
+                request=request,
             )
         if razorpay_enabled():
             raise HTTPException(
@@ -330,8 +381,10 @@ class SubscriptionService:
 
     # ─── Razorpay ──────────────────────────────────────────────────────────
 
-    def create_razorpay_order(self, company_id: uuid.UUID, data: RazorpayCheckoutRequest) -> CheckoutSessionResponse:
-        """Creates a Razorpay subscription order."""
+    def create_razorpay_order(
+        self, company_id: uuid.UUID, data: RazorpayCheckoutRequest, *, request=None
+    ) -> CheckoutSessionResponse:
+        """Creates a Razorpay subscription order (INR for India region)."""
         if not razorpay_enabled():
             raise HTTPException(status_code=503, detail="Razorpay billing is not enabled or configured.")
         import razorpay
@@ -345,9 +398,26 @@ class SubscriptionService:
         if not plan or not plan.is_active:
             raise HTTPException(status_code=404, detail="Plan not found or inactive.")
 
+        if getattr(plan, "is_custom_pricing", False):
+            raise HTTPException(
+                status_code=400,
+                detail="Enterprise plan uses custom pricing. Contact sales.",
+            )
+
+        region = resolve_region_for_company(self.db, company_id, request)
+        # Prefer India pricing for Razorpay; if intl workspace hits Razorpay, still charge INR catalog when present
+        billing_region = region
+        if region.region != "IN":
+            # Force INR catalog when Razorpay is the checkout path (gateway is India-native)
+            from app.payments.region_pricing import BillingRegion
+
+            billing_region = BillingRegion("IN", "INR", "razorpay", region.country_code, "razorpay_checkout")
+
         use_yearly = (data.interval or plan.interval or "month").lower() == "year"
-        amount = plan.yearly_amount if use_yearly and plan.yearly_amount is not None else plan.amount
-        amount_dec = __import__("decimal").Decimal(str(amount or 0))
+        amount_dec = plan_price_for_region(
+            plan, billing_region, interval="year" if use_yearly else "month"
+        )
+        currency = plan_currency_for_region(plan, billing_region)
         coupon_code = None
         if data.coupon_code:
             coupon = get_active_coupon(self.db, data.coupon_code)
@@ -358,18 +428,23 @@ class SubscriptionService:
             coupon.redeemed_count = int(coupon.redeemed_count or 0) + 1
             self.db.commit()
 
-        # Create Razorpay order
+        if amount_dec <= 0:
+            raise HTTPException(status_code=400, detail="Plan amount must be greater than zero for Razorpay.")
+
+        # Create Razorpay order (amount in smallest currency unit)
         order_data = {
             "amount": int(float(amount_dec) * 100),
-            "currency": plan.currency.upper(),
+            "currency": currency.upper(),
             "payment_capture": 1,
             "notes": {
                 "company_id": str(company_id),
                 "plan_id": str(plan.id),
                 "customer_name": data.customer_name,
                 "customer_email": data.customer_email,
+                "billing_region": billing_region.region,
+                "billing_currency": currency.upper(),
                 **({"coupon_code": coupon_code} if coupon_code else {}),
-            }
+            },
         }
         order = client.order.create(data=order_data)
 

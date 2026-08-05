@@ -160,7 +160,23 @@ export const billingApi = {
         key_id?: string | null;
       };
       default: string;
+      region?: {
+        code: string;
+        currency: string;
+        provider: string;
+        country_code?: string | null;
+        source?: string;
+      };
     }>("/payments/subscriptions/providers"),
+  billingContext: () =>
+    api.v1<{
+      region: string;
+      currency: string;
+      provider: string;
+      country_code?: string | null;
+      source?: string;
+      providers?: Record<string, unknown>;
+    }>("/payments/subscriptions/billing-context"),
   razorpayOrder: (body: {
     plan_id: string;
     customer_name: string;

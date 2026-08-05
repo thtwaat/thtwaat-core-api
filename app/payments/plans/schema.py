@@ -36,6 +36,11 @@ class PlanCreate(BaseModel):
     max_workspaces: int = Field(default=1, ge=0)
     max_widgets: int = Field(default=1, ge=0)
     max_knowledge: int = Field(default=1, ge=0)
+    price_inr: Optional[Decimal] = Field(None, ge=0)
+    price_usd: Optional[Decimal] = Field(None, ge=0)
+    yearly_price_inr: Optional[Decimal] = Field(None, ge=0)
+    yearly_price_usd: Optional[Decimal] = Field(None, ge=0)
+    is_custom_pricing: bool = False
 
 
 class PlanUpdate(BaseModel):
@@ -53,6 +58,14 @@ class PlanUpdate(BaseModel):
     max_team_members: Optional[int] = None
     max_api_keys: Optional[int] = None
     max_templates: Optional[int] = None
+    amount: Optional[Decimal] = Field(None, ge=0)
+    yearly_amount: Optional[Decimal] = Field(None, ge=0)
+    currency: Optional[str] = Field(None, min_length=3, max_length=3)
+    price_inr: Optional[Decimal] = Field(None, ge=0)
+    price_usd: Optional[Decimal] = Field(None, ge=0)
+    yearly_price_inr: Optional[Decimal] = Field(None, ge=0)
+    yearly_price_usd: Optional[Decimal] = Field(None, ge=0)
+    is_custom_pricing: Optional[bool] = None
 
 
 class PlanResponse(BaseModel):
@@ -84,6 +97,14 @@ class PlanResponse(BaseModel):
     max_knowledge: int = 1
     stripe_yearly_price_id: Optional[str] = None
     razorpay_yearly_plan_id: Optional[str] = None
+    price_inr: Optional[float] = None
+    price_usd: Optional[float] = None
+    yearly_price_inr: Optional[float] = None
+    yearly_price_usd: Optional[float] = None
+    is_custom_pricing: bool = False
+    display_amount: Optional[float] = None
+    display_currency: Optional[str] = None
+    resolved_provider: Optional[str] = None
     is_active: bool
     created_at: datetime
     updated_at: datetime

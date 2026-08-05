@@ -53,6 +53,13 @@ class Plan(Base, TimestampMixin):
     stripe_yearly_price_id = Column(String(255), nullable=True)
     razorpay_yearly_plan_id = Column(String(255), nullable=True)
 
+    # Region pricing (India INR / International USD) — amount remains primary for compat
+    price_inr = Column(Numeric(12, 2), nullable=True)
+    price_usd = Column(Numeric(12, 2), nullable=True)
+    yearly_price_inr = Column(Numeric(12, 2), nullable=True)
+    yearly_price_usd = Column(Numeric(12, 2), nullable=True)
+    is_custom_pricing = Column(Boolean, nullable=False, default=False)
+
     is_active = Column(Boolean, nullable=False, default=True)
 
     def __repr__(self) -> str:

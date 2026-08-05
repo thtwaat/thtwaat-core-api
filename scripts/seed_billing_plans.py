@@ -19,6 +19,9 @@ def seed_billing_plans(db: Session) -> Dict[str, int]:
     for spec in CANONICAL_PLANS:
         row = db.query(Plan).filter(Plan.name == spec["name"]).first()
         fields = {k: v for k, v in spec.items()}
+        # Keep amount aligned with price_usd when present (compat).
+        if fields.get("price_usd") is not None and "amount" not in fields:
+            fields["amount"] = fields["price_usd"]
         if row:
             for k, v in fields.items():
                 if hasattr(row, k):
@@ -26,7 +29,7 @@ def seed_billing_plans(db: Session) -> Dict[str, int]:
             row.is_active = True
             updated += 1
         else:
-            db.add(Plan(**fields, is_active=True))
+            db.add(Plan(**{k: v for k, v in fields.items() if hasattr(Plan, k)}, is_active=True))
             created += 1
     db.commit()
     return {"created": created, "updated": updated}

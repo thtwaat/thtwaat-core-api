@@ -2,13 +2,16 @@
 app/payments/subscriptions/router.py
 """
 import uuid
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
+from typing import Any, Dict, List, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
+from app.payments.billing_region import resolve_region_for_company
+from app.payments.provider_flags import billing_providers_status, razorpay_enabled, stripe_enabled
 from app.payments.subscriptions.schema import (
     StripeCheckoutRequest, RazorpayCheckoutRequest, RazorpayVerifyRequest,
     CheckoutSessionResponse, SubscriptionResponse, ChangePlanRequest
@@ -30,14 +33,17 @@ def get_sub_service(db: Session = Depends(get_db)) -> SubscriptionService:
 )
 def create_stripe_checkout(
     payload: StripeCheckoutRequest,
+    request: Request,
     current_user: UserProfileResponse = Depends(get_current_user),
-    service: SubscriptionService = Depends(get_sub_service)
+    service: SubscriptionService = Depends(get_sub_service),
 ):
     """
     Creates a Stripe Checkout Session. Returns a `checkout_url` the frontend
     should redirect the user to for payment.
     """
-    return service.create_stripe_checkout_session(current_user.company_id, payload)
+    return service.create_stripe_checkout_session(
+        current_user.company_id, payload, request=request
+    )
 
 
 @router.post(
@@ -48,14 +54,15 @@ def create_stripe_checkout(
 )
 def create_razorpay_order(
     payload: RazorpayCheckoutRequest,
+    request: Request,
     current_user: UserProfileResponse = Depends(get_current_user),
-    service: SubscriptionService = Depends(get_sub_service)
+    service: SubscriptionService = Depends(get_sub_service),
 ):
     """
     Creates a Razorpay order. The frontend uses the returned `order_id` with
     the Razorpay JS SDK to open the payment popup.
     """
-    return service.create_razorpay_order(current_user.company_id, payload)
+    return service.create_razorpay_order(current_user.company_id, payload, request=request)
 
 
 @router.post(
@@ -66,7 +73,7 @@ def create_razorpay_order(
 def verify_razorpay_payment(
     payload: RazorpayVerifyRequest,
     current_user: UserProfileResponse = Depends(get_current_user),
-    service: SubscriptionService = Depends(get_sub_service)
+    service: SubscriptionService = Depends(get_sub_service),
 ):
     """
     Verifies the Razorpay HMAC-SHA256 signature from the frontend callback,
@@ -130,7 +137,7 @@ def get_my_subscription(
 )
 def list_subscriptions(
     current_user: UserProfileResponse = Depends(get_current_user),
-    service: SubscriptionService = Depends(get_sub_service)
+    service: SubscriptionService = Depends(get_sub_service),
 ):
     return service.list_subscriptions(current_user.company_id)
 
@@ -142,7 +149,7 @@ def list_subscriptions(
 )
 def cancel_subscription(
     current_user: UserProfileResponse = Depends(get_current_user),
-    service: SubscriptionService = Depends(get_sub_service)
+    service: SubscriptionService = Depends(get_sub_service),
 ):
     """
     Sets cancel_at_period_end=True on the active subscription (Stripe/Razorpay).
@@ -170,17 +177,56 @@ def resume_subscription(
 )
 def change_plan(
     payload: ChangePlanRequest,
+    request: Request,
     current_user: UserProfileResponse = Depends(get_current_user),
     service: SubscriptionService = Depends(get_sub_service),
 ):
-    return service.change_plan(current_user.company_id, payload)
+    return service.change_plan(current_user.company_id, payload, request=request)
 
 
 @router.get("/providers")
 def subscription_providers(
+    request: Request,
     current_user: UserProfileResponse = Depends(get_current_user),
-):
-    _ = current_user
-    from app.payments.provider_flags import billing_providers_status
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    status_payload = billing_providers_status()
+    region = resolve_region_for_company(db, current_user.company_id, request)
+    preferred = region.provider
+    # Only recommend a provider that is actually available.
+    if preferred == "razorpay" and not razorpay_enabled():
+        preferred = "stripe" if stripe_enabled() else "auto"
+    elif preferred == "stripe" and not stripe_enabled():
+        preferred = "razorpay" if razorpay_enabled() else "auto"
+    status_payload["default"] = preferred
+    status_payload["region"] = {
+        "code": region.region,
+        "currency": region.currency,
+        "provider": preferred,
+        "country_code": region.country_code,
+        "source": region.source,
+    }
+    return status_payload
 
-    return billing_providers_status()
+
+@router.get("/billing-context")
+def billing_context(
+    request: Request,
+    current_user: UserProfileResponse = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Region, currency, and preferred provider for the current workspace."""
+    region = resolve_region_for_company(db, current_user.company_id, request)
+    preferred = region.provider
+    if preferred == "razorpay" and not razorpay_enabled():
+        preferred = "stripe" if stripe_enabled() else "auto"
+    elif preferred == "stripe" and not stripe_enabled():
+        preferred = "razorpay" if razorpay_enabled() else "auto"
+    return {
+        "region": region.region,
+        "currency": region.currency,
+        "provider": preferred,
+        "country_code": region.country_code,
+        "source": region.source,
+        "providers": billing_providers_status(),
+    }

@@ -84,6 +84,14 @@ Canonical path: `app/payments` + `app/usage` (no parallel `app/billing`).
 - Customer UI: `/app/billing` · Admin tab: Billing
 - Migration: `l6f7a8b9c0d1_enterprise_billing`
 
+## Region Pricing
+
+- India → INR + Razorpay; International → USD + Stripe
+- Plan columns: `price_inr`, `price_usd`, `yearly_price_inr`, `yearly_price_usd`, `is_custom_pricing`
+- Detection: company.country → CDN country headers → Accept-Language → default USD
+- APIs: `GET /payments/subscriptions/billing-context`, enriched plans + providers.region
+- Migration: `m7a8b9c0d1e2_region_pricing`
+
 ## Enterprise Admin Analytics & Operations (Phase 7)
 
 Canonical path: `app/monitoring` Super Admin facade (no parallel `app/admin` package).
