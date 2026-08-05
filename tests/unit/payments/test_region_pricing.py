@@ -95,3 +95,39 @@ def test_canonical_plans_region_prices():
     assert by_name["Pro"]["price_inr"] == Decimal("2999")
     assert by_name["Business"]["price_inr"] == Decimal("9999")
     assert by_name["Enterprise"]["is_custom_pricing"] is True
+
+
+@pytest.mark.unit
+def test_selected_country_overrides_company():
+    region = detect_billing_region(selected_country="US", company_country="IN")
+    assert region.region == "INTL"
+    assert region.currency == "USD"
+    assert region.provider == "stripe"
+    assert region.country_code == "US"
+    assert region.source == "user"
+
+
+@pytest.mark.unit
+def test_preference_country_overrides_company_and_header():
+    region = detect_billing_region(
+        preference_country="IN",
+        company_country="US",
+        headers={"cf-ipcountry": "GB"},
+    )
+    assert region.region == "IN"
+    assert region.provider == "razorpay"
+    assert region.source == "preference"
+
+
+@pytest.mark.unit
+def test_selected_india_routes_to_razorpay_inr():
+    region = detect_billing_region(selected_country="IN")
+    assert region.currency == "INR"
+    assert region.provider == "razorpay"
+    assert region.country_code == "IN"
+
+
+@pytest.mark.unit
+def test_default_country_code_is_us():
+    region = detect_billing_region()
+    assert region.country_code == "US"

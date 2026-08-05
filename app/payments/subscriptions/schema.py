@@ -15,6 +15,7 @@ class StripeCheckoutRequest(BaseModel):
     coupon_code: Optional[str] = None
     trial_days: Optional[int] = Field(None, ge=0, le=90)
     interval: Optional[str] = Field(None, pattern="^(month|year)$")
+    country: Optional[str] = Field(None, max_length=8, description="ISO country override for pricing")
 
 
 class RazorpayCheckoutRequest(BaseModel):
@@ -24,6 +25,7 @@ class RazorpayCheckoutRequest(BaseModel):
     customer_phone: Optional[str] = None
     coupon_code: Optional[str] = None
     interval: Optional[str] = Field(None, pattern="^(month|year)$")
+    country: Optional[str] = Field(None, max_length=8, description="ISO country override for pricing")
 
 
 class ChangePlanRequest(BaseModel):
@@ -32,6 +34,7 @@ class ChangePlanRequest(BaseModel):
     coupon_code: Optional[str] = None
     success_url: Optional[str] = None
     cancel_url: Optional[str] = None
+    country: Optional[str] = Field(None, max_length=8, description="ISO country override for pricing")
 
 
 class RazorpayVerifyRequest(BaseModel):

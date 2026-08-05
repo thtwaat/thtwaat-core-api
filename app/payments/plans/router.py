@@ -34,7 +34,6 @@ def _to_plan_response(plan, region) -> PlanResponse:
     "",
     response_model=List[PlanResponse],
     summary="List subscription plans",
-    include_in_schema=False,
 )
 @router.get(
     "/",
@@ -44,6 +43,7 @@ def _to_plan_response(plan, region) -> PlanResponse:
 def list_plans(
     request: Request,
     include_inactive: bool = Query(default=False, description="Platform admin: include inactive"),
+    country: Optional[str] = Query(default=None, description="ISO country override for display pricing"),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_bearer),
     db: Session = Depends(get_db),
     service: PlanService = Depends(get_plan_service),
@@ -69,7 +69,7 @@ def list_plans(
     else:
         plans = service.list_plans(active_only=True)
 
-    region = resolve_region_for_company(db, company_id, request)
+    region = resolve_region_for_company(db, company_id, request, country=country)
     return [_to_plan_response(p, region) for p in plans]
 
 
@@ -81,6 +81,7 @@ def list_plans(
 def get_plan(
     plan_id: uuid.UUID,
     request: Request,
+    country: Optional[str] = Query(default=None),
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_optional_bearer),
     db: Session = Depends(get_db),
     service: PlanService = Depends(get_plan_service),
@@ -92,7 +93,7 @@ def get_plan(
             company_id = actor.company_id
         except Exception:
             pass
-    region = resolve_region_for_company(db, company_id, request)
+    region = resolve_region_for_company(db, company_id, request, country=country)
     return _to_plan_response(service.get_plan(plan_id), region)
 
 

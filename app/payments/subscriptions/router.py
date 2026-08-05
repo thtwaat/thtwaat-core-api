@@ -4,13 +4,18 @@ app/payments/subscriptions/router.py
 import uuid
 from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
-from app.payments.billing_region import resolve_region_for_company
+from app.payments.billing_region import (
+    region_payload,
+    resolve_region_for_company,
+    save_billing_country_preference,
+)
 from app.payments.provider_flags import billing_providers_status, razorpay_enabled, stripe_enabled
 from app.payments.subscriptions.schema import (
     StripeCheckoutRequest, RazorpayCheckoutRequest, RazorpayVerifyRequest,
@@ -19,6 +24,20 @@ from app.payments.subscriptions.schema import (
 from app.payments.subscriptions.service import SubscriptionService
 
 router = APIRouter(prefix="/payments/subscriptions", tags=["Subscriptions"])
+
+
+class BillingCountryPreferenceRequest(BaseModel):
+    country: str = Field(..., min_length=2, max_length=8)
+
+
+def _preferred_provider(region) -> str:
+    preferred = region.provider
+    if preferred == "razorpay" and not razorpay_enabled():
+        preferred = "stripe" if stripe_enabled() else "auto"
+    elif preferred == "stripe" and not stripe_enabled():
+        preferred = "razorpay" if razorpay_enabled() else "auto"
+    return preferred
+
 
 
 def get_sub_service(db: Session = Depends(get_db)) -> SubscriptionService:
@@ -187,23 +206,21 @@ def change_plan(
 @router.get("/providers")
 def subscription_providers(
     request: Request,
+    country: Optional[str] = Query(default=None, description="ISO country override"),
     current_user: UserProfileResponse = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     status_payload = billing_providers_status()
-    region = resolve_region_for_company(db, current_user.company_id, request)
-    preferred = region.provider
-    # Only recommend a provider that is actually available.
-    if preferred == "razorpay" and not razorpay_enabled():
-        preferred = "stripe" if stripe_enabled() else "auto"
-    elif preferred == "stripe" and not stripe_enabled():
-        preferred = "razorpay" if razorpay_enabled() else "auto"
+    region = resolve_region_for_company(db, current_user.company_id, request, country=country)
+    preferred = _preferred_provider(region)
     status_payload["default"] = preferred
     status_payload["region"] = {
         "code": region.region,
         "currency": region.currency,
         "provider": preferred,
+        "country": region.country_code or ("IN" if region.region == "IN" else "US"),
         "country_code": region.country_code,
+        "gateway": preferred,
         "source": region.source,
     }
     return status_payload
@@ -212,21 +229,32 @@ def subscription_providers(
 @router.get("/billing-context")
 def billing_context(
     request: Request,
+    country: Optional[str] = Query(default=None, description="ISO country override"),
     current_user: UserProfileResponse = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
     """Region, currency, and preferred provider for the current workspace."""
-    region = resolve_region_for_company(db, current_user.company_id, request)
-    preferred = region.provider
-    if preferred == "razorpay" and not razorpay_enabled():
-        preferred = "stripe" if stripe_enabled() else "auto"
-    elif preferred == "stripe" and not stripe_enabled():
-        preferred = "razorpay" if razorpay_enabled() else "auto"
-    return {
-        "region": region.region,
-        "currency": region.currency,
-        "provider": preferred,
-        "country_code": region.country_code,
-        "source": region.source,
-        "providers": billing_providers_status(),
-    }
+    region = resolve_region_for_company(db, current_user.company_id, request, country=country)
+    preferred = _preferred_provider(region)
+    payload = region_payload(region)
+    payload["provider"] = preferred
+    payload["gateway"] = preferred
+    payload["providers"] = billing_providers_status()
+    return payload
+
+
+@router.put("/billing-country")
+@router.post("/billing-country")
+def set_billing_country(
+    payload: BillingCountryPreferenceRequest,
+    current_user: UserProfileResponse = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Dict[str, Any]:
+    """Persist user-selected billing country on the workspace."""
+    region = save_billing_country_preference(db, current_user.company_id, payload.country)
+    preferred = _preferred_provider(
+        resolve_region_for_company(db, current_user.company_id, country=payload.country)
+    )
+    region["provider"] = preferred
+    region["gateway"] = preferred
+    return region

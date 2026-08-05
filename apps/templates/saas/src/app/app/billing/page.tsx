@@ -1,12 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { billingApi, usageApi } from "@/lib/services";
 import { site } from "@/lib/config";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatNumber } from "@/lib/utils";
+import {
+  countryCurrency,
+  countryFromBrowserLocale,
+  readStoredBillingCountry,
+  resolveInitialBillingCountry,
+  writeStoredBillingCountry
+} from "@/lib/billing-countries";
 import {
   formatPlanPrice,
   pickBillingCheckoutProvider,
@@ -18,6 +25,7 @@ import {
   openRazorpayCheckout,
   runRazorpayCheckout
 } from "@/lib/razorpay-checkout";
+import { BillingCountrySelector } from "@/components/billing/BillingCountrySelector";
 import { PageHeader, EmptyState, Progress, Stat } from "@/components/ui/misc";
 import { Badge, Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -27,17 +35,69 @@ export default function BillingPage() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const [coupon, setCoupon] = useState("");
-  const plans = useQuery({ queryKey: ["plans"], queryFn: billingApi.plans });
+  const [country, setCountry] = useState<string | null>(() => readStoredBillingCountry());
+  const [countryReady, setCountryReady] = useState(() => Boolean(readStoredBillingCountry()));
+
+  // Bootstrap country when no local preference: server → browser locale → US
+  const bootstrapCtx = useQuery({
+    queryKey: ["billing-context-bootstrap"],
+    queryFn: () => billingApi.billingContext(),
+    enabled: !countryReady
+  });
+
+  useEffect(() => {
+    if (countryReady) return;
+    if (bootstrapCtx.isLoading) return;
+    if (bootstrapCtx.isError) {
+      const fallback =
+        resolveInitialBillingCountry({
+          stored: readStoredBillingCountry(),
+          browserCountry: countryFromBrowserLocale()
+        }) || "US";
+      setCountry(fallback);
+      writeStoredBillingCountry(fallback);
+      setCountryReady(true);
+      return;
+    }
+    if (!bootstrapCtx.data) return;
+    const resolved = resolveInitialBillingCountry({
+      stored: readStoredBillingCountry(),
+      serverCountry: bootstrapCtx.data.country || bootstrapCtx.data.country_code,
+      serverSource: bootstrapCtx.data.source,
+      browserCountry: countryFromBrowserLocale()
+    });
+    setCountry(resolved);
+    writeStoredBillingCountry(resolved);
+    setCountryReady(true);
+  }, [countryReady, bootstrapCtx.isLoading, bootstrapCtx.isError, bootstrapCtx.data]);
+
+  const billingCountry = country || "US";
+
+  const plans = useQuery({
+    queryKey: ["plans", billingCountry],
+    queryFn: () => billingApi.plans(billingCountry),
+    enabled: countryReady
+  });
   const sub = useQuery({ queryKey: ["subscription"], queryFn: billingApi.subscription });
   const invoices = useQuery({ queryKey: ["invoices"], queryFn: billingApi.invoices });
   const usage = useQuery({ queryKey: ["usage-current"], queryFn: usageApi.current });
-  const providers = useQuery({ queryKey: ["billing-providers"], queryFn: billingApi.providers });
+  const providers = useQuery({
+    queryKey: ["billing-providers", billingCountry],
+    queryFn: () => billingApi.providers(billingCountry),
+    enabled: countryReady
+  });
   const billingCtx = useQuery({
-    queryKey: ["billing-context"],
-    queryFn: billingApi.billingContext
+    queryKey: ["billing-context", billingCountry],
+    queryFn: () => billingApi.billingContext(billingCountry),
+    enabled: countryReady
   });
 
-  const displayCurrency = (billingCtx.data?.currency || providers.data?.region?.currency || "USD").toUpperCase();
+  const displayCurrency = (
+    billingCtx.data?.currency ||
+    providers.data?.region?.currency ||
+    countryCurrency(billingCountry)
+  ).toUpperCase();
+
   const razorpayKey = useMemo(
     () => resolveRazorpayCheckoutKey(providers.data, site.razorpayKey),
     [providers.data]
@@ -52,7 +112,26 @@ export default function BillingPage() {
       qc.invalidateQueries({ queryKey: ["subscription"] }),
       qc.invalidateQueries({ queryKey: ["invoices"] }),
       qc.invalidateQueries({ queryKey: ["usage-current"] }),
-      qc.invalidateQueries({ queryKey: ["plans"] })
+      qc.invalidateQueries({ queryKey: ["plans", billingCountry] }),
+      qc.invalidateQueries({ queryKey: ["billing-providers", billingCountry] }),
+      qc.invalidateQueries({ queryKey: ["billing-context", billingCountry] })
+    ]);
+  }
+
+  async function handleCountryChange(next: string) {
+    const code = next.toUpperCase();
+    if (code === billingCountry) return;
+    setCountry(code);
+    writeStoredBillingCountry(code);
+    try {
+      await billingApi.setBillingCountry(code);
+    } catch {
+      // Local selection still applies; workspace persist is best-effort.
+    }
+    await Promise.all([
+      qc.invalidateQueries({ queryKey: ["plans"] }),
+      qc.invalidateQueries({ queryKey: ["billing-providers"] }),
+      qc.invalidateQueries({ queryKey: ["billing-context"] })
     ]);
   }
 
@@ -79,12 +158,13 @@ export default function BillingPage() {
       if (!(price > 0)) {
         return billingApi.changePlan({
           plan_id: plan.id,
-          coupon_code: coupon || undefined
+          coupon_code: coupon || undefined,
+          country: billingCountry
         });
       }
 
-      const providerStatus = (await billingApi.providers()) || providers.data;
-      const context = (await billingApi.billingContext()) || billingCtx.data;
+      const providerStatus = (await billingApi.providers(billingCountry)) || providers.data;
+      const context = (await billingApi.billingContext(billingCountry)) || billingCtx.data;
       const chosen = pickBillingCheckoutProvider(providerStatus, site.razorpayKey, context);
       const key = resolveRazorpayCheckoutKey(providerStatus, site.razorpayKey);
 
@@ -105,7 +185,8 @@ export default function BillingPage() {
             createOrder: (body) =>
               billingApi.razorpayOrder({
                 ...body,
-                coupon_code: coupon || undefined
+                coupon_code: coupon || undefined,
+                country: billingCountry
               }),
             verifyPayment: billingApi.razorpayVerify,
             loadCheckoutScript: loadRazorpayCheckoutScript,
@@ -121,7 +202,8 @@ export default function BillingPage() {
           plan_id: plan.id,
           success_url,
           cancel_url,
-          coupon_code: coupon || undefined
+          coupon_code: coupon || undefined,
+          country: billingCountry
         });
         if (session.checkout_url) {
           window.location.href = session.checkout_url;
@@ -197,6 +279,13 @@ export default function BillingPage() {
     <div className="space-y-6">
       <PageHeader title="Billing" description="Current plan, upgrades, invoices, usage, and quotas." />
 
+      <BillingCountrySelector
+        value={billingCountry}
+        onChange={handleCountryChange}
+        disabled={!countryReady}
+      />
+      <p className="text-xs text-muted">Prices shown in {displayCurrency}</p>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Current plan" value={String(planName)} hint={sub.data?.status || "active"} />
         <Stat label="Messages used" value={formatNumber(usage.data?.usage?.ai_messages)} />
@@ -227,9 +316,10 @@ export default function BillingPage() {
           {sub.data?.current_period_end ? ` · renews ${formatDate(sub.data.current_period_end)}` : ""}
         </p>
         <p className="mt-2 text-xs text-muted">
-          Region: {billingCtx.data?.region || providers.data?.region?.code || "—"} · Currency{" "}
-          {displayCurrency} · Providers: Stripe {providers.data?.stripe?.available ? "on" : "off"} ·
-          Razorpay {checkoutProvider === "razorpay" || providers.data?.razorpay?.available ? "on" : "off"}
+          Country: {billingCtx.data?.country || billingCountry} · Gateway{" "}
+          {billingCtx.data?.gateway || checkoutProvider || "—"} · Currency {displayCurrency} ·
+          Providers: Stripe {providers.data?.stripe?.available ? "on" : "off"} · Razorpay{" "}
+          {checkoutProvider === "razorpay" || providers.data?.razorpay?.available ? "on" : "off"}
           {razorpayKey ? ` · key ${razorpayKey.slice(0, 10)}…` : ""}
         </p>
         <div className="mt-4 space-y-3">
@@ -272,6 +362,10 @@ export default function BillingPage() {
             const currency = (plan.display_currency || displayCurrency).toUpperCase();
             const price = resolvePlanDisplayAmount(plan, currency);
             const custom = Boolean(plan.is_custom_pricing);
+            const yearly =
+              currency === "INR"
+                ? plan.yearly_price_inr
+                : plan.yearly_price_usd ?? plan.yearly_amount;
             return (
               <Card key={plan.id}>
                 <h3 className="text-lg font-semibold">{plan.name}</h3>
@@ -279,16 +373,12 @@ export default function BillingPage() {
                 <p className="my-4 text-3xl font-semibold">
                   {custom ? "Custom" : formatPlanPrice(price, currency)}
                   {!custom ? (
-                    <span className="text-sm font-normal text-muted">/{plan.interval || "mo"}</span>
+                    <span className="text-sm font-normal text-muted">/{plan.interval || "month"}</span>
                   ) : null}
                 </p>
-                {plan.yearly_amount != null && !custom ? (
+                {yearly != null && !custom ? (
                   <p className="mb-3 text-xs text-muted">
-                    Yearly{" "}
-                    {formatPlanPrice(
-                      currency === "INR" ? plan.yearly_price_inr ?? null : plan.yearly_price_usd ?? plan.yearly_amount,
-                      currency
-                    )}
+                    Yearly {formatPlanPrice(yearly, currency)}
                   </p>
                 ) : null}
                 <Button
@@ -313,7 +403,7 @@ export default function BillingPage() {
               </Card>
             );
           })}
-          {!plans.data?.length && (
+          {!plans.data?.length && countryReady && (
             <EmptyState title="No plans returned" description="No active plans are available yet." />
           )}
         </div>

@@ -99,12 +99,14 @@ class SubscriptionService:
                 detail="Enterprise plan uses custom pricing. Contact sales.",
             )
 
-        region = resolve_region_for_company(self.db, company_id, request)
-        # India workspace should use Razorpay/INR checkout, not Stripe.
+        region = resolve_region_for_company(
+            self.db, company_id, request, country=getattr(data, "country", None)
+        )
+        # India selection should use Razorpay/INR checkout, not Stripe.
         if region.region == "IN" and razorpay_enabled():
             raise HTTPException(
                 status_code=400,
-                detail="Indian workspaces checkout with Razorpay (INR). Use the Razorpay order flow.",
+                detail="Indian billing uses Razorpay (INR). Use the Razorpay order flow.",
             )
 
         use_yearly = (data.interval or plan.interval or "month").lower() == "year"
@@ -304,7 +306,9 @@ class SubscriptionService:
                 detail="Enterprise plan uses custom pricing. Contact sales.",
             )
 
-        region = resolve_region_for_company(self.db, company_id, request)
+        region = resolve_region_for_company(
+            self.db, company_id, request, country=getattr(data, "country", None)
+        )
         use_yearly = (data.interval or plan.interval or "month").lower() == "year"
         amount = float(plan_price_for_region(plan, region, interval="year" if use_yearly else "month"))
         if amount <= 0:
@@ -331,7 +335,7 @@ class SubscriptionService:
             self._activate_company_plan(company_id, plan)
             return CheckoutSessionResponse(checkout_url=None, provider="manual")
 
-        # Paid: route by region
+        # Paid: route by selected country / region
         success = data.success_url or "https://app.thtwaat.com/app/billing?upgraded=1"
         cancel = data.cancel_url or "https://app.thtwaat.com/app/billing?cancelled=1"
         if region.region == "IN":
@@ -353,6 +357,7 @@ class SubscriptionService:
                     cancel_url=cancel,
                     coupon_code=data.coupon_code,
                     interval=data.interval,
+                    country=getattr(data, "country", None),
                 ),
                 request=request,
             )
@@ -404,14 +409,17 @@ class SubscriptionService:
                 detail="Enterprise plan uses custom pricing. Contact sales.",
             )
 
-        region = resolve_region_for_company(self.db, company_id, request)
-        # Prefer India pricing for Razorpay; if intl workspace hits Razorpay, still charge INR catalog when present
+        region = resolve_region_for_company(
+            self.db, company_id, request, country=getattr(data, "country", None)
+        )
+        # Razorpay is India/INR; charge INR catalog even if called with a non-IN override.
         billing_region = region
         if region.region != "IN":
-            # Force INR catalog when Razorpay is the checkout path (gateway is India-native)
             from app.payments.region_pricing import BillingRegion
 
-            billing_region = BillingRegion("IN", "INR", "razorpay", region.country_code, "razorpay_checkout")
+            billing_region = BillingRegion(
+                "IN", "INR", "razorpay", region.country_code or "IN", "razorpay_checkout"
+            )
 
         use_yearly = (data.interval or plan.interval or "month").lower() == "year"
         amount_dec = plan_price_for_region(

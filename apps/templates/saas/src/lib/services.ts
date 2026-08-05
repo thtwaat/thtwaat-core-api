@@ -144,14 +144,18 @@ export const usageApi = {
 };
 
 export const billingApi = {
-  plans: () => api.v1<Plan[]>("/payments/plans/"),
+  plans: (country?: string) => {
+    const qs = country ? `?country=${encodeURIComponent(country)}` : "";
+    return api.v1<Plan[]>(`/payments/plans/${qs}`);
+  },
   plansAdmin: () => api.v1<Plan[]>("/payments/plans/?include_inactive=true"),
   updatePlan: (id: string, body: Record<string, unknown>) =>
     api.v1<Plan>(`/payments/plans/${id}`, { method: "PATCH", body }),
   subscription: () => api.v1<Subscription>("/payments/subscriptions/me"),
   invoices: () => api.v1<Invoice[]>("/payments/invoices"),
-  providers: () =>
-    api.v1<{
+  providers: (country?: string) => {
+    const qs = country ? `?country=${encodeURIComponent(country)}` : "";
+    return api.v1<{
       stripe: { available: boolean; configured: boolean; flag_enabled: boolean };
       razorpay: {
         available: boolean;
@@ -164,19 +168,37 @@ export const billingApi = {
         code: string;
         currency: string;
         provider: string;
+        country?: string | null;
         country_code?: string | null;
+        gateway?: string;
         source?: string;
       };
-    }>("/payments/subscriptions/providers"),
-  billingContext: () =>
-    api.v1<{
-      region: string;
+    }>(`/payments/subscriptions/providers${qs}`);
+  },
+  billingContext: (country?: string) => {
+    const qs = country ? `?country=${encodeURIComponent(country)}` : "";
+    return api.v1<{
+      country?: string;
       currency: string;
+      gateway?: string;
+      region: string;
       provider: string;
       country_code?: string | null;
       source?: string;
       providers?: Record<string, unknown>;
-    }>("/payments/subscriptions/billing-context"),
+    }>(`/payments/subscriptions/billing-context${qs}`);
+  },
+  setBillingCountry: (country: string) =>
+    api.v1<{
+      country: string;
+      currency: string;
+      gateway: string;
+      region: string;
+      provider: string;
+    }>("/payments/subscriptions/billing-country", {
+      method: "PUT",
+      body: { country }
+    }),
   razorpayOrder: (body: {
     plan_id: string;
     customer_name: string;
@@ -184,6 +206,7 @@ export const billingApi = {
     customer_phone?: string;
     coupon_code?: string;
     interval?: string;
+    country?: string;
   }) =>
     api.v1<{ order_id: string; subscription_id?: string; provider?: string }>(
       "/payments/subscriptions/razorpay/order",
@@ -209,6 +232,7 @@ export const billingApi = {
     coupon_code?: string;
     trial_days?: number;
     interval?: string;
+    country?: string;
   }) =>
     api.v1<{ checkout_url: string; provider?: string }>("/payments/subscriptions/stripe/checkout", {
       method: "POST",
@@ -222,6 +246,7 @@ export const billingApi = {
     coupon_code?: string;
     success_url?: string;
     cancel_url?: string;
+    country?: string;
   }) =>
     api.v1<{ checkout_url?: string | null; order_id?: string; provider: string }>(
       "/payments/subscriptions/change-plan",

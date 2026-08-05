@@ -24,6 +24,8 @@ export type BillingContext = {
   region: string;
   currency: string;
   provider: string;
+  gateway?: string;
+  country?: string | null;
   country_code?: string | null;
   source?: string;
   providers?: BillingProvidersStatus;

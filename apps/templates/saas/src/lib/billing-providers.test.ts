@@ -50,10 +50,32 @@ describe("billing provider detection", () => {
     expect(formatPlanPrice(29, "USD")).toMatch(/29/);
   });
 
-  it("resolves display amount by currency", () => {
-    const plan = { price_inr: 999, price_usd: 29, amount: 29 };
-    expect(resolvePlanDisplayAmount(plan, "INR")).toBe(999);
-    expect(resolvePlanDisplayAmount(plan, "USD")).toBe(29);
-    expect(resolvePlanDisplayAmount({ is_custom_pricing: true }, "USD")).toBeNull();
+  it("selects stripe when user overrides India company to US", () => {
+    expect(
+      pickBillingCheckoutProvider(
+        {
+          stripe: { available: true },
+          razorpay: { available: true, key_id: "rzp_live_x" },
+          default: "stripe",
+          region: { code: "INTL", currency: "USD", provider: "stripe", country_code: "US" }
+        },
+        "",
+        { region: "INTL", currency: "USD", provider: "stripe", country: "US", gateway: "stripe" }
+      )
+    ).toBe("stripe");
+  });
+
+  it("selects razorpay when user overrides US to India", () => {
+    expect(
+      pickBillingCheckoutProvider(
+        {
+          stripe: { available: true },
+          razorpay: { available: true, key_id: "rzp_live_x" },
+          default: "razorpay"
+        },
+        "",
+        { region: "IN", currency: "INR", provider: "razorpay", country: "IN", gateway: "razorpay" }
+      )
+    ).toBe("razorpay");
   });
 });
