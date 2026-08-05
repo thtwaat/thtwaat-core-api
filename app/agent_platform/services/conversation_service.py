@@ -259,7 +259,24 @@ class ConversationService:
         db.commit()
 
     @staticmethod
-    async def send_message(db: Session, conversation_id: UUID, company_id: UUID, content: str) -> dict:
+    async def send_message(
+        db: Session,
+        conversation_id: UUID,
+        company_id: UUID,
+        content: str,
+        *,
+        as_human: bool = False,
+        request_handoff: bool = False,
+        actor_user_id: Optional[UUID] = None,
+    ) -> dict:
+        from app.agent_platform.agent_runtime import (
+            agent_capabilities,
+            language_system_instruction,
+            memory_message_window,
+            resolve_locale,
+            to_gateway_role,
+        )
+
         conv = (
             db.query(Conversation)
             .options(joinedload(Conversation.messages))
@@ -272,7 +289,34 @@ class ConversationService:
         if not conv:
             raise HTTPException(status_code=404, detail="Conversation not found")
 
-        # 1. Save user message
+        if request_handoff:
+            conv.status = "pending_human"
+            if actor_user_id:
+                conv.assigned_to_user_id = actor_user_id
+
+        # Operator human reply — no AI
+        if as_human:
+            human_msg = Message(
+                conversation_id=conv.id,
+                role="human",
+                content=content,
+            )
+            db.add(human_msg)
+            conv.status = "human"
+            if actor_user_id:
+                conv.assigned_to_user_id = actor_user_id
+            conv.last_read_at = datetime.now(timezone.utc)
+            conv.updated_at = datetime.now(timezone.utc)
+            db.commit()
+            db.refresh(human_msg)
+            return {
+                "user_message": None,
+                "assistant_message": None,
+                "human_message": human_msg,
+                "status": conv.status,
+            }
+
+        # 1. Save user message (dashboard / playground operator asking AI)
         user_msg = Message(
             conversation_id=conv.id,
             role="user",
@@ -283,8 +327,25 @@ class ConversationService:
         db.commit()
         db.refresh(user_msg)
 
+        # Skip AI when conversation is with a human
+        if (conv.status or "").lower() in {"pending_human", "human"}:
+            note = Message(
+                conversation_id=conv.id,
+                role="assistant",
+                content="This conversation is with a human agent. Use Reply as human, or set status back to Open to resume AI.",
+            )
+            db.add(note)
+            db.commit()
+            db.refresh(note)
+            return {"user_message": user_msg, "assistant_message": note, "status": conv.status}
+
         # 2. Get Agent and resolve knowledge base
         agent = db.query(AgentConfig).filter(AgentConfig.id == conv.agent_id).first()
+        if not agent:
+            raise HTTPException(status_code=404, detail="Agent not found")
+
+        caps = agent_capabilities(agent.web_config)
+        locale = resolve_locale(metadata=conv.extra_metadata, web_config=agent.web_config)
 
         provider = agent.web_config.get("provider", "gemini") if agent.web_config else "gemini"
         model = agent.web_config.get("model", "gemini-2.0-flash") if agent.web_config else "gemini-2.0-flash"
@@ -292,6 +353,8 @@ class ConversationService:
         agent_kb = db.query(KnowledgeBaseAgent).filter(KnowledgeBaseAgent.agent_id == agent.id).first()
 
         system_prompt = agent.system_prompt_template or "You are a helpful assistant."
+        if caps.get("multilingual", True):
+            system_prompt = system_prompt + language_system_instruction(locale)
 
         if agent_kb:
             sources = KnowledgeService.search_knowledge_base(
@@ -306,13 +369,24 @@ class ConversationService:
                 for i, src in enumerate(sources, start=1):
                     context_blocks.append(f"[{i}] (Source: {src.document_name})\n{src.text}")
                 context = "\n\n---\n\n".join(context_blocks)
-                system_prompt = _SYSTEM_PROMPT_TEMPLATE.format(context=context) + "\n\nOriginal Instructions: " + (agent.system_prompt_template or "")
+                system_prompt = (
+                    _SYSTEM_PROMPT_TEMPLATE.format(context=context)
+                    + "\n\nOriginal Instructions: "
+                    + (agent.system_prompt_template or "")
+                    + language_system_instruction(locale)
+                )
 
         db.refresh(conv)
+        prior = memory_message_window(
+            conv.messages,
+            enabled=caps.get("memory", True),
+            max_messages=40,
+        )
         messages = [{"role": "system", "content": system_prompt}]
-        for msg in conv.messages:
-            if msg.role in ["user", "assistant", "system", "tool"]:
-                messages.append({"role": msg.role, "content": msg.content})
+        for msg in prior:
+            role = to_gateway_role(msg.role)
+            if role in ["user", "assistant", "system", "tool"]:
+                messages.append({"role": role, "content": msg.content})
 
         chat_request = UnifiedChatRequest(
             company_id=str(company_id),
@@ -337,7 +411,6 @@ class ConversationService:
             content=answer,
         )
         db.add(assistant_msg)
-        # Operator-sent thread: mark read after their exchange
         conv.last_read_at = datetime.now(timezone.utc)
         conv.updated_at = datetime.now(timezone.utc)
         db.commit()
@@ -346,4 +419,5 @@ class ConversationService:
         return {
             "user_message": user_msg,
             "assistant_message": assistant_msg,
+            "status": conv.status,
         }

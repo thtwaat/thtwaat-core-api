@@ -315,11 +315,44 @@ export const conversationsApi = {
       mark_read?: boolean;
     }
   ) => api.v2<Conversation>(`/conversations/${id}`, { method: "PATCH", body }),
-  sendMessage: (id: string, content: string) =>
-    api.v2<{ user_message: unknown; assistant_message: unknown }>(
-      `/conversations/${id}/messages`,
-      { method: "POST", body: { content } }
-    )
+  sendMessage: (
+    id: string,
+    content: string,
+    opts?: { as_human?: boolean; request_handoff?: boolean }
+  ) =>
+    api.v2<{
+      user_message?: unknown;
+      assistant_message?: unknown;
+      human_message?: unknown;
+      status?: string;
+    }>(`/conversations/${id}/messages`, {
+      method: "POST",
+      body: {
+        content,
+        as_human: opts?.as_human || false,
+        request_handoff: opts?.request_handoff || false
+      }
+    })
+};
+
+export const leadsApi = {
+  list: (params?: { agent_id?: string; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.agent_id) sp.set("agent_id", params.agent_id);
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return api.v2<
+      Array<{
+        conversation_id: string;
+        agent_id: string;
+        channel: string;
+        status: string;
+        lead: Record<string, string>;
+        created_at: string;
+        updated_at: string;
+      }>
+    >(`/leads${qs ? `?${qs}` : ""}`);
+  }
 };
 
 export const companiesApi = {
@@ -1344,16 +1377,22 @@ export type SystemHealth = {
 export type ExecutiveDashboard = {
   generated_at: string;
   workspaces: number;
+  active_companies?: number;
   active_users: number;
   new_signups: number;
   active_agents: number;
   knowledge_bases: number;
   widgets: number;
   ai_requests: number;
+  ai_usage?: number;
   token_usage: number;
   api_usage: number;
   ai_cost: number;
+  provider_cost?: number;
+  global_revenue?: number;
   revenue: number;
+  monthly_revenue?: number;
+  failed_payments?: number;
   mrr: number;
   arr: number;
   active_subscriptions: number;
@@ -1362,6 +1401,8 @@ export type ExecutiveDashboard = {
   signups_24h: number;
   signups_7d: number;
   signups_30d: number;
+  revenue_series?: Array<{ period: string; revenue: number }>;
+  ai_series?: Array<{ period: string; requests: number; tokens?: number }>;
 };
 
 export const platformAdminApi = {

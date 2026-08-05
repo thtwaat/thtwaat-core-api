@@ -188,11 +188,14 @@ from app.agent_platform.routers.agent_router import router as agent_router
 from app.agent_platform.routers.public_router import router as public_router
 from app.agent_platform.knowledge.routers import router as knowledge_router
 from app.agent_platform.routers.conversation_router import router as conversation_router
+from app.agent_platform.routers.leads_router import public_leads_router, router as leads_router
 
 app.include_router(agent_router)
 app.include_router(public_router)
+app.include_router(public_leads_router)
 app.include_router(knowledge_router)
 app.include_router(conversation_router)
+app.include_router(leads_router)
 
 from app.branding.public_router import router as branding_public_router
 app.include_router(branding_public_router)

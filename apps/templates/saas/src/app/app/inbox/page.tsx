@@ -27,6 +27,7 @@ function InboxContent() {
   const [status, setStatus] = useState("all");
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [reply, setReply] = useState("");
+  const [replyAsHuman, setReplyAsHuman] = useState(true);
   const [mobileShowDetail, setMobileShowDetail] = useState(Boolean(selectedId));
 
   useEffect(() => {
@@ -80,12 +81,13 @@ function InboxContent() {
   });
 
   const sendM = useMutation({
-    mutationFn: (content: string) => conversationsApi.sendMessage(selectedId!, content),
+    mutationFn: (content: string) =>
+      conversationsApi.sendMessage(selectedId!, content, { as_human: replyAsHuman }),
     onSuccess: () => {
       setReply("");
       void qc.invalidateQueries({ queryKey: ["inbox"] });
       void qc.invalidateQueries({ queryKey: ["inbox-detail", selectedId] });
-      toast.success("Message sent");
+      toast.success(replyAsHuman ? "Human reply sent" : "AI reply generated");
     },
     onError: (e: Error) => toast.error(e.message || "Send failed")
   });
@@ -308,9 +310,11 @@ function InboxContent() {
                       "max-w-[90%] rounded-2xl px-3 py-2 text-sm",
                       m.role === "user"
                         ? "ml-auto bg-brand text-white"
-                        : m.role === "assistant"
-                          ? "bg-canvas text-ink"
-                          : "bg-panel text-muted"
+                        : m.role === "human"
+                          ? "border border-teal-700/30 bg-teal-50 text-ink"
+                          : m.role === "assistant"
+                            ? "bg-canvas text-ink"
+                            : "bg-panel text-muted"
                     )}
                   >
                     <p className="mb-1 text-[10px] uppercase opacity-70">{m.role}</p>
@@ -324,6 +328,25 @@ function InboxContent() {
               </div>
 
               <div className="border-t border-line p-3">
+                <div className="mb-2 flex flex-wrap items-center gap-3 text-xs">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={replyAsHuman}
+                      onChange={(e) => setReplyAsHuman(e.target.checked)}
+                    />
+                    Reply as human
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={patchM.isPending || detail.status === "closed"}
+                    onClick={() => patchM.mutate({ status: "pending_human" })}
+                  >
+                    Request handoff
+                  </Button>
+                </div>
                 <form
                   className="flex gap-2"
                   onSubmit={(e) => {
@@ -333,7 +356,7 @@ function InboxContent() {
                   }}
                 >
                   <Input
-                    placeholder="Reply as AI agent…"
+                    placeholder={replyAsHuman ? "Reply as human operator…" : "Ask AI to reply…"}
                     value={reply}
                     onChange={(e) => setReply(e.target.value)}
                     disabled={sendM.isPending || detail.status === "closed"}

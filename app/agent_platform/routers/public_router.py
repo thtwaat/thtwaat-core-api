@@ -152,15 +152,22 @@ async def public_chat(
     db: Session = Depends(get_db),
 ):
     api_key = _resolve_key(request, body, db)
-    reply, conversation_id, usage = await run_public_chat(
+    reply, conversation_id, usage, extras = await run_public_chat(
         db, api_key, body.message, body.session_id, metadata=body.metadata
     )
-    return PublicChatResponse(reply=reply, conversation_id=conversation_id, usage=usage)
+    return PublicChatResponse(
+        reply=reply,
+        conversation_id=conversation_id,
+        usage=usage,
+        status=extras.get("status"),
+        handoff=bool(extras.get("handoff")),
+        lead=extras.get("lead"),
+    )
 
 
 @router.post(
     "/chat/stream",
-    summary="SSE streaming public chat (progressive tokens + fallback)",
+    summary="SSE streaming public chat (thinking + progressive tokens)",
 )
 async def public_chat_stream(
     body: PublicChatRequest,
@@ -171,29 +178,21 @@ async def public_chat_stream(
 
     async def event_gen() -> AsyncIterator[str]:
         try:
-            reply, conversation_id, usage = await run_public_chat(
+            from app.agent_platform.publish.chat_runtime import iter_public_chat_events
+
+            async for kind, payload in iter_public_chat_events(
                 db, api_key, body.message, body.session_id, metadata=body.metadata
-            )
-            # Progressive token emission for UX until native provider streaming lands
-            chunk = max(1, len(reply) // 48) if reply else 1
-            i = 0
-            while i < len(reply):
-                nxt = min(len(reply), i + chunk)
-                token = reply[i:nxt]
-                i = nxt
-                yield f"event: token\ndata: {json.dumps({'text': token})}\n\n"
-                await asyncio.sleep(0.012)
-            yield (
-                "event: done\ndata: "
-                + json.dumps(
-                    {
-                        "conversation_id": conversation_id,
-                        "reply": reply,
-                        "usage": usage.model_dump(),
-                    }
-                )
-                + "\n\n"
-            )
+            ):
+                if kind == "thinking":
+                    yield f"event: thinking\ndata: {json.dumps(payload)}\n\n"
+                    await asyncio.sleep(0.01)
+                elif kind == "token":
+                    yield f"event: token\ndata: {json.dumps(payload)}\n\n"
+                    await asyncio.sleep(0.012)
+                elif kind == "done":
+                    yield f"event: done\ndata: {json.dumps(payload)}\n\n"
+                elif kind == "error":
+                    yield f"event: error\ndata: {json.dumps(payload)}\n\n"
         except HTTPException as exc:
             detail = exc.detail if isinstance(exc.detail, str) else "Request failed"
             yield f"event: error\ndata: {json.dumps({'message': detail})}\n\n"

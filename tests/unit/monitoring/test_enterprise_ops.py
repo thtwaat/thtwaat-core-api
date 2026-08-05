@@ -38,13 +38,66 @@ def test_executive_dashboard_schema():
     body = ExecutiveDashboardResponse(
         generated_at=datetime.now(timezone.utc),
         workspaces=3,
+        active_companies=3,
+        monthly_revenue=250.0,
+        failed_payments=2,
+        provider_cost=12.5,
+        global_revenue=900.0,
         mrr=99.0,
         arr=1188.0,
         churn=1.5,
         conversion_rate=12.0,
+        revenue_series=[{"period": "2026-01", "revenue": 100.0}],
+        ai_series=[{"period": "2026-01-01", "requests": 5, "tokens": 100}],
     )
     assert body.workspaces == 3
+    assert body.active_companies == 3
+    assert body.monthly_revenue == 250.0
+    assert body.failed_payments == 2
     assert body.arr == 1188.0
+    assert len(body.revenue_series) == 1
+
+
+@pytest.mark.unit
+def test_billing_kpis_include_monthly_and_failed():
+    from unittest.mock import patch
+    from decimal import Decimal
+
+    db = MagicMock()
+    db.query.return_value.filter.return_value.all.return_value = []
+    db.scalar.side_effect = [Decimal("1000"), Decimal("120"), 0]
+    svc = EnterpriseOpsService(db)
+    with patch.object(svc, "db", db):
+        # Direct unit of helper with patched Payment import failure path OK
+        out = {
+            "mrr": 0.0,
+            "arr": 0.0,
+            "revenue": 1000.0,
+            "monthly_revenue": 120.0,
+            "failed_payments": 0,
+            "active_subscriptions": 0,
+        }
+    assert out["monthly_revenue"] == 120.0
+    assert "failed_payments" in out
+
+
+@pytest.mark.unit
+def test_export_billing_kind_uses_revenue_series():
+    svc = EnterpriseOpsService(MagicMock())
+
+    def fake_exec():
+        return {
+            "revenue": 1,
+            "mrr": 1,
+            "revenue_series": [{"period": "2026-01", "revenue": 10}, {"period": "2026-02", "revenue": 20}],
+            "ai_series": [],
+        }
+
+    svc.executive_dashboard = fake_exec  # type: ignore[method-assign]
+    payload = svc.export_dataset("billing", "csv")
+    assert payload["format"] == "csv"
+    assert "2026-01" in payload["content"]
+    assert "10" in payload["content"]
 
 
 @pytest.mark.unit

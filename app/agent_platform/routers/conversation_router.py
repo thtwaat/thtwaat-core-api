@@ -101,8 +101,15 @@ async def send_message(
     db: Session = Depends(get_db),
     auth_data: dict = Depends(get_current_user_and_company),
 ):
-    """Send a message to a conversation thread and get an AI response."""
+    """Send a message — AI reply by default, or operator human reply when as_human=true."""
     company_id = auth_data.get("company_id")
+    user_id = auth_data.get("user_id") or auth_data.get("id")
     return await ConversationService.send_message(
-        db, conversation_id, company_id, data.content
+        db,
+        conversation_id,
+        company_id,
+        data.content,
+        as_human=data.as_human,
+        request_handoff=data.request_handoff,
+        actor_user_id=user_id,
     )

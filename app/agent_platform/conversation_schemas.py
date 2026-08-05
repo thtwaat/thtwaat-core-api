@@ -56,3 +56,5 @@ class ConversationDetailResponse(ConversationResponse):
 
 class MessageCreate(BaseModel):
     content: str
+    as_human: bool = False
+    request_handoff: bool = False

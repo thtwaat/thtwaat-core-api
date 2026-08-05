@@ -20,6 +20,7 @@ import type {
   WidgetThemeMode,
 } from "./types";
 import styles from "./styles.css?inline";
+import { widgetStrings, resolveWidgetLocale } from "./i18n";
 
 function uid(prefix = "m"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
@@ -59,6 +60,10 @@ export class Widget implements THTWAATApi {
   private destroyed = false;
   private mediaQuery?: MediaQueryList;
   private onMediaChange?: () => void;
+  private pollTimer?: ReturnType<typeof setInterval>;
+  private lastMessageId: string | null = null;
+  private strings = widgetStrings();
+  private leadCaptured = false;
 
   constructor(options: WidgetRuntimeOptions) {
     if (!options.apiKey) {
@@ -76,12 +81,19 @@ export class Widget implements THTWAATApi {
     };
     this.theme = mergeTheme(DEFAULT_THEME, options.theme);
     this.client = new WidgetApiClient(this.options.apiBaseUrl, this.options.apiKey);
-    this.userMeta = options.user || {};
+    this.userMeta = { ...(options.user || {}) };
+    const locale = resolveWidgetLocale(options.locale || (this.userMeta.locale as string));
+    this.strings = widgetStrings(locale);
+    this.userMeta.locale = locale;
     this.conversationId = loadSession(this.options.apiKey);
     this.messages = loadHistory(this.options.apiKey);
+    this.leadCaptured = Boolean(
+      this.userMeta.email || this.userMeta.name || (this.userMeta.lead as unknown)
+    );
     this.mount();
     if (this.options.openOnLoad) this.open();
     this.options.onReady?.(this);
+    this.startPolling();
   }
 
   static fromScript(script: HTMLScriptElement): Widget {
@@ -99,6 +111,9 @@ export class Widget implements THTWAATApi {
     const suggestedPrompts = promptsAttr
       ? promptsAttr.split("|").map((s) => s.trim()).filter(Boolean)
       : undefined;
+    const locale = script.getAttribute("data-locale") || undefined;
+    const leadCapture = script.getAttribute("data-lead-capture") === "true";
+    const enableHandoff = script.getAttribute("data-handoff") !== "false";
 
     return new Widget({
       apiKey,
@@ -107,6 +122,9 @@ export class Widget implements THTWAATApi {
       agentName,
       welcomeMessage: welcome,
       suggestedPrompts,
+      locale,
+      leadCapture,
+      enableHandoff,
       theme: {
         mode: themeMode,
         primaryColor: primary,
@@ -156,6 +174,7 @@ export class Widget implements THTWAATApi {
   destroy = (): void => {
     if (this.destroyed) return;
     this.destroyed = true;
+    if (this.pollTimer) clearInterval(this.pollTimer);
     if (this.mediaQuery && this.onMediaChange) {
       this.mediaQuery.removeEventListener("change", this.onMediaChange);
     }
@@ -165,6 +184,11 @@ export class Widget implements THTWAATApi {
   sendMessage = async (text: string): Promise<void> => {
     const content = text.trim();
     if (!content || this.busy || this.destroyed) return;
+
+    if (this.options.leadCapture === true && !this.leadCaptured) {
+      this.showLeadForm();
+      return;
+    }
 
     this.open();
     this.busy = true;
@@ -180,7 +204,7 @@ export class Widget implements THTWAATApi {
     this.pushMessage(userMsg);
     this.options.onMessage?.(userMsg);
 
-    const typing = this.showTyping();
+    const thinking = this.showThinking(this.strings.thinking);
     const assistantId = uid("a");
     let assistantEl: HTMLElement | null = null;
 
@@ -195,9 +219,13 @@ export class Widget implements THTWAATApi {
         this.userMeta
       )) {
         streamed = true;
-        if (event.type === "token") {
+        if (event.type === "thinking") {
+          const label = thinking.querySelector(".tht-thinking-label");
+          if (label) label.textContent = event.message || this.strings.thinking;
+          thinking.classList.add("is-thinking");
+        } else if (event.type === "token") {
           if (!assistantEl) {
-            typing.remove();
+            thinking.remove();
             assistantEl = this.appendBubble("assistant", "", assistantId);
           }
           finalReply += event.text;
@@ -219,12 +247,11 @@ export class Widget implements THTWAATApi {
         );
         conversationId = res.conversation_id;
         finalReply = res.reply;
-        // Progressive reveal fallback for nicer UX
-        typing.remove();
+        thinking.remove();
         assistantEl = this.appendBubble("assistant", "", assistantId);
         await this.revealText(assistantEl, finalReply);
       } else if (!assistantEl) {
-        typing.remove();
+        thinking.remove();
         assistantEl = this.appendBubble("assistant", finalReply, assistantId);
       } else {
         assistantEl.textContent = finalReply;
@@ -250,7 +277,7 @@ export class Widget implements THTWAATApi {
         this.renderBadge();
       }
     } catch (err) {
-      typing.remove();
+      thinking.remove();
       const error = err instanceof Error ? err : new Error(String(err));
       this.appendBubble("assistant", error.message || "Something went wrong.");
       this.options.onError?.(error);
@@ -299,6 +326,7 @@ export class Widget implements THTWAATApi {
   }
 
   private template(): string {
+    const s = this.strings;
     const logo = this.theme.logoUrl
       ? `<img class="tht-logo" src="${this.escape(this.theme.logoUrl)}" alt="" />`
       : this.theme.avatarUrl
@@ -312,8 +340,13 @@ export class Widget implements THTWAATApi {
       )
       .join("");
 
+    const handoffBtn =
+      this.options.enableHandoff === false
+        ? ""
+        : `<button type="button" class="tht-handoff">${this.escape(s.talkToHuman)}</button>`;
+
     return `
-      <button type="button" class="tht-launcher" aria-label="Open chat" aria-expanded="false" aria-controls="tht-panel">
+      <button type="button" class="tht-launcher" aria-label="${this.escape(s.openChat)}" aria-expanded="false" aria-controls="tht-panel">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
           <path d="M4 5.5A2.5 2.5 0 0 1 6.5 3h11A2.5 2.5 0 0 1 20 5.5v8A2.5 2.5 0 0 1 17.5 16H9l-4 4v-4.5A2.5 2.5 0 0 1 4 13.5v-8Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/>
         </svg>
@@ -324,21 +357,22 @@ export class Widget implements THTWAATApi {
           ${logo}
           <div class="tht-header-meta">
             <p class="tht-agent-name">${this.escape(this.options.agentName || "AI Assistant")}</p>
-            <p class="tht-status"><span class="tht-dot" aria-hidden="true"></span>Online</p>
+            <p class="tht-status"><span class="tht-dot" aria-hidden="true"></span>${this.escape(s.online)}</p>
           </div>
-          <button type="button" class="tht-icon-btn tht-minimize" aria-label="Minimize chat">─</button>
-          <button type="button" class="tht-icon-btn tht-close" aria-label="Close chat">✕</button>
+          <button type="button" class="tht-icon-btn tht-minimize" aria-label="${this.escape(s.minimize)}">─</button>
+          <button type="button" class="tht-icon-btn tht-close" aria-label="${this.escape(s.closeChat)}">✕</button>
         </header>
         <div class="tht-messages" role="log" aria-live="polite">
           <div class="tht-welcome">
-            <h3>Welcome</h3>
+            <h3>${this.escape(s.welcomeTitle)}</h3>
             <p>${this.escape(this.options.welcomeMessage || "Hi! How can I help you today?")}</p>
             <div class="tht-prompts">${prompts}</div>
           </div>
         </div>
+        <div class="tht-actions">${handoffBtn}</div>
         <form class="tht-composer">
-          <textarea class="tht-input" rows="1" placeholder="Type a message..." aria-label="Message"></textarea>
-          <button type="submit" class="tht-send">Send</button>
+          <textarea class="tht-input" rows="1" placeholder="${this.escape(s.placeholder)}" aria-label="Message"></textarea>
+          <button type="submit" class="tht-send">${this.escape(s.send)}</button>
         </form>
       </section>
     `;
@@ -369,6 +403,10 @@ export class Widget implements THTWAATApi {
         const prompt = (btn as HTMLElement).dataset.prompt || "";
         void this.sendMessage(prompt);
       });
+    });
+
+    this.shadow.querySelector(".tht-handoff")?.addEventListener("click", () => {
+      void this.requestHuman();
     });
 
     this.shadow.addEventListener("keydown", (e: Event) => {
@@ -408,23 +446,26 @@ export class Widget implements THTWAATApi {
     if (!this.messages.length) return;
     this.hideWelcome();
     for (const msg of this.messages) {
-      this.appendBubble(msg.role === "user" ? "user" : "assistant", msg.content, msg.id);
+      const role = msg.role === "user" ? "user" : msg.role === "human" ? "human" : "assistant";
+      this.appendBubble(role, msg.content, msg.id);
+      this.lastMessageId = msg.id;
     }
   }
 
   private pushMessage(msg: ChatMessage): void {
     this.messages.push(msg);
-    this.appendBubble(msg.role === "user" ? "user" : "assistant", msg.content, msg.id);
+    const role = msg.role === "user" ? "user" : msg.role === "human" ? "human" : "assistant";
+    this.appendBubble(role, msg.content, msg.id);
     saveHistory(this.options.apiKey, this.messages);
   }
 
   private appendBubble(
-    role: "user" | "assistant",
+    role: "user" | "assistant" | "human",
     content: string,
     id?: string
   ): HTMLElement {
     const el = document.createElement("div");
-    el.className = `tht-msg ${role}`;
+    el.className = `tht-msg ${role === "human" ? "assistant human" : role}`;
     if (id) el.dataset.id = id;
     el.textContent = content;
     this.messagesEl.appendChild(el);
@@ -433,13 +474,125 @@ export class Widget implements THTWAATApi {
   }
 
   private showTyping(): HTMLElement {
+    return this.showThinking(this.strings.thinking);
+  }
+
+  private showThinking(label: string): HTMLElement {
     const el = document.createElement("div");
-    el.className = "tht-typing";
-    el.setAttribute("aria-label", "Assistant is typing");
-    el.innerHTML = "<span></span><span></span><span></span>";
+    el.className = "tht-typing tht-thinking";
+    el.setAttribute("aria-label", label);
+    el.innerHTML = `<span class="tht-thinking-label">${this.escape(label)}</span><span></span><span></span><span></span>`;
     this.messagesEl.appendChild(el);
     this.scrollToBottom();
     return el;
+  }
+
+  private showLeadForm(): void {
+    if (this.shadow.querySelector(".tht-lead")) {
+      this.open();
+      return;
+    }
+    this.open();
+    this.hideWelcome();
+    const s = this.strings;
+    const form = document.createElement("form");
+    form.className = "tht-lead";
+    form.innerHTML = `
+      <h4>${this.escape(s.leadTitle)}</h4>
+      <input name="name" placeholder="${this.escape(s.leadName)}" autocomplete="name" />
+      <input name="email" type="email" placeholder="${this.escape(s.leadEmail)}" autocomplete="email" />
+      <input name="phone" type="tel" placeholder="${this.escape(s.leadPhone)}" autocomplete="tel" />
+      <div class="tht-lead-actions">
+        <button type="submit">${this.escape(s.leadSubmit)}</button>
+        <button type="button" class="tht-lead-skip">${this.escape(s.leadSkip)}</button>
+      </div>
+    `;
+    this.messagesEl.appendChild(form);
+    form.querySelector(".tht-lead-skip")?.addEventListener("click", () => {
+      this.leadCaptured = true;
+      form.remove();
+    });
+    form.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const lead = {
+        name: String(fd.get("name") || "").trim(),
+        email: String(fd.get("email") || "").trim(),
+        phone: String(fd.get("phone") || "").trim(),
+        source: "widget",
+      };
+      void this.submitLead(lead).finally(() => {
+        this.leadCaptured = true;
+        form.remove();
+      });
+    });
+  }
+
+  private async submitLead(lead: Record<string, string>): Promise<void> {
+    try {
+      const res = await this.client.captureLead(this.conversationId, lead, this.userMeta);
+      this.userMeta = { ...this.userMeta, lead, email: lead.email, name: lead.name };
+      if (res.conversation_id) {
+        this.conversationId = res.conversation_id;
+        saveSession(this.options.apiKey, res.conversation_id);
+      }
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.options.onError?.(error);
+    }
+  }
+
+  private async requestHuman(): Promise<void> {
+    if (!this.conversationId) {
+      await this.sendMessage("I'd like to talk to a human");
+      return;
+    }
+    try {
+      await this.client.requestHandoff(this.conversationId, this.strings.talkToHuman);
+      this.appendBubble("assistant", this.strings.talkToHuman + " — connecting…");
+    } catch (err) {
+      await this.sendMessage("talk to a human");
+    }
+  }
+
+  private startPolling(): void {
+    if (this.pollTimer) return;
+    this.pollTimer = setInterval(() => {
+      void this.pollHumanReplies();
+    }, 4000);
+  }
+
+  private async pollHumanReplies(): Promise<void> {
+    if (!this.conversationId || this.destroyed || this.busy) return;
+    try {
+      const res = await this.client.sessionMessages(this.conversationId, this.lastMessageId);
+      for (const m of res.messages || []) {
+        if (m.role !== "human") {
+          this.lastMessageId = m.id;
+          continue;
+        }
+        if (this.messages.some((x) => x.id === m.id)) {
+          this.lastMessageId = m.id;
+          continue;
+        }
+        const msg: ChatMessage = {
+          id: m.id,
+          role: "human",
+          content: m.content,
+          createdAt: Date.now(),
+        };
+        this.messages.push(msg);
+        this.appendBubble("human", m.content, m.id);
+        saveHistory(this.options.apiKey, this.messages);
+        this.lastMessageId = m.id;
+        if (!this.openState) {
+          this.unread += 1;
+          this.renderBadge();
+        }
+      }
+    } catch {
+      /* ignore poll errors */
+    }
   }
 
   private hideWelcome(): void {

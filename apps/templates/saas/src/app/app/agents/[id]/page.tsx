@@ -1,6 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -83,6 +84,12 @@ export default function AgentDetailPage() {
             <p className="text-muted">Widget ID: {a.widget_id || "—"}</p>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
+            <Link
+              href={`/app/agents/${id}/playground`}
+              className="inline-flex items-center justify-center rounded-xl border border-line bg-white px-3 py-2 text-sm font-medium hover:bg-slate-50"
+            >
+              Open playground
+            </Link>
             {a.status === "PUBLISHED" ? (
               <Button variant="secondary" onClick={() => unpublish.mutate()}>Unpublish</Button>
             ) : (

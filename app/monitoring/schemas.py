@@ -201,16 +201,22 @@ class PlatformReportResponse(BaseModel):
 class ExecutiveDashboardResponse(BaseModel):
     generated_at: datetime
     workspaces: int = 0
+    active_companies: int = 0
     active_users: int = 0
     new_signups: int = 0
     active_agents: int = 0
     knowledge_bases: int = 0
     widgets: int = 0
     ai_requests: int = 0
+    ai_usage: int = 0
     token_usage: int = 0
     api_usage: int = 0
     ai_cost: float = 0.0
+    provider_cost: float = 0.0
+    global_revenue: float = 0.0
     revenue: float = 0.0
+    monthly_revenue: float = 0.0
+    failed_payments: int = 0
     mrr: float = 0.0
     arr: float = 0.0
     active_subscriptions: int = 0
@@ -219,6 +225,8 @@ class ExecutiveDashboardResponse(BaseModel):
     signups_24h: int = 0
     signups_7d: int = 0
     signups_30d: int = 0
+    revenue_series: List[Dict[str, Any]] = Field(default_factory=list)
+    ai_series: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class AdminInviteUserRequest(BaseModel):
@@ -230,7 +238,10 @@ class AdminInviteUserRequest(BaseModel):
 
 
 class AdminExportRequest(BaseModel):
-    kind: str = Field(..., pattern="^(executive|dashboard|ai|ai-analytics|logs|audit|workspaces|companies)$")
+    kind: str = Field(
+        ...,
+        pattern="^(executive|dashboard|billing|revenue|ai|ai-analytics|logs|audit|workspaces|companies)$",
+    )
     format: str = Field(default="csv", pattern="^(csv|xlsx|excel|pdf)$")
 
 

@@ -64,6 +64,9 @@ INTENTIONAL_PUBLIC_OPERATIONS: FrozenSet[Tuple[str, str]] = frozenset(
         ("POST", "/public/v1/chat"),
         ("POST", "/public/v1/chat/stream"),
         ("POST", "/public/v1/chat/legacy"),
+        ("POST", "/public/v1/leads"),
+        ("POST", "/public/v1/handoff"),
+        ("GET", "/public/v1/sessions/{session_id}/messages"),
         ("GET", "/public/v1/branding"),
     }
 )

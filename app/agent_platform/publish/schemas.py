@@ -135,3 +135,6 @@ class PublicChatResponse(BaseModel):
     reply: str
     conversation_id: str
     usage: PublicChatUsage
+    status: Optional[str] = None
+    handoff: bool = False
+    lead: Optional[Dict[str, Any]] = None

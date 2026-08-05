@@ -25,11 +25,14 @@ export interface WidgetConfig {
   zIndex?: number;
   openOnLoad?: boolean;
   user?: Record<string, unknown>;
+  locale?: string;
+  leadCapture?: boolean;
+  enableHandoff?: boolean;
 }
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "human";
   content: string;
   createdAt: number;
 }
@@ -47,6 +50,9 @@ export interface PublicChatResponse {
   reply: string;
   conversation_id: string;
   usage?: PublicChatUsage;
+  status?: string;
+  handoff?: boolean;
+  lead?: Record<string, unknown> | null;
 }
 
 export interface WidgetEvents {

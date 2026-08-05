@@ -19,7 +19,7 @@ export default function AdminHealthPage() {
   const healthQ = useQuery({
     queryKey: ["admin-system-health"],
     queryFn: platformAdminApi.health,
-    refetchInterval: 30_000
+    refetchInterval: 15_000
   });
 
   const data = healthQ.data;

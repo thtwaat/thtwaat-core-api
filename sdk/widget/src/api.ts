@@ -1,5 +1,11 @@
 import type { PublicChatResponse } from "./types";
 
+export type StreamEvent =
+  | { type: "thinking"; stage?: string; message?: string }
+  | { type: "token"; text: string }
+  | { type: "done"; conversation_id: string; reply: string; handoff?: boolean; status?: string }
+  | { type: "error"; message: string };
+
 export class WidgetApiClient {
   constructor(
     private readonly apiBaseUrl: string,
@@ -40,19 +46,79 @@ export class WidgetApiClient {
     return data as PublicChatResponse;
   }
 
+  async captureLead(
+    sessionId: string | null,
+    lead: Record<string, unknown>,
+    metadata: Record<string, unknown> = {}
+  ): Promise<{ conversation_id: string; lead: Record<string, unknown> }> {
+    const res = await fetch(this.url("/public/v1/leads"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        api_key: this.apiKey,
+        session_id: sessionId,
+        lead,
+        metadata,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        typeof data.detail === "string" ? data.detail : `Lead capture failed (${res.status})`
+      );
+    }
+    return data;
+  }
+
+  async requestHandoff(sessionId: string, reason?: string): Promise<void> {
+    const res = await fetch(this.url("/public/v1/handoff"), {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify({
+        api_key: this.apiKey,
+        session_id: sessionId,
+        reason,
+      }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(
+        typeof data.detail === "string" ? data.detail : `Handoff failed (${res.status})`
+      );
+    }
+  }
+
+  async sessionMessages(
+    sessionId: string,
+    after?: string | null
+  ): Promise<{ conversation_id: string; status: string; messages: Array<{ id: string; role: string; content: string }> }> {
+    const qs = after ? `?after=${encodeURIComponent(after)}` : "";
+    const res = await fetch(this.url(`/public/v1/sessions/${sessionId}/messages${qs}`), {
+      headers: { Authorization: `Bearer ${this.apiKey}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(
+        typeof data.detail === "string" ? data.detail : `Session fetch failed (${res.status})`
+      );
+    }
+    return data;
+  }
+
   /**
-   * SSE streaming when available. Yields token chunks.
-   * Falls back to null if endpoint unsupported.
+   * SSE streaming when available. Yields thinking + token chunks.
    */
   async *streamChat(
     message: string,
     sessionId: string | null,
     metadata: Record<string, unknown> = {}
-  ): AsyncGenerator<
-    | { type: "token"; text: string }
-    | { type: "done"; conversation_id: string; reply: string }
-    | { type: "error"; message: string }
-  > {
+  ): AsyncGenerator<StreamEvent> {
     let res: Response;
     try {
       res = await fetch(this.url("/public/v1/chat/stream"), {
@@ -99,13 +165,21 @@ export class WidgetApiClient {
         if (!data) continue;
         try {
           const payload = JSON.parse(data);
-          if (event === "token") {
+          if (event === "thinking") {
+            yield {
+              type: "thinking",
+              stage: payload.stage,
+              message: payload.message || "Thinking…",
+            };
+          } else if (event === "token") {
             yield { type: "token", text: payload.text || "" };
           } else if (event === "done") {
             yield {
               type: "done",
               conversation_id: payload.conversation_id,
               reply: payload.reply || "",
+              handoff: Boolean(payload.handoff),
+              status: payload.status,
             };
           } else if (event === "error") {
             yield { type: "error", message: payload.message || "Stream error" };

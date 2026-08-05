@@ -111,20 +111,28 @@ class EnterpriseOpsService:
         billing = self._billing_kpis()
         churn = self._churn_rate(month_ago)
         conversion = self._conversion_rate()
+        revenue_series = self._revenue_series(months=12)
+        ai_series = self._ai_request_series(days=14)
 
         return {
             "generated_at": now,
             "workspaces": workspaces,
+            "active_companies": workspaces,
             "active_users": active_users,
             "new_signups": new_signups,
             "active_agents": active_agents,
             "knowledge_bases": knowledge_bases,
             "widgets": widgets,
             "ai_requests": ai_requests,
+            "ai_usage": ai_requests,
             "token_usage": token_usage,
             "api_usage": api_usage,
             "ai_cost": ai_cost,
+            "provider_cost": ai_cost,
+            "global_revenue": billing["revenue"],
             "revenue": billing["revenue"],
+            "monthly_revenue": billing["monthly_revenue"],
+            "failed_payments": billing["failed_payments"],
             "mrr": billing["mrr"],
             "arr": billing["arr"],
             "active_subscriptions": billing["active_subscriptions"],
@@ -137,6 +145,8 @@ class EnterpriseOpsService:
             "signups_30d": int(
                 self.db.scalar(select(func.count(User.id)).where(User.created_at >= month_ago)) or 0
             ),
+            "revenue_series": revenue_series,
+            "ai_series": ai_series,
         }
 
     def _billing_kpis(self) -> Dict[str, Any]:
@@ -167,12 +177,99 @@ class EnterpriseOpsService:
             )
             or 0
         )
+        month_ago = _now() - timedelta(days=30)
+        monthly_paid = (
+            self.db.scalar(
+                select(func.coalesce(func.sum(Invoice.amount_paid), 0)).where(
+                    Invoice.status == InvoiceStatus.PAID,
+                    Invoice.created_at >= month_ago,
+                )
+            )
+            or 0
+        )
+        failed_payments = 0
+        try:
+            from app.payments.model import Payment, PaymentStatus
+
+            failed_payments = int(
+                self.db.scalar(
+                    select(func.count(Payment.id)).where(Payment.status == PaymentStatus.FAILED)
+                )
+                or 0
+            )
+        except Exception:
+            failed_payments = 0
         return {
             "mrr": float(mrr),
             "arr": float(mrr * Decimal("12")),
             "revenue": float(paid),
+            "monthly_revenue": float(monthly_paid),
+            "failed_payments": failed_payments,
             "active_subscriptions": len(subs),
         }
+
+    def _revenue_series(self, months: int = 12) -> List[Dict[str, Any]]:
+        """Paid invoice totals by calendar month (ascending)."""
+        now = _now()
+        series: List[Dict[str, Any]] = []
+        for i in range(months - 1, -1, -1):
+            # Approximate month window from first of month
+            year = now.year
+            month = now.month - i
+            while month <= 0:
+                month += 12
+                year -= 1
+            start = datetime(year, month, 1, tzinfo=timezone.utc)
+            if month == 12:
+                end = datetime(year + 1, 1, 1, tzinfo=timezone.utc)
+            else:
+                end = datetime(year, month + 1, 1, tzinfo=timezone.utc)
+            total = (
+                self.db.scalar(
+                    select(func.coalesce(func.sum(Invoice.amount_paid), 0)).where(
+                        Invoice.status == InvoiceStatus.PAID,
+                        Invoice.created_at >= start,
+                        Invoice.created_at < end,
+                    )
+                )
+                or 0
+            )
+            series.append(
+                {
+                    "period": f"{year:04d}-{month:02d}",
+                    "revenue": float(total),
+                }
+            )
+        return series
+
+    def _ai_request_series(self, days: int = 14) -> List[Dict[str, Any]]:
+        """Daily AI completion counts for dashboard charts."""
+        now = _now()
+        series: List[Dict[str, Any]] = []
+        for i in range(days - 1, -1, -1):
+            day = (now - timedelta(days=i)).date()
+            start = datetime(day.year, day.month, day.day, tzinfo=timezone.utc)
+            end = start + timedelta(days=1)
+            count = int(
+                self.db.scalar(
+                    select(func.count(OpenAICompletionLog.id)).where(
+                        OpenAICompletionLog.created_at >= start,
+                        OpenAICompletionLog.created_at < end,
+                    )
+                )
+                or 0
+            )
+            tokens = int(
+                self.db.scalar(
+                    select(func.coalesce(func.sum(OpenAICompletionLog.total_tokens), 0)).where(
+                        OpenAICompletionLog.created_at >= start,
+                        OpenAICompletionLog.created_at < end,
+                    )
+                )
+                or 0
+            )
+            series.append({"period": day.isoformat(), "requests": count, "tokens": tokens})
+        return series
 
     def _churn_rate(self, since: datetime) -> float:
         cancelled = int(
@@ -799,9 +896,16 @@ class EnterpriseOpsService:
         kind_l = (kind or "").lower()
         if kind_l in ("executive", "dashboard"):
             data = self.executive_dashboard()
-            headers = list(data.keys())
+            # Flat KPI row for CSV (skip nested series)
+            skip = {"revenue_series", "ai_series"}
+            headers = [k for k in data.keys() if k not in skip]
             rows = [[data.get(h) for h in headers]]
             title = "executive-dashboard"
+        elif kind_l in ("billing", "revenue"):
+            data = self.executive_dashboard()
+            headers = ["period", "revenue"]
+            rows = [[r.get("period"), r.get("revenue")] for r in (data.get("revenue_series") or [])]
+            title = "monthly-revenue"
         elif kind_l in ("ai", "ai-analytics"):
             data = self.ai_analytics()
             headers = ["provider", "requests", "tokens", "cost_estimate", "errors", "avg_latency_ms"]

@@ -20,6 +20,21 @@ describe("super-admin helpers", () => {
     expect(hrefs).toContain("/admin/audit");
     expect(hrefs).toContain("/admin/marketplace");
     expect(hrefs).toContain("/admin/operations");
+    expect(hrefs).toContain("/admin/health");
+  });
+
+  it("supports dashboard KPI aliases for enterprise labels", () => {
+    const kpi = {
+      active_companies: 12,
+      global_revenue: 5000,
+      monthly_revenue: 800,
+      failed_payments: 3,
+      provider_cost: 42,
+      ai_usage: 900
+    };
+    expect(kpi.active_companies).toBe(12);
+    expect(kpi.failed_payments).toBe(3);
+    expect(formatRevenue(kpi.global_revenue)).toMatch(/5,000/);
   });
 
   it("maps growth plan to Pro label", () => {
