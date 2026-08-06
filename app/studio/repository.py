@@ -15,6 +15,7 @@ from app.studio.models import (
     StudioProjectAi,
     StudioProjectInfrastructure,
     StudioProjectApproval,
+    StudioProjectBuild,
 )
 
 
@@ -338,5 +339,53 @@ class StudioRepository:
                 StudioProjectApproval.workspace_id == workspace_id,
             )
             .order_by(StudioProjectApproval.created_at.desc())
+            .first()
+        )
+
+    def next_build_version(self, project_id: UUID) -> int:
+        current = (
+            self.db.query(StudioProjectBuild.version)
+            .filter(StudioProjectBuild.project_id == project_id)
+            .order_by(StudioProjectBuild.version.desc())
+            .first()
+        )
+        return int(current[0]) + 1 if current else 1
+
+    def clear_current_builds(self, project_id: UUID) -> None:
+        (
+            self.db.query(StudioProjectBuild)
+            .filter(
+                StudioProjectBuild.project_id == project_id,
+                StudioProjectBuild.is_current.is_(True),
+            )
+            .update({"is_current": False}, synchronize_session=False)
+        )
+
+    def create_build(self, row: StudioProjectBuild) -> StudioProjectBuild:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def save_build(self, row: StudioProjectBuild) -> StudioProjectBuild:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_build(self, build_id: UUID) -> Optional[StudioProjectBuild]:
+        return self.db.query(StudioProjectBuild).filter(StudioProjectBuild.id == build_id).first()
+
+    def get_current_build(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> Optional[StudioProjectBuild]:
+        return (
+            self.db.query(StudioProjectBuild)
+            .filter(
+                StudioProjectBuild.project_id == project_id,
+                StudioProjectBuild.workspace_id == workspace_id,
+                StudioProjectBuild.is_current.is_(True),
+            )
+            .order_by(StudioProjectBuild.version.desc())
             .first()
         )

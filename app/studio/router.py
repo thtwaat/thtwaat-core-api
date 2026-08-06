@@ -1,11 +1,11 @@
 """THTWAAT Studio API — /api/v2/studio (architect + module composer)."""
 from __future__ import annotations
 
+from typing import Optional
 from uuid import UUID
 
-from typing import Optional
-
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth.router import get_current_user
@@ -18,6 +18,7 @@ from app.studio.schemas import (
     StudioAnalyzeResponse,
     StudioApproveRequest,
     StudioApproveResponse,
+    StudioArtifactsResponse,
     StudioBackendGenerateResponse,
     StudioBackendResponse,
     StudioBackendUpdate,
@@ -25,18 +26,22 @@ from app.studio.schemas import (
     StudioBlueprintUpdate,
     StudioBlueprintVersionList,
     StudioBuildPlanResponse,
+    StudioBuildResponse,
     StudioComposeResponse,
     StudioExportRequest,
     StudioExportResponse,
     StudioFrontendGenerateResponse,
     StudioFrontendResponse,
     StudioFrontendUpdate,
+    StudioGenerateSourceRequest,
+    StudioGenerateSourceResponse,
     StudioInfrastructureGenerateResponse,
     StudioInfrastructureResponse,
     StudioInfrastructureUpdate,
     StudioProjectCreate,
     StudioProjectListResponse,
     StudioProjectResponse,
+    StudioRetryBuildRequest,
     StudioReviewResponse,
 )
 from app.studio.service import StudioService
@@ -404,3 +409,112 @@ def export_project(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.export_project(user, project_id, payload)
+
+
+@router.post(
+    "/projects/{project_id}/generate/source",
+    response_model=StudioGenerateSourceResponse,
+    summary="Generate source tree (requires Review Center approval)",
+)
+def generate_source(
+    project_id: UUID,
+    payload: Optional[StudioGenerateSourceRequest] = None,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.generate_source(user, project_id, payload or StudioGenerateSourceRequest())
+
+
+@router.get(
+    "/projects/{project_id}/build",
+    response_model=StudioBuildResponse,
+    summary="Get current source build status",
+)
+def get_build(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_build(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/artifacts",
+    response_model=StudioArtifactsResponse,
+    summary="List generated source artifacts",
+)
+def get_artifacts(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_artifacts(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/artifacts/download",
+    summary="Download generated source ZIP",
+)
+def download_artifacts(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    raw, filename = service.download_artifact_bytes(user, project_id)
+    return Response(
+        content=raw,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.post(
+    "/projects/{project_id}/retry",
+    response_model=StudioGenerateSourceResponse,
+    summary="Retry a failed/cancelled source build",
+)
+def retry_build(
+    project_id: UUID,
+    payload: Optional[StudioRetryBuildRequest] = None,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.retry_build(user, project_id, payload or StudioRetryBuildRequest())
+
+
+@router.get(
+    "/projects/{project_id}/build/stream",
+    summary="SSE stream of build progress events",
+)
+def stream_build(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    import asyncio
+    import json
+    import time
+
+    from app.studio.factory_events import list_build_events
+
+    # Ensure access
+    build = service.get_build(user, project_id)
+
+    async def event_gen():
+        cursor = 0
+        terminal = {"completed", "failed", "cancelled"}
+        # Emit current snapshot first
+        yield f"event: snapshot\ndata: {json.dumps(service._build_response(service.repo.get_build(build.id)).model_dump(mode='json'), default=str)}\n\n"
+        for _ in range(180):  # ~3 minutes at 1s
+            events = list_build_events(build.id, after=cursor)
+            if events:
+                for ev in events:
+                    yield f"event: {ev.get('event', 'progress')}\ndata: {json.dumps(ev, default=str)}\n\n"
+                cursor += len(events)
+            row = service.repo.get_build(build.id)
+            if row and row.status in terminal:
+                yield f"event: done\ndata: {json.dumps({'status': row.status, 'stage': row.stage}, default=str)}\n\n"
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")

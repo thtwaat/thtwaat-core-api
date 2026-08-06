@@ -911,3 +911,69 @@ class StudioReviewExportKind(str, enum.Enum):
     REVIEW = "review"
     BLUEPRINT = "blueprint"
     BUILD_PLAN = "build_plan"
+
+
+# ── AI Software Factory (Phase 9) ─────────────────────────────────────────────
+
+class StudioBuildFileEntry(BaseModel):
+    path: str
+    bytes: int = 0
+    sha256: str = ""
+    agent: str = ""
+    reuse: bool = False
+    platform_ref: Optional[str] = None
+    language: str = "text"
+
+
+class StudioBuildResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    approval_id: Optional[UUID] = None
+    version: int
+    is_current: bool
+    status: str
+    stage: str
+    agent_statuses: Dict[str, Any] = Field(default_factory=dict)
+    logs: List[Dict[str, Any]] = Field(default_factory=list)
+    file_manifest: List[StudioBuildFileEntry] = Field(default_factory=list)
+    artifact_path: Optional[str] = None
+    artifact_sha256: Optional[str] = None
+    file_count: int = 0
+    error: Optional[str] = None
+    retryable: bool = False
+    retry_of: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioGenerateSourceResponse(BaseModel):
+    project: StudioProjectResponse
+    build: StudioBuildResponse
+    enqueued: bool = False
+    note: str = ""
+
+
+class StudioArtifactsResponse(BaseModel):
+    build_id: UUID
+    version: int
+    status: str
+    file_count: int
+    artifact_sha256: Optional[str] = None
+    download_available: bool = False
+    files: List[StudioBuildFileEntry] = Field(default_factory=list)
+    tree_roots: List[str] = Field(default_factory=list)
+
+
+class StudioGenerateSourceRequest(BaseModel):
+    """Optional controls for source generation."""
+
+    sync: bool = False  # run inline (tests / no worker); default uses thtwaat:jobs
+    notes: Optional[str] = None
+
+
+class StudioRetryBuildRequest(BaseModel):
+    sync: bool = False
+    notes: Optional[str] = None

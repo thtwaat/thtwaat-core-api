@@ -291,3 +291,59 @@ class StudioProjectApproval(Base, TimestampMixin):
     notes = Column(Text, nullable=True)
     snapshot = Column(JSONB, nullable=False, default=dict)
     created_by = Column(UUID(as_uuid=True), nullable=True)
+
+
+class StudioBuildStatus(str, enum.Enum):
+    QUEUED = "queued"
+    PLANNING = "planning"
+    GENERATING = "generating"
+    VALIDATING = "validating"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    RETRYABLE = "retryable"
+
+
+class StudioProjectBuild(Base, TimestampMixin):
+    """AI Software Factory build run — source artifacts after approval."""
+
+    __tablename__ = "studio_project_builds"
+    __table_args__ = (
+        UniqueConstraint("project_id", "version", name="uq_studio_builds_project_version"),
+        Index("ix_studio_builds_project_current", "project_id", "is_current"),
+        Index("ix_studio_builds_project_status", "project_id", "status"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    approval_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_project_approvals.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    version = Column(Integer, nullable=False, default=1)
+    is_current = Column(Boolean, nullable=False, default=True)
+    status = Column(String(32), nullable=False, default="queued")
+    stage = Column(String(64), nullable=False, default="queued")
+    agent_statuses = Column(JSONB, nullable=False, default=dict)
+    logs = Column(JSONB, nullable=False, default=list)
+    file_manifest = Column(JSONB, nullable=False, default=list)
+    artifact_path = Column(Text, nullable=True)
+    artifact_sha256 = Column(String(64), nullable=True)
+    file_count = Column(Integer, nullable=False, default=0)
+    error = Column(Text, nullable=True)
+    retryable = Column(Boolean, nullable=False, default=False)
+    retry_of = Column(UUID(as_uuid=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), nullable=True)

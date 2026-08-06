@@ -1285,7 +1285,22 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioExportResult>(`/studio/projects/${id}/export`, {
       method: "POST",
       body: { kind: body.kind || "review", format: body.format || "json" }
-    })
+    }),
+  generateSource: (id: string, body?: { sync?: boolean; notes?: string }) =>
+    api.apiV2<import("@/lib/studio").StudioGenerateSourceResult>(
+      `/studio/projects/${id}/generate/source`,
+      { method: "POST", body: body || {} }
+    ),
+  getBuild: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioBuild>(`/studio/projects/${id}/build`),
+  getArtifacts: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioArtifacts>(`/studio/projects/${id}/artifacts`),
+  retryBuild: (id: string, body?: { sync?: boolean; notes?: string }) =>
+    api.apiV2<import("@/lib/studio").StudioGenerateSourceResult>(`/studio/projects/${id}/retry`, {
+      method: "POST",
+      body: body || {}
+    }),
+  downloadArtifactsUrl: (id: string) => `/api/v2/studio/projects/${id}/artifacts/download`
 };
 
 /** AI Gateway provider status — enterprise dashboard surface */

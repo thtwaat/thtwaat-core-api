@@ -25,7 +25,8 @@ import {
   Trash2
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { ApiError } from "@/lib/api";
+import { ApiError, getAccessToken } from "@/lib/api";
+import { apiPaths } from "@/lib/config";
 import { canDeleteStudioProjects } from "@/lib/permissions";
 import { studioApi } from "@/lib/services";
 import {
@@ -48,6 +49,7 @@ import {
   type StudioAi,
   type StudioBackend,
   type StudioBlueprint,
+  type StudioBuild,
   type StudioBuildPlan,
   type StudioExportResult,
   type StudioFrontend,
@@ -178,6 +180,27 @@ export default function StudioPage() {
     queryKey: ["studio-review", selected?.id],
     queryFn: () => studioApi.getReview(selected!.id),
     enabled: Boolean(selected?.id),
+    retry: false
+  });
+
+  const buildQ = useQuery({
+    queryKey: ["studio-build", selected?.id],
+    queryFn: () => studioApi.getBuild(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false,
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status && ["queued", "planning", "generating", "validating"].includes(status)) {
+        return 2000;
+      }
+      return false;
+    }
+  });
+
+  const artifactsQ = useQuery({
+    queryKey: ["studio-artifacts", selected?.id],
+    queryFn: () => studioApi.getArtifacts(selected!.id),
+    enabled: Boolean(selected?.id) && buildQ.data?.status === "completed",
     retry: false
   });
 
@@ -466,6 +489,41 @@ export default function StudioPage() {
       toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Export failed")
   });
 
+  const generateSourceM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.generateSource(selected.id, { sync: true });
+    },
+    onSuccess: (result) => {
+      toast.success(
+        result.build.status === "completed"
+          ? `Source v${result.build.version} · ${result.build.file_count} files`
+          : `Build ${result.build.status} · ${result.note}`
+      );
+      void qc.invalidateQueries({ queryKey: ["studio-projects"] });
+      void qc.invalidateQueries({ queryKey: ["studio-build", result.project.id] });
+      void qc.invalidateQueries({ queryKey: ["studio-artifacts", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError || err instanceof Error ? err.message : "Source generation failed"
+      )
+  });
+
+  const retryBuildM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.retryBuild(selected.id, { sync: true });
+    },
+    onSuccess: (result) => {
+      toast.success(`Retry v${result.build.version} · ${result.build.status}`);
+      void qc.invalidateQueries({ queryKey: ["studio-build", result.project.id] });
+      void qc.invalidateQueries({ queryKey: ["studio-artifacts", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Retry failed")
+  });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => studioApi.remove(id),
     onSuccess: (_, id) => {
@@ -495,6 +553,8 @@ export default function StudioPage() {
   const infraWarnings = infra?.warnings || infra?.summary?.warnings || [];
   const review: ReviewManifest | undefined = reviewQ.data?.review;
   const reviewWarnings = review?.warnings || [];
+  const build: StudioBuild | undefined = buildQ.data;
+  const artifacts = artifactsQ.data;
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -505,14 +565,14 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 8
+          THTWAAT Studio · Phase 9
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Review Center &amp; Build Approval
+          AI Software Factory
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          Combine Blueprint, Frontend, Backend, AI, and Infrastructure into one enterprise review.
-          Validate gaps, estimate cost, export plans — approve without generating source or deploying.
+          After Review Center approval, generate a production-ready source tree. Thin scaffolds that
+          mount Auth, Billing, AI Gateway, Agents, and Admin — never duplicate platform runtimes.
         </p>
       </section>
 
@@ -1712,6 +1772,28 @@ export default function StudioPage() {
                 </>
               )}
             </Button>
+            <Button
+              className="bg-emerald-600 text-white hover:bg-emerald-500"
+              disabled={
+                !selected ||
+                selected.status !== "completed" ||
+                generateSourceM.isPending ||
+                (build?.status === "generating" || build?.status === "planning")
+              }
+              onClick={() => generateSourceM.mutate()}
+            >
+              {generateSourceM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Generate Source
+                </>
+              )}
+            </Button>
           </div>
         </div>
 
@@ -1858,6 +1940,132 @@ export default function StudioPage() {
               </li>
             ))}
           </ul>
+        )}
+      </section>
+
+      {/* Software Factory */}
+      <section className="mt-6 rounded-3xl border border-emerald-800/40 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950/50 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Software Factory</h2>
+            <p className="text-sm text-slate-400">
+              {build
+                ? `v${build.version} · ${build.status} / ${build.stage} · ${build.file_count} files`
+                : "Approve Build first, then Generate Source"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={!build?.retryable && build?.status !== "failed"}
+              onClick={() => retryBuildM.mutate()}
+            >
+              Retry
+            </Button>
+            {artifacts?.download_available && selected?.id && (
+              <Button
+                variant="secondary"
+                onClick={async () => {
+                  try {
+                    const token = getAccessToken();
+                    const res = await fetch(
+                      `${apiPaths.apiV2}/studio/projects/${selected.id}/artifacts/download`,
+                      {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {}
+                      }
+                    );
+                    if (!res.ok) throw new Error("Download failed");
+                    const blob = await res.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement("a");
+                    a.href = url;
+                    a.download = `${selected.title || "studio"}-source.zip`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  } catch (err) {
+                    toast.error(err instanceof Error ? err.message : "Download failed");
+                  }
+                }}
+              >
+                <Download className="mr-2 h-4 w-4" />
+                Download ZIP
+              </Button>
+            )}
+          </div>
+        </div>
+
+        {!build ? (
+          <EmptyState
+            title="No source build yet"
+            description="Complete Review Center approval, then click Generate Source."
+          />
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Agent status</h3>
+              <ul className="max-h-72 space-y-2 overflow-y-auto text-sm">
+                {Object.entries(build.agent_statuses || {}).map(([agent, st]) => (
+                  <li
+                    key={agent}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium capitalize text-slate-100">{agent}</p>
+                      <p className="text-xs text-slate-500">{st.message || "—"}</p>
+                    </div>
+                    <Badge
+                      tone={
+                        st.status === "completed"
+                          ? "success"
+                          : st.status === "failed"
+                            ? "danger"
+                            : st.status === "running"
+                              ? "warn"
+                              : "neutral"
+                      }
+                    >
+                      {st.status || "queued"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Logs</h3>
+              <ul className="max-h-72 space-y-1 overflow-y-auto font-mono text-xs text-slate-400">
+                {(build.logs || []).slice(-40).map((log, idx) => (
+                  <li key={`${log.ts || idx}-${idx}`}>
+                    [{String(log.event || log.message || "log")}]{" "}
+                    {String(log.message || log.agent || "")}
+                  </li>
+                ))}
+              </ul>
+              {build.error && (
+                <p className="mt-2 text-sm text-rose-300">{build.error}</p>
+              )}
+            </div>
+            <div className="xl:col-span-2">
+              <h3 className="mb-2 text-sm font-semibold text-white">Generated files</h3>
+              <div className="mb-2 flex flex-wrap gap-1">
+                {(artifacts?.tree_roots || []).map((root) => (
+                  <Badge key={root} tone="neutral">
+                    {root}
+                  </Badge>
+                ))}
+              </div>
+              <ul className="max-h-56 space-y-1 overflow-y-auto font-mono text-xs text-slate-400">
+                {(build.file_manifest || []).slice(0, 80).map((f) => (
+                  <li key={f.path} className="flex justify-between gap-2">
+                    <span className="text-teal-200/90">{f.path}</span>
+                    <span>
+                      {f.agent}
+                      {f.reuse ? " · reuse" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         )}
       </section>
 

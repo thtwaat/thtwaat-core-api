@@ -656,6 +656,57 @@ export type StudioExportResult = {
   content: string;
 };
 
+export type StudioBuild = {
+  id: string;
+  project_id: string;
+  workspace_id: string;
+  approval_id?: string | null;
+  version: number;
+  is_current: boolean;
+  status: string;
+  stage: string;
+  agent_statuses: Record<
+    string,
+    { status?: string; message?: string; file_count?: number; reuse_percent?: number }
+  >;
+  logs: Array<Record<string, unknown>>;
+  file_manifest: Array<{
+    path: string;
+    bytes: number;
+    sha256: string;
+    agent: string;
+    reuse: boolean;
+    platform_ref?: string | null;
+    language?: string;
+  }>;
+  artifact_path?: string | null;
+  artifact_sha256?: string | null;
+  file_count: number;
+  error?: string | null;
+  retryable: boolean;
+  retry_of?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudioGenerateSourceResult = {
+  project: StudioProject;
+  build: StudioBuild;
+  enqueued: boolean;
+  note: string;
+};
+
+export type StudioArtifacts = {
+  build_id: string;
+  version: number;
+  status: string;
+  file_count: number;
+  artifact_sha256?: string | null;
+  download_available: boolean;
+  files: StudioBuild["file_manifest"];
+  tree_roots: string[];
+};
+
 export function moduleKindLabel(kind: ModuleKind | string): string {
   if (kind === "existing_module") return "Existing";
   if (kind === "marketplace_template") return "Marketplace";
@@ -732,6 +783,7 @@ export const STUDIO_TIPS = [
   "Generate AI plans agents, prompts, tools, and providers on the existing AI Gateway — no duplicate runtime.",
   "Generate Infrastructure plans Docker/Compose/Nginx/Redis/Postgres/Workers — planning only, no deploy.",
   "Review Center combines all manifests — Approve Build locks planning without generating source or deploying.",
+  "Generate Source runs the AI Software Factory after approval — thin scaffolds that reuse Auth, Billing, and AI Gateway.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 

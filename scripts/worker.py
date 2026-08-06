@@ -149,6 +149,15 @@ def process_job(payload: dict) -> None:
                 status_code,
                 payload.get("attempt") or 1,
             )
+        elif job_type == "studio.build":
+            from uuid import UUID
+
+            from app.studio.service import StudioService
+
+            build_id = payload.get("build_id")
+            if not build_id:
+                raise ValueError("studio.build missing build_id")
+            StudioService(db).run_build(UUID(str(build_id)))
         else:
             logger.warning("unknown job type=%s", job_type)
     finally:
