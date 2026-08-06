@@ -473,6 +473,99 @@ export type StudioAiGenerateResult = {
   ai: StudioAi;
 };
 
+export type InfraComponent = {
+  id: string;
+  name: string;
+  category: string;
+  reuse: boolean;
+  platform_ref?: string | null;
+  details: Record<string, unknown>;
+};
+
+export type InfraTarget = {
+  id: string;
+  name: string;
+  recommended: boolean;
+  score: number;
+  reuse_existing_stack: boolean;
+  platform_ref?: string | null;
+  reason: string;
+  planning_only: boolean;
+  note: string;
+};
+
+export type InfraEnvVar = {
+  key: string;
+  required: boolean;
+  secret: boolean;
+  group: string;
+  example: string;
+  related_provider?: string | null;
+};
+
+export type InfraManifest = {
+  schema_version: number;
+  product_name: string;
+  industry: string;
+  product_type: string;
+  runtime: Record<string, unknown>;
+  components: InfraComponent[];
+  targets: InfraTarget[];
+  environment: InfraEnvVar[];
+  env_example: string;
+  secrets: {
+    required?: string[];
+    optional?: string[];
+  };
+  security: Record<string, unknown>;
+  backups: Record<string, unknown>;
+  scaling: Record<string, unknown>;
+  cost: {
+    currency: string;
+    infrastructure_usd: number;
+    ai_usd: number;
+    storage_usd: number;
+    bandwidth_usd: number;
+    monthly_total_usd: number;
+    notes: string[];
+    breakdown: Record<string, number>;
+  };
+  summary: {
+    component_count: number;
+    target_count: number;
+    env_var_count: number;
+    required_secret_count: number;
+    warning_count: number;
+    reuse_percent: number;
+    estimated_monthly_usd: number;
+    warnings: BlueprintWarning[];
+  };
+  warnings: BlueprintWarning[];
+  note: string;
+};
+
+export type StudioInfrastructure = {
+  id: string;
+  project_id: string;
+  workspace_id: string;
+  blueprint_version: number;
+  build_plan_version: number;
+  frontend_version: number;
+  backend_version: number;
+  ai_version: number;
+  version: number;
+  is_current: boolean;
+  status: string;
+  manifest: InfraManifest;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudioInfrastructureGenerateResult = {
+  project: StudioProject;
+  infrastructure: StudioInfrastructure;
+};
+
 export function moduleKindLabel(kind: ModuleKind | string): string {
   if (kind === "existing_module") return "Existing";
   if (kind === "marketplace_template") return "Marketplace";
@@ -547,6 +640,7 @@ export const STUDIO_TIPS = [
   "Generate Frontend builds a preview manifest that reuses Dashboard, Auth, Billing, Agents, and Admin UI.",
   "Generate Backend builds API/DB/RBAC/queue manifests — reuses platform modules, no source yet.",
   "Generate AI plans agents, prompts, tools, and providers on the existing AI Gateway — no duplicate runtime.",
+  "Generate Infrastructure plans Docker/Compose/Nginx/Redis/Postgres/Workers — planning only, no deploy.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 

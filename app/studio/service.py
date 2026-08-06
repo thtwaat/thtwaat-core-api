@@ -18,6 +18,7 @@ from app.studio.composer import compose_blueprint
 from app.studio.frontend_generator import generate_frontend_manifest
 from app.studio.backend_generator import generate_backend_manifest
 from app.studio.ai_generator import generate_ai_manifest
+from app.studio.infrastructure_generator import generate_infrastructure_manifest
 from app.studio.models import (
     StudioProject,
     StudioProjectBlueprint,
@@ -25,6 +26,7 @@ from app.studio.models import (
     StudioProjectFrontend,
     StudioProjectBackend,
     StudioProjectAi,
+    StudioProjectInfrastructure,
     StudioProjectStatus,
 )
 from app.studio.repository import StudioRepository
@@ -38,6 +40,7 @@ from app.studio.schemas import (
     ComposedModule,
     DependencyEdge,
     FrontendManifest,
+    InfraManifest,
     ProductBlueprint,
     StudioAiGenerateResponse,
     StudioAiResponse,
@@ -54,6 +57,9 @@ from app.studio.schemas import (
     StudioFrontendGenerateResponse,
     StudioFrontendResponse,
     StudioFrontendUpdate,
+    StudioInfrastructureGenerateResponse,
+    StudioInfrastructureResponse,
+    StudioInfrastructureUpdate,
     StudioProjectCreate,
     StudioProjectResponse,
 )
@@ -151,6 +157,25 @@ def _ai_response(row: StudioProjectAi) -> StudioAiResponse:
         is_current=row.is_current,
         status=row.status or "draft",
         manifest=AiManifest.model_validate(row.manifest or {}),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _infrastructure_response(row: StudioProjectInfrastructure) -> StudioInfrastructureResponse:
+    return StudioInfrastructureResponse(
+        id=row.id,
+        project_id=row.project_id,
+        workspace_id=row.workspace_id,
+        blueprint_version=row.blueprint_version,
+        build_plan_version=row.build_plan_version,
+        frontend_version=row.frontend_version,
+        backend_version=row.backend_version,
+        ai_version=row.ai_version,
+        version=row.version,
+        is_current=row.is_current,
+        status=row.status or "draft",
+        manifest=InfraManifest.model_validate(row.manifest or {}),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -709,6 +734,136 @@ class StudioService:
         )
         saved = self.repo.create_ai(row)
         return _ai_response(saved)
+
+    def generate_infrastructure(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioInfrastructureGenerateResponse:
+        """Generate infrastructure planning manifest (no codegen / no deploy)."""
+        project = self.get(user, project_id)
+        bp_row = self.repo.get_current_blueprint(project.id, project.workspace_id)
+        if not bp_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No blueprint — run Generate Blueprint first",
+            )
+        plan_row = self.repo.get_current_build_plan(project.id, project.workspace_id)
+        if not plan_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No build plan — run Compose Modules first",
+            )
+        fe_row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        be_row = self.repo.get_current_backend(project.id, project.workspace_id)
+        if not be_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No backend — run Generate Backend first",
+            )
+        ai_row = self.repo.get_current_ai(project.id, project.workspace_id)
+        if not ai_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No AI manifest — run Generate AI first",
+            )
+        blueprint = ProductBlueprint.model_validate(bp_row.blueprint or {})
+        modules = [ComposedModule.model_validate(m) for m in (plan_row.modules or [])]
+        backend = BackendManifest.model_validate(be_row.manifest or {})
+        ai = AiManifest.model_validate(ai_row.manifest or {})
+        project.status = StudioProjectStatus.BUILDING
+        self.repo.save_project(project)
+        try:
+            manifest = generate_infrastructure_manifest(
+                blueprint=blueprint,
+                modules=modules,
+                backend=backend,
+                ai=ai,
+                project_title=project.title,
+                blueprint_version=bp_row.version,
+                build_plan_version=plan_row.version,
+                frontend_version=fe_row.version if fe_row else 0,
+                backend_version=be_row.version,
+                ai_version=ai_row.version,
+            )
+            self.repo.clear_current_infrastructure(project.id)
+            version = self.repo.next_infrastructure_version(project.id)
+            row = StudioProjectInfrastructure(
+                project_id=project.id,
+                workspace_id=project.workspace_id,
+                blueprint_version=bp_row.version,
+                build_plan_version=plan_row.version,
+                frontend_version=fe_row.version if fe_row else 0,
+                backend_version=be_row.version,
+                ai_version=ai_row.version,
+                version=version,
+                is_current=True,
+                status="draft",
+                manifest=manifest.model_dump(mode="json"),
+                created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+            )
+            saved = self.repo.create_infrastructure(row)
+            project.status = StudioProjectStatus.APPROVED
+            self.repo.save_project(project)
+            return StudioInfrastructureGenerateResponse(
+                project=StudioProjectResponse.model_validate(project),
+                infrastructure=_infrastructure_response(saved),
+            )
+        except Exception as exc:
+            project.status = StudioProjectStatus.FAILED
+            self.repo.save_project(project)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Infrastructure generation failed: {exc}",
+            ) from exc
+
+    def get_infrastructure(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioInfrastructureResponse:
+        project = self.get(user, project_id)
+        row = self.repo.get_current_infrastructure(project.id, project.workspace_id)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No infrastructure yet — run Generate Infrastructure first",
+            )
+        return _infrastructure_response(row)
+
+    def update_infrastructure(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        payload: StudioInfrastructureUpdate,
+    ) -> StudioInfrastructureResponse:
+        project = self.get(user, project_id)
+        current = self.repo.get_current_infrastructure(project.id, project.workspace_id)
+        if not current:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No infrastructure yet — run Generate Infrastructure first",
+            )
+        status_value = (payload.status or current.status or "draft").strip().lower()
+        if status_value not in {"draft", "approved"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Infrastructure status must be draft or approved",
+            )
+        self.repo.clear_current_infrastructure(project.id)
+        version = self.repo.next_infrastructure_version(project.id)
+        row = StudioProjectInfrastructure(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            blueprint_version=current.blueprint_version,
+            build_plan_version=current.build_plan_version,
+            frontend_version=current.frontend_version,
+            backend_version=current.backend_version,
+            ai_version=current.ai_version,
+            version=version,
+            is_current=True,
+            status=status_value,
+            manifest=payload.manifest.model_dump(mode="json"),
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_infrastructure(row)
+        return _infrastructure_response(saved)
 
     @staticmethod
     def project_response(project: StudioProject) -> StudioProjectResponse:

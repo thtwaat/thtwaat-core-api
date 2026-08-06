@@ -1255,6 +1255,21 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioAi>(`/studio/projects/${id}/ai`, {
       method: "PUT",
       body
+    }),
+  generateInfrastructure: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioInfrastructureGenerateResult>(
+      `/studio/projects/${id}/generate/infrastructure`,
+      { method: "POST" }
+    ),
+  getInfrastructure: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioInfrastructure>(`/studio/projects/${id}/infrastructure`),
+  saveInfrastructure: (
+    id: string,
+    body: { manifest: import("@/lib/studio").InfraManifest; status?: string }
+  ) =>
+    api.apiV2<import("@/lib/studio").StudioInfrastructure>(`/studio/projects/${id}/infrastructure`, {
+      method: "PUT",
+      body
     })
 };
 

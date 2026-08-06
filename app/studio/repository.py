@@ -13,6 +13,7 @@ from app.studio.models import (
     StudioProjectFrontend,
     StudioProjectBackend,
     StudioProjectAi,
+    StudioProjectInfrastructure,
 )
 
 
@@ -276,5 +277,46 @@ class StudioRepository:
                 StudioProjectAi.is_current.is_(True),
             )
             .order_by(StudioProjectAi.version.desc())
+            .first()
+        )
+
+    def next_infrastructure_version(self, project_id: UUID) -> int:
+        current = (
+            self.db.query(StudioProjectInfrastructure.version)
+            .filter(StudioProjectInfrastructure.project_id == project_id)
+            .order_by(StudioProjectInfrastructure.version.desc())
+            .first()
+        )
+        return int(current[0]) + 1 if current else 1
+
+    def clear_current_infrastructure(self, project_id: UUID) -> None:
+        (
+            self.db.query(StudioProjectInfrastructure)
+            .filter(
+                StudioProjectInfrastructure.project_id == project_id,
+                StudioProjectInfrastructure.is_current.is_(True),
+            )
+            .update({"is_current": False}, synchronize_session=False)
+        )
+
+    def create_infrastructure(
+        self, row: StudioProjectInfrastructure
+    ) -> StudioProjectInfrastructure:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_current_infrastructure(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> Optional[StudioProjectInfrastructure]:
+        return (
+            self.db.query(StudioProjectInfrastructure)
+            .filter(
+                StudioProjectInfrastructure.project_id == project_id,
+                StudioProjectInfrastructure.workspace_id == workspace_id,
+                StudioProjectInfrastructure.is_current.is_(True),
+            )
+            .order_by(StudioProjectInfrastructure.version.desc())
             .first()
         )

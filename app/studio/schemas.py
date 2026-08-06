@@ -674,3 +674,111 @@ class StudioAiGenerateResponse(BaseModel):
 class StudioAiUpdate(BaseModel):
     manifest: AiManifest
     status: Optional[str] = None
+
+
+# ── Infrastructure Generator (Phase 7) ────────────────────────────────────────
+
+class InfraComponent(BaseModel):
+    id: str
+    name: str
+    category: str = "runtime"
+    reuse: bool = True
+    platform_ref: Optional[str] = None
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class InfraTarget(BaseModel):
+    id: str
+    name: str
+    recommended: bool = False
+    score: float = 0.0
+    reuse_existing_stack: bool = True
+    platform_ref: Optional[str] = None
+    reason: str = ""
+    planning_only: bool = True
+    note: str = ""
+
+
+class InfraEnvVar(BaseModel):
+    key: str
+    required: bool = False
+    secret: bool = False
+    group: str = "core"
+    example: str = ""
+    related_provider: Optional[str] = None
+
+
+class InfraCostEstimate(BaseModel):
+    currency: str = "USD"
+    infrastructure_usd: float = 0.0
+    ai_usd: float = 0.0
+    storage_usd: float = 0.0
+    bandwidth_usd: float = 0.0
+    monthly_total_usd: float = 0.0
+    notes: List[str] = Field(default_factory=list)
+    breakdown: Dict[str, float] = Field(default_factory=dict)
+
+
+class InfraSummary(BaseModel):
+    component_count: int = 0
+    target_count: int = 0
+    env_var_count: int = 0
+    required_secret_count: int = 0
+    warning_count: int = 0
+    reuse_percent: float = 0.0
+    estimated_monthly_usd: float = 0.0
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+
+
+class InfraManifest(BaseModel):
+    """Infrastructure planning manifest — reuses compose/ops stack, no deploy."""
+
+    schema_version: int = 1
+    product_name: str = "Untitled product"
+    industry: str = "general"
+    product_type: str = "saas"
+    runtime: Dict[str, Any] = Field(default_factory=dict)
+    components: List[InfraComponent] = Field(default_factory=list)
+    targets: List[InfraTarget] = Field(default_factory=list)
+    environment: List[InfraEnvVar] = Field(default_factory=list)
+    env_example: str = ""
+    secrets: Dict[str, Any] = Field(default_factory=dict)
+    security: Dict[str, Any] = Field(default_factory=dict)
+    backups: Dict[str, Any] = Field(default_factory=dict)
+    scaling: Dict[str, Any] = Field(default_factory=dict)
+    cost: InfraCostEstimate = Field(default_factory=InfraCostEstimate)
+    summary: InfraSummary = Field(default_factory=InfraSummary)
+    traceability: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+    note: str = ""
+
+    model_config = {"extra": "allow"}
+
+
+class StudioInfrastructureResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    blueprint_version: int
+    build_plan_version: int
+    frontend_version: int
+    backend_version: int
+    ai_version: int
+    version: int
+    is_current: bool
+    status: str = "draft"
+    manifest: InfraManifest
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioInfrastructureGenerateResponse(BaseModel):
+    project: StudioProjectResponse
+    infrastructure: StudioInfrastructureResponse
+
+
+class StudioInfrastructureUpdate(BaseModel):
+    manifest: InfraManifest
+    status: Optional[str] = None

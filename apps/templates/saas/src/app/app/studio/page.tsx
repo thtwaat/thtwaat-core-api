@@ -8,6 +8,7 @@ import {
   ArrowRight,
   Bot,
   Boxes,
+  Cloud,
   Database,
   Eraser,
   History,
@@ -39,12 +40,14 @@ import {
   type AiManifest,
   type BackendManifest,
   type FrontendManifest,
+  type InfraManifest,
   type ProductBlueprint,
   type StudioAi,
   type StudioBackend,
   type StudioBlueprint,
   type StudioBuildPlan,
-  type StudioFrontend
+  type StudioFrontend,
+  type StudioInfrastructure
 } from "@/lib/studio";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge, Card } from "@/components/ui/card";
@@ -142,9 +145,17 @@ export default function StudioPage() {
     retry: false
   });
 
+  const infraQ = useQuery({
+    queryKey: ["studio-infrastructure", selected?.id],
+    queryFn: () => studioApi.getInfrastructure(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false
+  });
+
   const [frontendDraft, setFrontendDraft] = useState<FrontendManifest | null>(null);
   const [backendDraft, setBackendDraft] = useState<BackendManifest | null>(null);
   const [aiDraft, setAiDraft] = useState<AiManifest | null>(null);
+  const [infraDraft, setInfraDraft] = useState<InfraManifest | null>(null);
 
   useEffect(() => {
     if (blueprintQ.data?.blueprint) {
@@ -177,6 +188,14 @@ export default function StudioPage() {
       setAiDraft(null);
     }
   }, [aiQ.data, aiQ.isError, selected?.id]);
+
+  useEffect(() => {
+    if (infraQ.data?.manifest) {
+      setInfraDraft(infraQ.data.manifest);
+    } else if (infraQ.isError) {
+      setInfraDraft(null);
+    }
+  }, [infraQ.data, infraQ.isError, selected?.id]);
 
   const createM = useMutation({
     mutationFn: () => studioApi.create({ prompt }),
@@ -352,6 +371,43 @@ export default function StudioPage() {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Save AI failed")
   });
 
+  const generateInfraM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.generateInfrastructure(selected.id);
+    },
+    onSuccess: (result) => {
+      toast.success(
+        `Infra v${result.infrastructure.version} · ${result.infrastructure.manifest.summary.reuse_percent}% reuse · ~$${result.infrastructure.manifest.cost.monthly_total_usd}/mo`
+      );
+      setInfraDraft(result.infrastructure.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-projects"] });
+      void qc.invalidateQueries({
+        queryKey: ["studio-infrastructure", result.project.id]
+      });
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError || err instanceof Error
+          ? err.message
+          : "Infrastructure generate failed"
+      )
+  });
+
+  const saveInfraM = useMutation({
+    mutationFn: (status?: string) => {
+      if (!selected?.id || !infraDraft) throw new Error("No infrastructure to save");
+      return studioApi.saveInfrastructure(selected.id, { manifest: infraDraft, status });
+    },
+    onSuccess: (row) => {
+      toast.success(`Infrastructure saved as v${row.version} (${row.status})`);
+      setInfraDraft(row.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-infrastructure", selected?.id] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Save infrastructure failed")
+  });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => studioApi.remove(id),
     onSuccess: (_, id) => {
@@ -367,15 +423,18 @@ export default function StudioPage() {
   const frontendRow: StudioFrontend | undefined = frontendQ.data;
   const backendRow: StudioBackend | undefined = backendQ.data;
   const aiRow: StudioAi | undefined = aiQ.data;
+  const infraRow: StudioInfrastructure | undefined = infraQ.data;
   const frontend = frontendDraft;
   const backend = backendDraft;
   const ai = aiDraft;
+  const infra = infraDraft;
   const warnings = currentBlueprint?.warnings || [];
   const recommendations = currentBlueprint?.recommendations;
   const composeWarnings = buildPlan?.summary?.warnings || [];
   const frontendWarnings = frontend?.warnings || frontend?.summary?.warnings || [];
   const backendWarnings = backend?.warnings || backend?.summary?.warnings || [];
   const aiWarnings = ai?.warnings || ai?.summary?.warnings || [];
+  const infraWarnings = infra?.warnings || infra?.summary?.warnings || [];
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -386,14 +445,14 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 6
+          THTWAAT Studio · Phase 7
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          AI Generator
+          Infrastructure Generator
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          Plan agents, prompts, tools, providers, and estimated cost on the existing AI Gateway —
-          Agents, Knowledge, Memory, RAG, Widget, Analytics, Billing. No duplicate runtime. No deploy.
+          Plan Docker, Compose, Nginx, Redis, Postgres, Workers, Scheduler, env/secrets, monitoring,
+          and cost on the existing production stack. Planning only — no deploy, no app source.
         </p>
       </section>
 
@@ -509,6 +568,23 @@ export default function StudioPage() {
                 <>
                   <Bot className="mr-2 h-4 w-4" />
                   Generate AI
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={() => generateInfraM.mutate()}
+              disabled={!selected || !ai || generateInfraM.isPending}
+              className="bg-emerald-700 text-white hover:bg-emerald-600"
+            >
+              {generateInfraM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Cloud className="mr-2 h-4 w-4" />
+                  Generate Infrastructure
                 </>
               )}
             </Button>
@@ -1364,6 +1440,146 @@ export default function StudioPage() {
             {aiWarnings.map((w) => (
               <li
                 key={`ai-${w.code}-${w.message}`}
+                className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+              >
+                <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>
+                <span className="text-slate-200">{w.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Infrastructure preview */}
+      <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Infrastructure plan</h2>
+            <p className="text-sm text-slate-400">
+              {infra && infraRow
+                ? `v${infraRow.version} · ${infraRow.status} · ${infra.summary.reuse_percent}% reuse · ~$${infra.cost.monthly_total_usd}/mo`
+                : "Generate AI first, then Generate Infrastructure for compose/targets/env/cost"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={!infra || saveInfraM.isPending}
+              onClick={() => saveInfraM.mutate("draft")}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              Save draft
+            </Button>
+            <Button
+              className="bg-teal-600 text-white hover:bg-teal-500"
+              disabled={!infra || saveInfraM.isPending}
+              onClick={() => saveInfraM.mutate("approved")}
+            >
+              Approve Infrastructure
+            </Button>
+          </div>
+        </div>
+
+        {!infra ? (
+          <EmptyState
+            title="No infrastructure yet"
+            description="Generate Infrastructure after AI to preview stack, targets, env vars, warnings, and cost."
+          />
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+                <Cloud className="h-4 w-4 text-emerald-300" />
+                Components
+              </h3>
+              <ul className="max-h-72 space-y-2 overflow-y-auto text-sm">
+                {infra.components.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-100">{c.name}</p>
+                      <p className="text-xs text-slate-500">
+                        {c.category}
+                        {c.platform_ref ? ` · ${c.platform_ref}` : ""}
+                      </p>
+                    </div>
+                    <Badge tone={c.reuse ? "success" : "warn"}>
+                      {c.reuse ? "reuse" : "plan"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Deployment targets</h3>
+              <ul className="max-h-72 space-y-2 overflow-y-auto text-sm">
+                {infra.targets.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-100">
+                        {t.name}
+                        {t.recommended ? " · recommended" : ""}
+                      </p>
+                      <p className="text-xs text-slate-500">{t.reason}</p>
+                    </div>
+                    <Badge tone={t.recommended ? "success" : "neutral"}>{t.score}</Badge>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-slate-500">Planning only — Phase 7 does not deploy.</p>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Environment variables</h3>
+              <ul className="max-h-56 space-y-1 overflow-y-auto font-mono text-xs">
+                {infra.environment.slice(0, 24).map((e) => (
+                  <li
+                    key={e.key}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-800 bg-slate-950/60 px-2 py-1.5"
+                  >
+                    <span className="text-teal-200">{e.key}</span>
+                    <span className="text-slate-500">
+                      {e.required ? "required" : "optional"}
+                      {e.secret ? " · secret" : ""}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-slate-500">
+                Required secrets: {(infra.secrets.required || []).join(", ") || "—"}
+              </p>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Cost estimate</h3>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Monthly total</p>
+                <p className="mt-1 text-2xl font-semibold text-teal-300">
+                  ${infra.cost.monthly_total_usd}
+                  <span className="text-sm font-normal text-slate-500"> / mo</span>
+                </p>
+                <ul className="mt-3 space-y-1 text-xs text-slate-400">
+                  <li>Infrastructure · ${infra.cost.infrastructure_usd}</li>
+                  <li>AI · ${infra.cost.ai_usd}</li>
+                  <li>Storage · ${infra.cost.storage_usd}</li>
+                  <li>Bandwidth · ${infra.cost.bandwidth_usd}</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {infraWarnings.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {infraWarnings.map((w) => (
+              <li
+                key={`infra-${w.code}-${w.message}`}
                 className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
               >
                 <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>

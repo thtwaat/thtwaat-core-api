@@ -25,6 +25,9 @@ from app.studio.schemas import (
     StudioFrontendGenerateResponse,
     StudioFrontendResponse,
     StudioFrontendUpdate,
+    StudioInfrastructureGenerateResponse,
+    StudioInfrastructureResponse,
+    StudioInfrastructureUpdate,
     StudioProjectCreate,
     StudioProjectListResponse,
     StudioProjectResponse,
@@ -313,3 +316,43 @@ def put_ai(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.update_ai(user, project_id, payload)
+
+
+@router.post(
+    "/projects/{project_id}/generate/infrastructure",
+    response_model=StudioInfrastructureGenerateResponse,
+    summary="Generate infrastructure planning manifest (no codegen / no deploy)",
+)
+def generate_infrastructure(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.generate_infrastructure(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/infrastructure",
+    response_model=StudioInfrastructureResponse,
+    summary="Get current infrastructure planning manifest",
+)
+def get_infrastructure(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_infrastructure(user, project_id)
+
+
+@router.put(
+    "/projects/{project_id}/infrastructure",
+    response_model=StudioInfrastructureResponse,
+    summary="Save edited infrastructure manifest (edit before approval)",
+)
+def put_infrastructure(
+    project_id: UUID,
+    payload: StudioInfrastructureUpdate,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.update_infrastructure(user, project_id, payload)
