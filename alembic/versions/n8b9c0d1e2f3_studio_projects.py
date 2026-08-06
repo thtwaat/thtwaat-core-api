@@ -17,28 +17,55 @@ down_revision: Union[str, Sequence[str], None] = "m7a8b9c0d1e2"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
+_ENUM_NAME = "studio_project_status_enum"
+_ENUM_VALUES = (
+    "draft",
+    "analyzing",
+    "blueprint_ready",
+    "approved",
+    "building",
+    "completed",
+    "failed",
+)
+
 
 def _has_table(name: str) -> bool:
     return name in sa.inspect(op.get_bind()).get_table_names()
 
 
+def _has_type(name: str) -> bool:
+    bind = op.get_bind()
+    row = bind.execute(
+        sa.text("SELECT 1 FROM pg_type WHERE typname = :n LIMIT 1"),
+        {"n": name},
+    ).scalar()
+    return row is not None
+
+
 def upgrade() -> None:
+    bind = op.get_bind()
+
+    # Enum may already exist from a partial failed run — never re-CREATE blindly.
+    if not _has_type(_ENUM_NAME):
+        bind.execute(
+            sa.text(
+                f"""
+                DO $$ BEGIN
+                    CREATE TYPE {_ENUM_NAME} AS ENUM (
+                        'draft', 'analyzing', 'blueprint_ready', 'approved',
+                        'building', 'completed', 'failed'
+                    );
+                EXCEPTION
+                    WHEN duplicate_object THEN NULL;
+                END $$;
+                """
+            )
+        )
+
     if _has_table("studio_projects"):
         return
 
-    status_enum = postgresql.ENUM(
-        "draft",
-        "analyzing",
-        "blueprint_ready",
-        "approved",
-        "building",
-        "completed",
-        "failed",
-        name="studio_project_status_enum",
-        create_type=False,
-    )
-    bind = op.get_bind()
-    status_enum.create(bind, checkfirst=True)
+    status_enum = postgresql.ENUM(*_ENUM_VALUES, name=_ENUM_NAME, create_type=False)
 
     op.create_table(
         "studio_projects",
@@ -51,7 +78,7 @@ def upgrade() -> None:
             "status",
             status_enum,
             nullable=False,
-            server_default="draft",
+            server_default=sa.text("'draft'::studio_project_status_enum"),
         ),
         sa.Column(
             "created_at",
@@ -85,13 +112,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    if not _has_table("studio_projects"):
-        return
-    op.drop_index("ix_studio_projects_workspace_created", table_name="studio_projects")
-    op.drop_index("ix_studio_projects_workspace_status", table_name="studio_projects")
-    op.drop_index("ix_studio_projects_status", table_name="studio_projects")
-    op.drop_index("ix_studio_projects_user_id", table_name="studio_projects")
-    op.drop_index("ix_studio_projects_workspace_id", table_name="studio_projects")
-    op.drop_index("ix_studio_projects_id", table_name="studio_projects")
-    op.drop_table("studio_projects")
-    sa.Enum(name="studio_project_status_enum").drop(op.get_bind(), checkfirst=True)
+    if _has_table("studio_projects"):
+        op.drop_index("ix_studio_projects_workspace_created", table_name="studio_projects")
+        op.drop_index("ix_studio_projects_workspace_status", table_name="studio_projects")
+        op.drop_index("ix_studio_projects_status", table_name="studio_projects")
+        op.drop_index("ix_studio_projects_user_id", table_name="studio_projects")
+        op.drop_index("ix_studio_projects_workspace_id", table_name="studio_projects")
+        op.drop_index("ix_studio_projects_id", table_name="studio_projects")
+        op.drop_table("studio_projects")
+    if _has_type(_ENUM_NAME):
+        op.execute(sa.text(f"DROP TYPE IF EXISTS {_ENUM_NAME}"))
