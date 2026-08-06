@@ -707,6 +707,54 @@ export type StudioArtifacts = {
   tree_roots: string[];
 };
 
+export type StudioDeployment = {
+  id: string;
+  project_id: string;
+  workspace_id: string;
+  build_id?: string | null;
+  version: number;
+  is_current: boolean;
+  provider: string;
+  status: string;
+  stage: string;
+  domain?: string | null;
+  subdomain?: string | null;
+  environment: string;
+  live: boolean;
+  urls: Record<string, string>;
+  health: Record<string, unknown>;
+  ssl: Record<string, unknown>;
+  instructions: string[];
+  logs: Array<Record<string, unknown>>;
+  package_path?: string | null;
+  duration_ms: number;
+  error?: string | null;
+  retryable: boolean;
+  rollback_of?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudioDeployStartResult = {
+  project: StudioProject;
+  deployment: StudioDeployment;
+  enqueued: boolean;
+  note: string;
+};
+
+export type StudioDeploymentList = {
+  items: StudioDeployment[];
+  current_id?: string | null;
+  total: number;
+};
+
+export type StudioRollbackResult = {
+  project: StudioProject;
+  deployment: StudioDeployment;
+  restored_from?: string | null;
+  note: string;
+};
+
 export function moduleKindLabel(kind: ModuleKind | string): string {
   if (kind === "existing_module") return "Existing";
   if (kind === "marketplace_template") return "Marketplace";
@@ -784,6 +832,7 @@ export const STUDIO_TIPS = [
   "Generate Infrastructure plans Docker/Compose/Nginx/Redis/Postgres/Workers — planning only, no deploy.",
   "Review Center combines all manifests — Approve Build locks planning without generating source or deploying.",
   "Generate Source runs the AI Software Factory after approval — thin scaffolds that reuse Auth, Billing, and AI Gateway.",
+  "Deploy only runs after a completed source ZIP — never regenerates code; VPS/Docker reuse the platform stack.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 

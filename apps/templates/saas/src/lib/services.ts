@@ -1300,7 +1300,33 @@ export const studioApi = {
       method: "POST",
       body: body || {}
     }),
-  downloadArtifactsUrl: (id: string) => `/api/v2/studio/projects/${id}/artifacts/download`
+  downloadArtifactsUrl: (id: string) => `/api/v2/studio/projects/${id}/artifacts/download`,
+  deploy: (
+    id: string,
+    body?: {
+      provider?: string;
+      domain?: string;
+      subdomain?: string;
+      environment?: string;
+      sync?: boolean;
+      notes?: string;
+    }
+  ) =>
+    api.apiV2<import("@/lib/studio").StudioDeployStartResult>(`/studio/projects/${id}/deploy`, {
+      method: "POST",
+      body: body || { provider: "vps", sync: true }
+    }),
+  listDeployments: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioDeploymentList>(`/studio/projects/${id}/deployments`),
+  getDeployment: (id: string, deploymentId: string) =>
+    api.apiV2<import("@/lib/studio").StudioDeployment>(
+      `/studio/projects/${id}/deployments/${deploymentId}`
+    ),
+  rollback: (id: string, body?: { deployment_id?: string; sync?: boolean }) =>
+    api.apiV2<import("@/lib/studio").StudioRollbackResult>(`/studio/projects/${id}/rollback`, {
+      method: "POST",
+      body: body || {}
+    })
 };
 
 /** AI Gateway provider status — enterprise dashboard surface */

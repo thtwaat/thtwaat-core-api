@@ -51,6 +51,7 @@ import {
   type StudioBlueprint,
   type StudioBuild,
   type StudioBuildPlan,
+  type StudioDeployment,
   type StudioExportResult,
   type StudioFrontend,
   type StudioInfrastructure
@@ -202,6 +203,18 @@ export default function StudioPage() {
     queryFn: () => studioApi.getArtifacts(selected!.id),
     enabled: Boolean(selected?.id) && buildQ.data?.status === "completed",
     retry: false
+  });
+
+  const deploymentsQ = useQuery({
+    queryKey: ["studio-deployments", selected?.id],
+    queryFn: () => studioApi.listDeployments(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false,
+    refetchInterval: (query) => {
+      const cur = query.state.data?.items?.find((d) => d.id === query.state.data?.current_id);
+      if (cur && ["queued", "deploying"].includes(cur.status)) return 2000;
+      return false;
+    }
   });
 
   const [frontendDraft, setFrontendDraft] = useState<FrontendManifest | null>(null);
@@ -524,6 +537,43 @@ export default function StudioPage() {
       toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Retry failed")
   });
 
+  const [deployProvider, setDeployProvider] = useState("vps");
+  const [deployDomain, setDeployDomain] = useState("");
+
+  const deployM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.deploy(selected.id, {
+        provider: deployProvider,
+        domain: deployDomain || undefined,
+        sync: true
+      });
+    },
+    onSuccess: (result) => {
+      toast.success(
+        result.deployment.live
+          ? `Live deploy v${result.deployment.version} · ${result.deployment.provider}`
+          : `Deploy package v${result.deployment.version} · ${result.note}`
+      );
+      void qc.invalidateQueries({ queryKey: ["studio-deployments", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Deploy failed")
+  });
+
+  const rollbackM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.rollback(selected.id, {});
+    },
+    onSuccess: (result) => {
+      toast.success(result.note || "Rollback complete");
+      void qc.invalidateQueries({ queryKey: ["studio-deployments", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Rollback failed")
+  });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => studioApi.remove(id),
     onSuccess: (_, id) => {
@@ -555,6 +605,9 @@ export default function StudioPage() {
   const reviewWarnings = review?.warnings || [];
   const build: StudioBuild | undefined = buildQ.data;
   const artifacts = artifactsQ.data;
+  const deployments = deploymentsQ.data?.items || [];
+  const currentDeploy: StudioDeployment | undefined =
+    deployments.find((d) => d.id === deploymentsQ.data?.current_id) || deployments[0];
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -565,14 +618,14 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 9
+          THTWAAT Studio · Phase 10
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          AI Software Factory
+          One-Click Production Deployment
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          After Review Center approval, generate a production-ready source tree. Thin scaffolds that
-          mount Auth, Billing, AI Gateway, Agents, and Admin — never duplicate platform runtimes.
+          Deploy approved source builds only — never regenerate. VPS/Docker reuse the live platform
+          stack; other targets export a planning package.
         </p>
       </section>
 
@@ -2064,6 +2117,162 @@ export default function StudioPage() {
                   </li>
                 ))}
               </ul>
+            </div>
+          </div>
+        )}
+      </section>
+
+      {/* Deployment Center */}
+      <section className="mt-6 rounded-3xl border border-cyan-800/40 bg-gradient-to-br from-slate-900 via-slate-950 to-cyan-950/40 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Deployment Center</h2>
+            <p className="text-sm text-slate-400">
+              {currentDeploy
+                ? `v${currentDeploy.version} · ${currentDeploy.provider} · ${currentDeploy.status}/${currentDeploy.stage}${currentDeploy.live ? " · LIVE" : ""}`
+                : "Requires completed source build — Deploy never regenerates code"}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={deployProvider}
+              onChange={(e) => setDeployProvider(e.target.value)}
+              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            >
+              {[
+                "vps",
+                "docker",
+                "coolify",
+                "railway",
+                "render",
+                "digitalocean",
+                "aws_ecs",
+                "azure",
+                "google_cloud_run",
+                "kubernetes"
+              ].map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+            <input
+              value={deployDomain}
+              onChange={(e) => setDeployDomain(e.target.value)}
+              placeholder="custom domain (optional)"
+              className="w-48 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            />
+            <Button
+              className="bg-cyan-600 text-white hover:bg-cyan-500"
+              disabled={
+                !selected ||
+                build?.status !== "completed" ||
+                deployM.isPending
+              }
+              onClick={() => deployM.mutate()}
+            >
+              {deployM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deploying…
+                </>
+              ) : (
+                "Deploy"
+              )}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!currentDeploy || deployM.isPending}
+              onClick={() => deployM.mutate()}
+            >
+              Redeploy
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={deployments.length < 2 || rollbackM.isPending}
+              onClick={() => rollbackM.mutate()}
+            >
+              Rollback
+            </Button>
+          </div>
+        </div>
+
+        {!currentDeploy ? (
+          <EmptyState
+            title="No deployments yet"
+            description="Generate Source, then Deploy to VPS/Docker (live overlay) or export a planning package for other providers."
+          />
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Open</h3>
+              <div className="flex flex-wrap gap-2">
+                {Object.entries(currentDeploy.urls || {}).map(([key, url]) => (
+                  <a
+                    key={key}
+                    href={url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={cn(buttonVariants({ variant: "secondary" }), "inline-flex capitalize")}
+                  >
+                    {key}
+                  </a>
+                ))}
+                {Object.keys(currentDeploy.urls || {}).length === 0 && (
+                  <p className="text-sm text-slate-500">No live URLs (planning provider)</p>
+                )}
+              </div>
+              <h3 className="mb-2 mt-4 text-sm font-semibold text-white">Logs</h3>
+              <ul className="max-h-48 space-y-1 overflow-y-auto font-mono text-xs text-slate-400">
+                {(currentDeploy.logs || []).slice(-30).map((log, idx) => (
+                  <li key={`${log.ts || idx}-${idx}`}>
+                    [{String(log.event || "log")}] {String(log.message || "")}
+                  </li>
+                ))}
+              </ul>
+              {currentDeploy.error && (
+                <p className="mt-2 text-sm text-rose-300">{currentDeploy.error}</p>
+              )}
+            </div>
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">History</h3>
+              <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+                {deployments.map((d) => (
+                  <li
+                    key={d.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="text-slate-100">
+                        v{d.version} · {d.provider}
+                        {d.is_current ? " · current" : ""}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {d.stage} · {d.duration_ms}ms
+                        {d.live ? " · live" : ""}
+                      </p>
+                    </div>
+                    <Badge
+                      tone={
+                        d.status === "completed"
+                          ? "success"
+                          : d.status === "failed"
+                            ? "danger"
+                            : "warn"
+                      }
+                    >
+                      {d.status}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+              {(currentDeploy.instructions || []).length > 0 && (
+                <ul className="mt-3 space-y-1 text-xs text-slate-400">
+                  {currentDeploy.instructions.slice(0, 6).map((line) => (
+                    <li key={line}>• {line}</li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
         )}

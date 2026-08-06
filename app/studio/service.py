@@ -22,6 +22,8 @@ from app.studio.infrastructure_generator import generate_infrastructure_manifest
 from app.studio.review import build_review_manifest, can_approve, export_review_payload
 from app.studio.factory import FactoryContext, run_factory
 from app.studio.factory_events import is_cancelled, publish_build_event
+from app.studio.deploy import DeployContext, PROVIDERS, run_deploy
+from app.studio.deploy_events import publish_deploy_event
 from app.studio.models import (
     StudioProject,
     StudioProjectBlueprint,
@@ -32,6 +34,7 @@ from app.studio.models import (
     StudioProjectInfrastructure,
     StudioProjectApproval,
     StudioProjectBuild,
+    StudioProjectDeployment,
     StudioProjectStatus,
 )
 from app.studio.repository import StudioRepository
@@ -65,6 +68,10 @@ from app.studio.schemas import (
     StudioBuildPlanResponse,
     StudioBuildResponse,
     StudioComposeResponse,
+    StudioDeployRequest,
+    StudioDeployStartResponse,
+    StudioDeploymentListResponse,
+    StudioDeploymentResponse,
     StudioExportRequest,
     StudioExportResponse,
     StudioFrontendGenerateResponse,
@@ -79,6 +86,8 @@ from app.studio.schemas import (
     StudioProjectResponse,
     StudioRetryBuildRequest,
     StudioReviewResponse,
+    StudioRollbackRequest,
+    StudioRollbackResponse,
 )
 
 
@@ -1371,6 +1380,326 @@ class StudioService:
                     note=result.note,
                 )
         return result
+
+    def _deployment_response(self, row: StudioProjectDeployment) -> StudioDeploymentResponse:
+        return StudioDeploymentResponse(
+            id=row.id,
+            project_id=row.project_id,
+            workspace_id=row.workspace_id,
+            build_id=row.build_id,
+            approval_id=row.approval_id,
+            version=row.version,
+            is_current=row.is_current,
+            provider=row.provider,
+            status=row.status or "queued",
+            stage=row.stage or "queued",
+            domain=row.domain,
+            subdomain=row.subdomain,
+            environment=row.environment or "production",
+            live=bool(row.live),
+            urls=dict(row.urls or {}),
+            health=dict(row.health or {}),
+            ssl=dict(row.ssl or {}),
+            instructions=list(row.instructions or []),
+            logs=list(row.logs or []),
+            package_path=row.package_path,
+            duration_ms=int(row.duration_ms or 0),
+            error=row.error,
+            retryable=bool(row.retryable),
+            rollback_of=row.rollback_of,
+            created_by=row.created_by,
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+        )
+
+    def _require_deployable_build(self, project: StudioProject) -> StudioProjectBuild:
+        approval = self.repo.get_latest_approval(project.id, project.workspace_id)
+        if not approval:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Deploy blocked — Review Center approval required",
+            )
+        build = self.repo.get_current_build(project.id, project.workspace_id)
+        if not build or build.status != "completed" or not build.artifact_path:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Deploy blocked — completed source build with ZIP required (Generate Source first)",
+            )
+        from pathlib import Path
+
+        if not Path(build.artifact_path).is_file():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Deploy blocked — source artifact missing on disk",
+            )
+        return build
+
+    def start_deploy(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        payload: Optional[StudioDeployRequest] = None,
+    ) -> StudioDeployStartResponse:
+        """Deploy an approved source build — never regenerates source."""
+        project = self.get(user, project_id)
+        build = self._require_deployable_build(project)
+        approval = self.repo.get_latest_approval(project.id, project.workspace_id)
+        payload = payload or StudioDeployRequest()
+        provider = (payload.provider or "vps").lower().strip()
+        # normalize
+        provider = provider.replace("-", "_").replace(" ", "_")
+        if provider not in PROVIDERS and provider not in {"docker", "vps"}:
+            # allow aliases resolved later; reject unknown early if not in list
+            aliases_ok = provider in {
+                "aws",
+                "ecs",
+                "gcp",
+                "gcr",
+                "k8s",
+                "current_vps",
+                "google_cloud",
+            }
+            if not aliases_ok:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Unsupported provider '{payload.provider}'",
+                )
+
+        self.repo.clear_current_deployments(project.id)
+        version = self.repo.next_deployment_version(project.id)
+        row = StudioProjectDeployment(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            build_id=build.id,
+            approval_id=approval.id if approval else None,
+            version=version,
+            is_current=True,
+            provider=provider,
+            status="queued",
+            stage="queued",
+            domain=(payload.domain or "").strip() or None,
+            subdomain=(payload.subdomain or "").strip() or None,
+            environment=(payload.environment or "production").strip() or "production",
+            live=False,
+            urls={},
+            health={},
+            ssl={},
+            instructions=[],
+            logs=[],
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_deployment(row)
+        publish_deploy_event(
+            saved.id, "queued", {"deployment_id": str(saved.id), "provider": provider}
+        )
+
+        enqueued = False
+        note = "Deployment queued"
+        if payload.sync:
+            self.run_deploy(saved.id)
+            saved = self.repo.get_deployment(saved.id) or saved
+            note = "Deployment finished synchronously"
+        else:
+            try:
+                from app.monitoring.queue import enqueue
+
+                enqueue(
+                    {
+                        "type": "studio.deploy",
+                        "deployment_id": str(saved.id),
+                        "project_id": str(project.id),
+                        "workspace_id": str(project.workspace_id),
+                        "company_id": str(project.workspace_id),
+                        "user_id": str(user.id) if getattr(user, "id", None) else None,
+                    }
+                )
+                enqueued = True
+                note = "Enqueued on thtwaat:jobs (studio.deploy)"
+            except Exception as exc:  # noqa: BLE001
+                self.run_deploy(saved.id)
+                saved = self.repo.get_deployment(saved.id) or saved
+                note = f"Queue unavailable ({exc}); ran synchronously"
+
+        return StudioDeployStartResponse(
+            project=StudioProjectResponse.model_validate(project),
+            deployment=self._deployment_response(saved),
+            enqueued=enqueued,
+            note=note,
+        )
+
+    def run_deploy(self, deployment_id: UUID) -> StudioProjectDeployment:
+        row = self.repo.get_deployment(deployment_id)
+        if not row:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        project = (
+            self.db.query(StudioProject).filter(StudioProject.id == row.project_id).first()
+        )
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        build = self.repo.get_build(row.build_id) if row.build_id else None
+        if not build or build.status != "completed" or not build.artifact_path:
+            row.status = "failed"
+            row.stage = "failed"
+            row.error = "Source build missing or incomplete — never regenerating"
+            row.retryable = False
+            return self.repo.save_deployment(row)
+
+        from pathlib import Path
+
+        from app.config.settings import settings
+
+        output = (
+            Path(settings.LOCAL_STORAGE_DIR)
+            / "studio"
+            / str(project.id)
+            / "deployments"
+            / str(row.id)
+        )
+
+        def on_progress(stage: str, payload: dict) -> None:
+            row.stage = stage
+            if stage in {"failed", "completed", "rollback"}:
+                row.status = stage
+            elif stage == "queued":
+                row.status = "queued"
+            else:
+                row.status = "deploying"
+            logs = list(row.logs or [])
+            # Never persist secret values
+            safe = {k: v for k, v in payload.items() if k.lower() not in {"secret", "password", "token"}}
+            logs.append(safe)
+            row.logs = logs[-300:]
+            self.repo.save_deployment(row)
+            publish_deploy_event(row.id, stage, safe)
+
+        ctx = DeployContext(
+            project_id=project.id,
+            deployment_id=row.id,
+            workspace_id=project.workspace_id,
+            project_title=project.title or "Untitled product",
+            provider=row.provider,
+            build_id=build.id,
+            build_version=build.version,
+            artifact_path=Path(build.artifact_path),
+            artifact_sha256=build.artifact_sha256,
+            domain=row.domain,
+            subdomain=row.subdomain,
+            public_api_base=getattr(settings, "PUBLIC_API_BASE_URL", "") or "",
+            public_app_base="",
+            output_dir=output,
+        )
+        result = run_deploy(ctx, progress=on_progress, db_session=self.db)
+        row.status = result.get("status") or row.status
+        row.stage = result.get("stage") or row.stage
+        row.live = bool(result.get("live"))
+        row.urls = result.get("urls") or {}
+        row.health = result.get("health") or {}
+        row.ssl = result.get("ssl") or {}
+        row.instructions = result.get("instructions") or []
+        row.logs = result.get("logs") or row.logs
+        row.package_path = result.get("package_path")
+        row.duration_ms = int(result.get("duration_ms") or 0)
+        row.error = result.get("error")
+        row.retryable = bool(result.get("retryable"))
+        if result.get("provider"):
+            row.provider = result["provider"]
+        return self.repo.save_deployment(row)
+
+    def list_deployments(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioDeploymentListResponse:
+        project = self.get(user, project_id)
+        rows = self.repo.list_deployments(project.id, project.workspace_id)
+        current = next((r for r in rows if r.is_current), None)
+        return StudioDeploymentListResponse(
+            items=[self._deployment_response(r) for r in rows],
+            current_id=current.id if current else None,
+            total=len(rows),
+        )
+
+    def get_deployment(
+        self, user: UserProfileResponse, project_id: UUID, deployment_id: UUID
+    ) -> StudioDeploymentResponse:
+        project = self.get(user, project_id)
+        row = self.repo.get_deployment(deployment_id)
+        if not row or row.project_id != project.id or row.workspace_id != project.workspace_id:
+            raise HTTPException(status_code=404, detail="Deployment not found")
+        return self._deployment_response(row)
+
+    def rollback_deploy(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        payload: Optional[StudioRollbackRequest] = None,
+    ) -> StudioRollbackResponse:
+        """One-click rollback to a previous successful deployment (history only / reactivate)."""
+        project = self.get(user, project_id)
+        payload = payload or StudioRollbackRequest()
+        rows = self.repo.list_deployments(project.id, project.workspace_id)
+        target = None
+        if payload.deployment_id:
+            target = self.repo.get_deployment(payload.deployment_id)
+            if not target or target.project_id != project.id:
+                raise HTTPException(status_code=404, detail="Rollback target not found")
+        else:
+            # previous completed successful (not current)
+            for r in rows:
+                if r.is_current:
+                    continue
+                if r.status == "completed":
+                    target = r
+                    break
+        if not target:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No previous completed deployment to rollback to",
+            )
+        current = self.repo.get_current_deployment(project.id, project.workspace_id)
+        self.repo.clear_current_deployments(project.id)
+        version = self.repo.next_deployment_version(project.id)
+        row = StudioProjectDeployment(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            build_id=target.build_id,
+            approval_id=target.approval_id,
+            version=version,
+            is_current=True,
+            provider=target.provider,
+            status="completed",
+            stage="rollback",
+            domain=target.domain,
+            subdomain=target.subdomain,
+            environment=target.environment,
+            live=bool(target.live),
+            urls=dict(target.urls or {}),
+            health=dict(target.health or {}),
+            ssl=dict(target.ssl or {}),
+            instructions=list(target.instructions or [])
+            + [f"Rollback restored deployment v{target.version}"],
+            logs=[
+                {
+                    "event": "rollback",
+                    "message": f"Restored from deployment {target.id}",
+                    "from_version": target.version,
+                }
+            ],
+            package_path=target.package_path,
+            duration_ms=0,
+            rollback_of=current.id if current else target.id,
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_deployment(row)
+        publish_deploy_event(
+            saved.id,
+            "rollback",
+            {"restored_from": str(target.id), "version": version},
+        )
+        return StudioRollbackResponse(
+            project=StudioProjectResponse.model_validate(project),
+            deployment=self._deployment_response(saved),
+            restored_from=target.id,
+            note=f"Rolled back to deployment v{target.version}",
+        )
 
     @staticmethod
     def project_response(project: StudioProject) -> StudioProjectResponse:

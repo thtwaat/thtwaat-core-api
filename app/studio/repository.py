@@ -16,6 +16,7 @@ from app.studio.models import (
     StudioProjectInfrastructure,
     StudioProjectApproval,
     StudioProjectBuild,
+    StudioProjectDeployment,
 )
 
 
@@ -388,4 +389,70 @@ class StudioRepository:
             )
             .order_by(StudioProjectBuild.version.desc())
             .first()
+        )
+
+    def next_deployment_version(self, project_id: UUID) -> int:
+        current = (
+            self.db.query(StudioProjectDeployment.version)
+            .filter(StudioProjectDeployment.project_id == project_id)
+            .order_by(StudioProjectDeployment.version.desc())
+            .first()
+        )
+        return int(current[0]) + 1 if current else 1
+
+    def clear_current_deployments(self, project_id: UUID) -> None:
+        (
+            self.db.query(StudioProjectDeployment)
+            .filter(
+                StudioProjectDeployment.project_id == project_id,
+                StudioProjectDeployment.is_current.is_(True),
+            )
+            .update({"is_current": False}, synchronize_session=False)
+        )
+
+    def create_deployment(self, row: StudioProjectDeployment) -> StudioProjectDeployment:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def save_deployment(self, row: StudioProjectDeployment) -> StudioProjectDeployment:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_deployment(self, deployment_id: UUID) -> Optional[StudioProjectDeployment]:
+        return (
+            self.db.query(StudioProjectDeployment)
+            .filter(StudioProjectDeployment.id == deployment_id)
+            .first()
+        )
+
+    def get_current_deployment(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> Optional[StudioProjectDeployment]:
+        return (
+            self.db.query(StudioProjectDeployment)
+            .filter(
+                StudioProjectDeployment.project_id == project_id,
+                StudioProjectDeployment.workspace_id == workspace_id,
+                StudioProjectDeployment.is_current.is_(True),
+            )
+            .order_by(StudioProjectDeployment.version.desc())
+            .first()
+        )
+
+    def list_deployments(
+        self, project_id: UUID, workspace_id: UUID, limit: int = 50
+    ) -> List[StudioProjectDeployment]:
+        return (
+            self.db.query(StudioProjectDeployment)
+            .filter(
+                StudioProjectDeployment.project_id == project_id,
+                StudioProjectDeployment.workspace_id == workspace_id,
+            )
+            .order_by(StudioProjectDeployment.version.desc())
+            .limit(limit)
+            .all()
         )

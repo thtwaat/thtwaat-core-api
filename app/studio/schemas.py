@@ -977,3 +977,72 @@ class StudioGenerateSourceRequest(BaseModel):
 class StudioRetryBuildRequest(BaseModel):
     sync: bool = False
     notes: Optional[str] = None
+
+
+# ── One-Click Deployment (Phase 10) ───────────────────────────────────────────
+
+class StudioDeployRequest(BaseModel):
+    provider: str = "vps"
+    domain: Optional[str] = Field(None, max_length=255)
+    subdomain: Optional[str] = Field(None, max_length=255)
+    environment: str = "production"
+    sync: bool = False
+    notes: Optional[str] = None
+
+
+class StudioRollbackRequest(BaseModel):
+    deployment_id: Optional[UUID] = None  # default: previous successful
+    sync: bool = True
+    notes: Optional[str] = None
+
+
+class StudioDeploymentResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    build_id: Optional[UUID] = None
+    approval_id: Optional[UUID] = None
+    version: int
+    is_current: bool
+    provider: str
+    status: str
+    stage: str
+    domain: Optional[str] = None
+    subdomain: Optional[str] = None
+    environment: str = "production"
+    live: bool = False
+    urls: Dict[str, Any] = Field(default_factory=dict)
+    health: Dict[str, Any] = Field(default_factory=dict)
+    ssl: Dict[str, Any] = Field(default_factory=dict)
+    instructions: List[str] = Field(default_factory=list)
+    logs: List[Dict[str, Any]] = Field(default_factory=list)
+    package_path: Optional[str] = None
+    duration_ms: int = 0
+    error: Optional[str] = None
+    retryable: bool = False
+    rollback_of: Optional[UUID] = None
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioDeployStartResponse(BaseModel):
+    project: StudioProjectResponse
+    deployment: StudioDeploymentResponse
+    enqueued: bool = False
+    note: str = ""
+
+
+class StudioDeploymentListResponse(BaseModel):
+    items: List[StudioDeploymentResponse]
+    current_id: Optional[UUID] = None
+    total: int = 0
+
+
+class StudioRollbackResponse(BaseModel):
+    project: StudioProjectResponse
+    deployment: StudioDeploymentResponse
+    restored_from: Optional[UUID] = None
+    note: str = ""

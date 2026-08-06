@@ -158,6 +158,15 @@ def process_job(payload: dict) -> None:
             if not build_id:
                 raise ValueError("studio.build missing build_id")
             StudioService(db).run_build(UUID(str(build_id)))
+        elif job_type == "studio.deploy":
+            from uuid import UUID
+
+            from app.studio.service import StudioService
+
+            deployment_id = payload.get("deployment_id")
+            if not deployment_id:
+                raise ValueError("studio.deploy missing deployment_id")
+            StudioService(db).run_deploy(UUID(str(deployment_id)))
         else:
             logger.warning("unknown job type=%s", job_type)
     finally:

@@ -28,6 +28,10 @@ from app.studio.schemas import (
     StudioBuildPlanResponse,
     StudioBuildResponse,
     StudioComposeResponse,
+    StudioDeployRequest,
+    StudioDeployStartResponse,
+    StudioDeploymentListResponse,
+    StudioDeploymentResponse,
     StudioExportRequest,
     StudioExportResponse,
     StudioFrontendGenerateResponse,
@@ -43,6 +47,8 @@ from app.studio.schemas import (
     StudioProjectResponse,
     StudioRetryBuildRequest,
     StudioReviewResponse,
+    StudioRollbackRequest,
+    StudioRollbackResponse,
 )
 from app.studio.service import StudioService
 
@@ -512,6 +518,97 @@ def stream_build(
                     yield f"event: {ev.get('event', 'progress')}\ndata: {json.dumps(ev, default=str)}\n\n"
                 cursor += len(events)
             row = service.repo.get_build(build.id)
+            if row and row.status in terminal:
+                yield f"event: done\ndata: {json.dumps({'status': row.status, 'stage': row.stage}, default=str)}\n\n"
+                break
+            await asyncio.sleep(1)
+
+    return StreamingResponse(event_gen(), media_type="text/event-stream")
+
+
+@router.post(
+    "/projects/{project_id}/deploy",
+    response_model=StudioDeployStartResponse,
+    summary="Deploy approved source build (never regenerates source)",
+)
+def start_deploy(
+    project_id: UUID,
+    payload: Optional[StudioDeployRequest] = None,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.start_deploy(user, project_id, payload or StudioDeployRequest())
+
+
+@router.get(
+    "/projects/{project_id}/deployments",
+    response_model=StudioDeploymentListResponse,
+    summary="List deployment history",
+)
+def list_deployments(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.list_deployments(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/deployments/{deployment_id}",
+    response_model=StudioDeploymentResponse,
+    summary="Get deployment detail",
+)
+def get_deployment(
+    project_id: UUID,
+    deployment_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_deployment(user, project_id, deployment_id)
+
+
+@router.post(
+    "/projects/{project_id}/rollback",
+    response_model=StudioRollbackResponse,
+    summary="Rollback to a previous completed deployment",
+)
+def rollback_deploy(
+    project_id: UUID,
+    payload: Optional[StudioRollbackRequest] = None,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.rollback_deploy(user, project_id, payload or StudioRollbackRequest())
+
+
+@router.get(
+    "/projects/{project_id}/deployments/{deployment_id}/stream",
+    summary="SSE stream of deployment progress",
+)
+def stream_deployment(
+    project_id: UUID,
+    deployment_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    import asyncio
+    import json
+
+    from app.studio.deploy_events import list_deploy_events
+
+    dep = service.get_deployment(user, project_id, deployment_id)
+
+    async def event_gen():
+        cursor = 0
+        terminal = {"completed", "failed", "rollback"}
+        yield f"event: snapshot\ndata: {json.dumps(dep.model_dump(mode='json'), default=str)}\n\n"
+        for _ in range(180):
+            events = list_deploy_events(deployment_id, after=cursor)
+            if events:
+                for ev in events:
+                    yield f"event: {ev.get('event', 'progress')}\ndata: {json.dumps(ev, default=str)}\n\n"
+                cursor += len(events)
+            row = service.repo.get_deployment(deployment_id)
             if row and row.status in terminal:
                 yield f"event: done\ndata: {json.dumps({'status': row.status, 'stage': row.stage}, default=str)}\n\n"
                 break

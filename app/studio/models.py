@@ -347,3 +347,60 @@ class StudioProjectBuild(Base, TimestampMixin):
     retryable = Column(Boolean, nullable=False, default=False)
     retry_of = Column(UUID(as_uuid=True), nullable=True)
     created_by = Column(UUID(as_uuid=True), nullable=True)
+
+
+class StudioProjectDeployment(Base, TimestampMixin):
+    """One-click deployment run — deploys approved source builds only."""
+
+    __tablename__ = "studio_project_deployments"
+    __table_args__ = (
+        UniqueConstraint("project_id", "version", name="uq_studio_deploys_project_version"),
+        Index("ix_studio_deploys_project_current", "project_id", "is_current"),
+        Index("ix_studio_deploys_project_status", "project_id", "status"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    build_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_project_builds.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    approval_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_project_approvals.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    version = Column(Integer, nullable=False, default=1)
+    is_current = Column(Boolean, nullable=False, default=True)
+    provider = Column(String(64), nullable=False, default="vps")
+    status = Column(String(32), nullable=False, default="queued")
+    stage = Column(String(64), nullable=False, default="queued")
+    domain = Column(String(255), nullable=True)
+    subdomain = Column(String(255), nullable=True)
+    environment = Column(String(32), nullable=False, default="production")
+    live = Column(Boolean, nullable=False, default=False)
+    urls = Column(JSONB, nullable=False, default=dict)
+    health = Column(JSONB, nullable=False, default=dict)
+    ssl = Column(JSONB, nullable=False, default=dict)
+    instructions = Column(JSONB, nullable=False, default=list)
+    logs = Column(JSONB, nullable=False, default=list)
+    package_path = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=False, default=0)
+    error = Column(Text, nullable=True)
+    retryable = Column(Boolean, nullable=False, default=False)
+    rollback_of = Column(UUID(as_uuid=True), nullable=True)
+    created_by = Column(UUID(as_uuid=True), nullable=True)
