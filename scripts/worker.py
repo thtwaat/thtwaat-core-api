@@ -249,15 +249,7 @@ def main():
     signal.signal(signal.SIGTERM, _stop)
     signal.signal(signal.SIGINT, _stop)
 
-    # Register ORM relationships before any Session/query (same need as scheduler).
-    from app.database.orm_bootstrap import register_orm_models
-
-    register_orm_models()
-
-    from app.database.database import SessionLocal
-    from app.monitoring.queue import promote_due_jobs
-    from app.webhooks.outbox import redrive_stuck_deliveries
-
+    # Heartbeat ASAP — before ORM/DB imports (those can block for a long time).
     try:
         r, host, port = _connect_redis()
     except Exception as exc:
@@ -271,6 +263,15 @@ def main():
     except Exception as exc:
         logger.exception("worker_heartbeat_failed: %s", exc)
         raise SystemExit(1) from exc
+
+    # Register ORM relationships before any Session/query (same need as scheduler).
+    from app.database.orm_bootstrap import register_orm_models
+
+    register_orm_models()
+
+    from app.database.database import SessionLocal
+    from app.monitoring.queue import promote_due_jobs
+    from app.webhooks.outbox import redrive_stuck_deliveries
 
     while _RUNNING:
         try:
@@ -318,7 +319,10 @@ def main():
             payload = json.loads(raw)
         except Exception as exc:
             logger.exception("job_parse_failed: %s", exc)
-            r.rpush("thtwaat:jobs:dead", raw)
+            try:
+                r.rpush("thtwaat:jobs:dead", raw)
+            except Exception:  # noqa: BLE001
+                pass
             continue
 
         job_type = payload.get("type")

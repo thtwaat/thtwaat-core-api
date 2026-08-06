@@ -63,8 +63,10 @@ def check_workers() -> Dict[str, Any]:
     try:
         import redis as sync_redis
 
+        host = settings.REDIS_HOST
+        port = settings.REDIS_PORT
         r = sync_redis.from_url(
-            f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}",
+            f"redis://{host}:{port}",
             decode_responses=True,
         )
         beat = r.get("thtwaat:worker:heartbeat")
@@ -73,6 +75,7 @@ def check_workers() -> Dict[str, Any]:
             "ok": beat is not None,
             "heartbeat": beat,
             "queue_depth": int(queue_len),
+            "redis": f"{host}:{port}",
         }
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
