@@ -265,6 +265,114 @@ export type StudioFrontendGenerateResult = {
   frontend: StudioFrontend;
 };
 
+export type BackendApiEndpoint = {
+  id: string;
+  method: string;
+  path: string;
+  resource: string;
+  operation: string;
+  summary: string;
+  permissions: string[];
+  validation: Record<string, unknown>;
+  filters: string[];
+  pagination: boolean;
+  search: boolean;
+  upload: boolean;
+  reuse: boolean;
+  module_key?: string | null;
+  platform_ref?: string | null;
+  tags: string[];
+};
+
+export type BackendManifest = {
+  schema_version: number;
+  product_name: string;
+  industry: string;
+  product_type: string;
+  api: {
+    endpoints: BackendApiEndpoint[];
+    resource_count: number;
+    reuse_endpoint_count: number;
+    custom_endpoint_count: number;
+  };
+  database: {
+    tables: Array<{
+      name: string;
+      reuse: boolean;
+      module_key?: string | null;
+      columns: Array<{ name: string; type: string; primary_key?: boolean }>;
+      migration: string;
+    }>;
+    relationships: Array<{
+      from_table: string;
+      to_table: string;
+      type: string;
+      foreign_key: string;
+    }>;
+    enums: Array<Record<string, unknown>>;
+    migrations: string[];
+    reuse_table_count: number;
+    custom_table_count: number;
+  };
+  services: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    reuse: boolean;
+    capabilities: string[];
+  }>;
+  rbac: {
+    roles: string[];
+    permissions: string[];
+    policies: Array<Record<string, unknown>>;
+    reuse: boolean;
+    platform_ref: string;
+    note: string;
+  };
+  storage: Array<{ id: string; kind: string; path: string; reuse: boolean }>;
+  queues: Array<{ id: string; name: string; kind: string; reuse: boolean; workers: string[] }>;
+  openapi: {
+    openapi: string;
+    info: Record<string, unknown>;
+    paths: Record<string, unknown>;
+    components: Record<string, unknown>;
+  };
+  summary: {
+    endpoint_count: number;
+    table_count: number;
+    service_count: number;
+    role_count: number;
+    storage_item_count: number;
+    queue_count: number;
+    reuse_percent: number;
+    estimated_custom_work: string;
+    warnings: BlueprintWarning[];
+  };
+  traceability: Record<string, unknown>;
+  warnings: BlueprintWarning[];
+  note: string;
+};
+
+export type StudioBackend = {
+  id: string;
+  project_id: string;
+  workspace_id: string;
+  blueprint_version: number;
+  build_plan_version: number;
+  frontend_version: number;
+  version: number;
+  is_current: boolean;
+  status: string;
+  manifest: BackendManifest;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudioBackendGenerateResult = {
+  project: StudioProject;
+  backend: StudioBackend;
+};
+
 export function moduleKindLabel(kind: ModuleKind | string): string {
   if (kind === "existing_module") return "Existing";
   if (kind === "marketplace_template") return "Marketplace";
@@ -337,6 +445,7 @@ export const STUDIO_TIPS = [
   "Generate Blueprint uses the AI Gateway first; heuristic only if AI fails.",
   "Compose Modules maps the blueprint to Auth, Billing, AI, Marketplace — no codegen yet.",
   "Generate Frontend builds a preview manifest that reuses Dashboard, Auth, Billing, Agents, and Admin UI.",
+  "Generate Backend builds API/DB/RBAC/queue manifests — reuses platform modules, no source yet.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 

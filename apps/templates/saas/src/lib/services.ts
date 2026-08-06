@@ -1230,6 +1230,21 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioFrontend>(`/studio/projects/${id}/frontend`, {
       method: "PUT",
       body
+    }),
+  generateBackend: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioBackendGenerateResult>(
+      `/studio/projects/${id}/generate/backend`,
+      { method: "POST" }
+    ),
+  getBackend: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioBackend>(`/studio/projects/${id}/backend`),
+  saveBackend: (
+    id: string,
+    body: { manifest: import("@/lib/studio").BackendManifest; status?: string }
+  ) =>
+    api.apiV2<import("@/lib/studio").StudioBackend>(`/studio/projects/${id}/backend`, {
+      method: "PUT",
+      body
     })
 };
 

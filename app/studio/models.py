@@ -160,3 +160,35 @@ class StudioProjectFrontend(Base, TimestampMixin):
     status = Column(String(32), nullable=False, default="draft")  # draft | approved
     manifest = Column(JSONB, nullable=False, default=dict)
     created_by = Column(UUID(as_uuid=True), nullable=True)
+
+
+class StudioProjectBackend(Base, TimestampMixin):
+    """Versioned backend architecture manifest (preview only — no codegen)."""
+
+    __tablename__ = "studio_project_backends"
+    __table_args__ = (
+        UniqueConstraint("project_id", "version", name="uq_studio_backend_project_version"),
+        Index("ix_studio_backends_project_current", "project_id", "is_current"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    blueprint_version = Column(Integer, nullable=False, default=1)
+    build_plan_version = Column(Integer, nullable=False, default=1)
+    frontend_version = Column(Integer, nullable=False, default=1)
+    version = Column(Integer, nullable=False, default=1)
+    is_current = Column(Boolean, nullable=False, default=True)
+    status = Column(String(32), nullable=False, default="draft")  # draft | approved
+    manifest = Column(JSONB, nullable=False, default=dict)
+    created_by = Column(UUID(as_uuid=True), nullable=True)

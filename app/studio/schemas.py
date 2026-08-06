@@ -347,3 +347,176 @@ class StudioFrontendUpdate(BaseModel):
 
     manifest: FrontendManifest
     status: Optional[str] = None  # draft | approved
+
+
+# ── Backend Generator (Phase 5) ───────────────────────────────────────────────
+
+class BackendApiEndpoint(BaseModel):
+    id: str
+    method: str
+    path: str
+    resource: str
+    operation: str
+    summary: str = ""
+    permissions: List[str] = Field(default_factory=list)
+    validation: Dict[str, Any] = Field(default_factory=dict)
+    filters: List[str] = Field(default_factory=list)
+    pagination: bool = False
+    search: bool = False
+    upload: bool = False
+    reuse: bool = True
+    module_key: Optional[str] = None
+    platform_ref: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+
+
+class BackendApiManifest(BaseModel):
+    endpoints: List[BackendApiEndpoint] = Field(default_factory=list)
+    resource_count: int = 0
+    reuse_endpoint_count: int = 0
+    custom_endpoint_count: int = 0
+
+
+class BackendColumn(BaseModel):
+    name: str
+    type: str = "varchar"
+    primary_key: bool = False
+    nullable: bool = True
+    indexed: bool = False
+    unique: bool = False
+    default: Optional[str] = None
+
+
+class BackendTable(BaseModel):
+    name: str
+    reuse: bool = False
+    module_key: Optional[str] = None
+    platform_ref: Optional[str] = None
+    columns: List[BackendColumn] = Field(default_factory=list)
+    indexes: List[List[str]] = Field(default_factory=list)
+    constraints: List[str] = Field(default_factory=list)
+    migration: str = ""
+
+
+class BackendRelationship(BaseModel):
+    from_table: str
+    to_table: str
+    type: str = "many_to_one"
+    foreign_key: str = ""
+    via: str = ""
+
+
+class BackendDatabaseManifest(BaseModel):
+    tables: List[BackendTable] = Field(default_factory=list)
+    relationships: List[BackendRelationship] = Field(default_factory=list)
+    enums: List[Dict[str, Any]] = Field(default_factory=list)
+    migrations: List[str] = Field(default_factory=list)
+    reuse_table_count: int = 0
+    custom_table_count: int = 0
+
+
+class BackendServiceItem(BaseModel):
+    id: str
+    name: str
+    kind: str = "business"  # business | job | webhook | event | notification
+    reuse: bool = True
+    module_key: Optional[str] = None
+    platform_ref: Optional[str] = None
+    capabilities: List[str] = Field(default_factory=list)
+    events: List[str] = Field(default_factory=list)
+
+
+class BackendRbacManifest(BaseModel):
+    roles: List[str] = Field(default_factory=list)
+    permissions: List[str] = Field(default_factory=list)
+    policies: List[Dict[str, Any]] = Field(default_factory=list)
+    reuse: bool = True
+    platform_ref: str = "app/auth"
+    note: str = ""
+
+
+class BackendStorageItem(BaseModel):
+    id: str
+    kind: str  # files | images | documents | knowledge
+    path: str
+    reuse: bool = True
+    module_key: Optional[str] = None
+    platform_ref: Optional[str] = None
+
+
+class BackendQueueItem(BaseModel):
+    id: str
+    name: str
+    kind: str  # emails | notifications | ai_jobs | imports | exports
+    reuse: bool = True
+    module_key: Optional[str] = None
+    workers: List[str] = Field(default_factory=list)
+    events: List[str] = Field(default_factory=list)
+
+
+class BackendOpenApiPreview(BaseModel):
+    openapi: str = "3.0.3"
+    info: Dict[str, Any] = Field(default_factory=dict)
+    paths: Dict[str, Any] = Field(default_factory=dict)
+    components: Dict[str, Any] = Field(default_factory=dict)
+
+
+class BackendSummary(BaseModel):
+    endpoint_count: int = 0
+    table_count: int = 0
+    service_count: int = 0
+    role_count: int = 0
+    storage_item_count: int = 0
+    queue_count: int = 0
+    reuse_percent: float = 0.0
+    estimated_custom_work: str = "none"
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+
+
+class BackendManifest(BaseModel):
+    """Backend architecture preview — no source emission / no deploy."""
+
+    schema_version: int = 1
+    product_name: str = "Untitled product"
+    industry: str = "general"
+    product_type: str = "saas"
+    api: BackendApiManifest = Field(default_factory=BackendApiManifest)
+    database: BackendDatabaseManifest = Field(default_factory=BackendDatabaseManifest)
+    services: List[BackendServiceItem] = Field(default_factory=list)
+    rbac: BackendRbacManifest = Field(default_factory=BackendRbacManifest)
+    storage: List[BackendStorageItem] = Field(default_factory=list)
+    queues: List[BackendQueueItem] = Field(default_factory=list)
+    openapi: BackendOpenApiPreview = Field(default_factory=BackendOpenApiPreview)
+    summary: BackendSummary = Field(default_factory=BackendSummary)
+    traceability: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+    note: str = ""
+
+    model_config = {"extra": "allow"}
+
+
+class StudioBackendResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    blueprint_version: int
+    build_plan_version: int
+    frontend_version: int
+    version: int
+    is_current: bool
+    status: str = "draft"
+    manifest: BackendManifest
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioBackendGenerateResponse(BaseModel):
+    project: StudioProjectResponse
+    backend: StudioBackendResponse
+
+
+class StudioBackendUpdate(BaseModel):
+    manifest: BackendManifest
+    status: Optional[str] = None

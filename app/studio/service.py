@@ -16,15 +16,18 @@ from app.studio.architect import (
 )
 from app.studio.composer import compose_blueprint
 from app.studio.frontend_generator import generate_frontend_manifest
+from app.studio.backend_generator import generate_backend_manifest
 from app.studio.models import (
     StudioProject,
     StudioProjectBlueprint,
     StudioProjectBuildPlan,
     StudioProjectFrontend,
+    StudioProjectBackend,
     StudioProjectStatus,
 )
 from app.studio.repository import StudioRepository
 from app.studio.schemas import (
+    BackendManifest,
     BlueprintRecommendations,
     BlueprintWarning,
     BuildPlanStep,
@@ -33,6 +36,9 @@ from app.studio.schemas import (
     DependencyEdge,
     FrontendManifest,
     ProductBlueprint,
+    StudioBackendGenerateResponse,
+    StudioBackendResponse,
+    StudioBackendUpdate,
     StudioBlueprintResponse,
     StudioBlueprintUpdate,
     StudioBlueprintVersionList,
@@ -104,6 +110,23 @@ def _frontend_response(row: StudioProjectFrontend) -> StudioFrontendResponse:
         is_current=row.is_current,
         status=row.status or "draft",
         manifest=FrontendManifest.model_validate(row.manifest or {}),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _backend_response(row: StudioProjectBackend) -> StudioBackendResponse:
+    return StudioBackendResponse(
+        id=row.id,
+        project_id=row.project_id,
+        workspace_id=row.workspace_id,
+        blueprint_version=row.blueprint_version,
+        build_plan_version=row.build_plan_version,
+        frontend_version=row.frontend_version,
+        version=row.version,
+        is_current=row.is_current,
+        status=row.status or "draft",
+        manifest=BackendManifest.model_validate(row.manifest or {}),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -430,6 +453,121 @@ class StudioService:
         )
         saved = self.repo.create_frontend(row)
         return _frontend_response(saved)
+
+    def generate_backend(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioBackendGenerateResponse:
+        """Generate backend architecture manifest (no codegen / no deploy)."""
+        project = self.get(user, project_id)
+        bp_row = self.repo.get_current_blueprint(project.id, project.workspace_id)
+        if not bp_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No blueprint — run Generate Blueprint first",
+            )
+        plan_row = self.repo.get_current_build_plan(project.id, project.workspace_id)
+        if not plan_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No build plan — run Compose Modules first",
+            )
+        fe_row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        if not fe_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No frontend — run Generate Frontend first",
+            )
+        blueprint = ProductBlueprint.model_validate(bp_row.blueprint or {})
+        modules = [ComposedModule.model_validate(m) for m in (plan_row.modules or [])]
+        frontend = FrontendManifest.model_validate(fe_row.manifest or {})
+        project.status = StudioProjectStatus.BUILDING
+        self.repo.save_project(project)
+        try:
+            manifest = generate_backend_manifest(
+                blueprint=blueprint,
+                modules=modules,
+                frontend=frontend,
+                project_title=project.title,
+                blueprint_version=bp_row.version,
+                build_plan_version=plan_row.version,
+                frontend_version=fe_row.version,
+            )
+            self.repo.clear_current_backends(project.id)
+            version = self.repo.next_backend_version(project.id)
+            row = StudioProjectBackend(
+                project_id=project.id,
+                workspace_id=project.workspace_id,
+                blueprint_version=bp_row.version,
+                build_plan_version=plan_row.version,
+                frontend_version=fe_row.version,
+                version=version,
+                is_current=True,
+                status="draft",
+                manifest=manifest.model_dump(mode="json"),
+                created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+            )
+            saved = self.repo.create_backend(row)
+            project.status = StudioProjectStatus.APPROVED
+            self.repo.save_project(project)
+            return StudioBackendGenerateResponse(
+                project=StudioProjectResponse.model_validate(project),
+                backend=_backend_response(saved),
+            )
+        except Exception as exc:
+            project.status = StudioProjectStatus.FAILED
+            self.repo.save_project(project)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Backend generation failed: {exc}",
+            ) from exc
+
+    def get_backend(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioBackendResponse:
+        project = self.get(user, project_id)
+        row = self.repo.get_current_backend(project.id, project.workspace_id)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No backend yet — run Generate Backend first",
+            )
+        return _backend_response(row)
+
+    def update_backend(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        payload: StudioBackendUpdate,
+    ) -> StudioBackendResponse:
+        project = self.get(user, project_id)
+        current = self.repo.get_current_backend(project.id, project.workspace_id)
+        if not current:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No backend yet — run Generate Backend first",
+            )
+        status_value = (payload.status or current.status or "draft").strip().lower()
+        if status_value not in {"draft", "approved"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Backend status must be draft or approved",
+            )
+        self.repo.clear_current_backends(project.id)
+        version = self.repo.next_backend_version(project.id)
+        row = StudioProjectBackend(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            blueprint_version=current.blueprint_version,
+            build_plan_version=current.build_plan_version,
+            frontend_version=current.frontend_version,
+            version=version,
+            is_current=True,
+            status=status_value,
+            manifest=payload.manifest.model_dump(mode="json"),
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_backend(row)
+        return _backend_response(saved)
 
     @staticmethod
     def project_response(project: StudioProject) -> StudioProjectResponse:

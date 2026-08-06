@@ -11,6 +11,9 @@ from app.auth.schema import UserProfileResponse
 from app.database.database import get_db
 from app.studio.schemas import (
     StudioAnalyzeResponse,
+    StudioBackendGenerateResponse,
+    StudioBackendResponse,
+    StudioBackendUpdate,
     StudioBlueprintResponse,
     StudioBlueprintUpdate,
     StudioBlueprintVersionList,
@@ -227,3 +230,43 @@ def put_frontend(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.update_frontend(user, project_id, payload)
+
+
+@router.post(
+    "/projects/{project_id}/generate/backend",
+    response_model=StudioBackendGenerateResponse,
+    summary="Generate backend architecture manifest (no codegen / no deploy)",
+)
+def generate_backend(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.generate_backend(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/backend",
+    response_model=StudioBackendResponse,
+    summary="Get current backend architecture manifest",
+)
+def get_backend(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_backend(user, project_id)
+
+
+@router.put(
+    "/projects/{project_id}/backend",
+    response_model=StudioBackendResponse,
+    summary="Save edited backend manifest (edit before approval)",
+)
+def put_backend(
+    project_id: UUID,
+    payload: StudioBackendUpdate,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.update_backend(user, project_id, payload)

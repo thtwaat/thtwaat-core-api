@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import {
   ArrowRight,
   Boxes,
+  Database,
   Eraser,
   History,
   LayoutTemplate,
@@ -15,6 +16,7 @@ import {
   MonitorSmartphone,
   RotateCcw,
   Save,
+  Server,
   Sparkles,
   Trash2
 } from "lucide-react";
@@ -33,8 +35,10 @@ import {
   studioStatusLabel,
   studioStatusTone,
   warningTone,
+  type BackendManifest,
   type FrontendManifest,
   type ProductBlueprint,
+  type StudioBackend,
   type StudioBlueprint,
   type StudioBuildPlan,
   type StudioFrontend
@@ -121,7 +125,15 @@ export default function StudioPage() {
     retry: false
   });
 
+  const backendQ = useQuery({
+    queryKey: ["studio-backend", selected?.id],
+    queryFn: () => studioApi.getBackend(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false
+  });
+
   const [frontendDraft, setFrontendDraft] = useState<FrontendManifest | null>(null);
+  const [backendDraft, setBackendDraft] = useState<BackendManifest | null>(null);
 
   useEffect(() => {
     if (blueprintQ.data?.blueprint) {
@@ -138,6 +150,14 @@ export default function StudioPage() {
       setFrontendDraft(null);
     }
   }, [frontendQ.data, frontendQ.isError, selected?.id]);
+
+  useEffect(() => {
+    if (backendQ.data?.manifest) {
+      setBackendDraft(backendQ.data.manifest);
+    } else if (backendQ.isError) {
+      setBackendDraft(null);
+    }
+  }, [backendQ.data, backendQ.isError, selected?.id]);
 
   const createM = useMutation({
     mutationFn: () => studioApi.create({ prompt }),
@@ -251,6 +271,38 @@ export default function StudioPage() {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Save frontend failed")
   });
 
+  const generateBackendM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.generateBackend(selected.id);
+    },
+    onSuccess: (result) => {
+      toast.success(
+        `Backend v${result.backend.version} · ${result.backend.manifest.summary.reuse_percent}% reuse`
+      );
+      setBackendDraft(result.backend.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-projects"] });
+      void qc.invalidateQueries({ queryKey: ["studio-backend", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError || err instanceof Error ? err.message : "Backend generate failed"
+      )
+  });
+
+  const saveBackendM = useMutation({
+    mutationFn: (status?: string) => {
+      if (!selected?.id || !backendDraft) throw new Error("No backend to save");
+      return studioApi.saveBackend(selected.id, { manifest: backendDraft, status });
+    },
+    onSuccess: (row) => {
+      toast.success(`Backend saved as v${row.version} (${row.status})`);
+      setBackendDraft(row.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-backend", selected?.id] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Save backend failed")
+  });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => studioApi.remove(id),
     onSuccess: (_, id) => {
@@ -264,11 +316,14 @@ export default function StudioPage() {
   const currentBlueprint: StudioBlueprint | undefined = blueprintQ.data;
   const buildPlan: StudioBuildPlan | undefined = buildPlanQ.data;
   const frontendRow: StudioFrontend | undefined = frontendQ.data;
+  const backendRow: StudioBackend | undefined = backendQ.data;
   const frontend = frontendDraft;
+  const backend = backendDraft;
   const warnings = currentBlueprint?.warnings || [];
   const recommendations = currentBlueprint?.recommendations;
   const composeWarnings = buildPlan?.summary?.warnings || [];
   const frontendWarnings = frontend?.warnings || frontend?.summary?.warnings || [];
+  const backendWarnings = backend?.warnings || backend?.summary?.warnings || [];
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -279,15 +334,15 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 4
+          THTWAAT Studio · Phase 5
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Frontend Generator
+          Backend Generator
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          Turn an approved build plan into a production-ready frontend preview — navigation, routes,
-          dashboard cards, CRUD screens — reusing Dashboard, Auth, Billing, Agents, Marketplace, and
-          Admin. No backend codegen. No deploy.
+          Turn approved frontend + build plan into API, database, RBAC, storage, and queue manifests.
+          Reuses Auth, Billing, AI Gateway, Marketplace, Agents, Knowledge — architecture only, no
+          source codegen, no deploy.
         </p>
       </section>
 
@@ -369,6 +424,23 @@ export default function StudioPage() {
                 <>
                   <MonitorSmartphone className="mr-2 h-4 w-4" />
                   Generate Frontend
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={() => generateBackendM.mutate()}
+              disabled={!selected || !frontend || generateBackendM.isPending}
+              className="bg-violet-700 text-white hover:bg-violet-600"
+            >
+              {generateBackendM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Server className="mr-2 h-4 w-4" />
+                  Generate Backend
                 </>
               )}
             </Button>
@@ -896,6 +968,178 @@ export default function StudioPage() {
             {frontendWarnings.map((w) => (
               <li
                 key={`fe-${w.code}-${w.message}`}
+                className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+              >
+                <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>
+                <span className="text-slate-200">{w.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Backend preview */}
+      <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Backend preview</h2>
+            <p className="text-sm text-slate-400">
+              {backend && backendRow
+                ? `v${backendRow.version} · ${backendRow.status} · ${backend.summary.reuse_percent}% reuse · custom: ${backend.summary.estimated_custom_work}`
+                : "Generate Frontend first, then Generate Backend for API/DB/RBAC manifests"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={!backend || saveBackendM.isPending}
+              onClick={() => saveBackendM.mutate("draft")}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              Save draft
+            </Button>
+            <Button
+              className="bg-teal-600 text-white hover:bg-teal-500"
+              disabled={!backend || saveBackendM.isPending}
+              onClick={() => saveBackendM.mutate("approved")}
+            >
+              Approve backend
+            </Button>
+          </div>
+        </div>
+
+        {!backend ? (
+          <EmptyState
+            title="No backend yet"
+            description="Generate Backend after frontend to preview APIs, tables, RBAC, queues, and OpenAPI."
+          />
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+                <Server className="h-4 w-4 text-violet-300" />
+                API Explorer
+              </h3>
+              <ul className="max-h-72 space-y-2 overflow-y-auto font-mono text-xs">
+                {backend.api.endpoints.slice(0, 40).map((ep) => (
+                  <li
+                    key={ep.id}
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span>
+                        <span className="text-amber-300">{ep.method}</span>{" "}
+                        <span className="text-teal-300">{ep.path}</span>
+                      </span>
+                      <Badge tone={ep.reuse ? "success" : "warn"}>
+                        {ep.reuse ? "reuse" : "custom"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-slate-500">
+                      {ep.operation}
+                      {ep.pagination ? " · page" : ""}
+                      {ep.search ? " · search" : ""}
+                      {ep.permissions[0] ? ` · ${ep.permissions[0]}` : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-slate-500">
+                OpenAPI {backend.openapi.openapi} · {Object.keys(backend.openapi.paths || {}).length}{" "}
+                paths
+              </p>
+            </div>
+
+            <div>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+                <Database className="h-4 w-4 text-cyan-300" />
+                Database diagram
+              </h3>
+              <ul className="max-h-72 space-y-2 overflow-y-auto text-sm">
+                {backend.database.tables.map((t) => (
+                  <li
+                    key={t.name}
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-teal-200">{t.name}</span>
+                      <Badge tone={t.reuse ? "success" : "warn"}>
+                        {t.reuse ? "reuse" : "custom"}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {(t.columns || []).map((c) => c.name).slice(0, 6).join(", ")}
+                      {(t.columns || []).length > 6 ? "…" : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+              {(backend.database.relationships || []).length > 0 && (
+                <ul className="mt-2 space-y-1 font-mono text-xs text-slate-500">
+                  {backend.database.relationships.slice(0, 8).map((r, idx) => (
+                    <li key={`${r.from_table}-${r.to_table}-${idx}`}>
+                      {r.from_table} → {r.to_table} ({r.type})
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">RBAC preview</h3>
+              <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
+                <p className="text-slate-400">Roles</p>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {backend.rbac.roles.map((role) => (
+                    <Badge key={role} tone="neutral">
+                      {role}
+                    </Badge>
+                  ))}
+                </div>
+                <p className="mt-3 text-slate-400">
+                  {backend.rbac.permissions.length} permissions ·{" "}
+                  {backend.rbac.policies.length} policies
+                </p>
+                <p className="mt-1 text-xs text-slate-500">{backend.rbac.note}</p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Services · Queues · Storage</h3>
+              <div className="grid gap-2 text-sm">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Services</p>
+                  <ul className="mt-1 space-y-1">
+                    {backend.services.slice(0, 8).map((s) => (
+                      <li key={s.id} className="flex justify-between gap-2">
+                        <span className="text-slate-200">{s.name}</span>
+                        <Badge tone={s.reuse ? "success" : "warn"}>{s.kind}</Badge>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Queues</p>
+                  <p className="mt-1 text-slate-300">
+                    {backend.queues.map((q) => q.name).join(", ") || "—"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Storage</p>
+                  <p className="mt-1 text-slate-300">
+                    {backend.storage.map((s) => s.kind).join(", ") || "—"}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {backendWarnings.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {backendWarnings.map((w) => (
+              <li
+                key={`be-${w.code}-${w.message}`}
                 className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
               >
                 <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>

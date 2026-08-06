@@ -6,7 +6,13 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.studio.models import StudioProject, StudioProjectBlueprint, StudioProjectBuildPlan, StudioProjectFrontend
+from app.studio.models import (
+    StudioProject,
+    StudioProjectBlueprint,
+    StudioProjectBuildPlan,
+    StudioProjectFrontend,
+    StudioProjectBackend,
+)
 
 
 class StudioRepository:
@@ -191,5 +197,44 @@ class StudioRepository:
                 StudioProjectFrontend.is_current.is_(True),
             )
             .order_by(StudioProjectFrontend.version.desc())
+            .first()
+        )
+
+    def next_backend_version(self, project_id: UUID) -> int:
+        current = (
+            self.db.query(StudioProjectBackend.version)
+            .filter(StudioProjectBackend.project_id == project_id)
+            .order_by(StudioProjectBackend.version.desc())
+            .first()
+        )
+        return int(current[0]) + 1 if current else 1
+
+    def clear_current_backends(self, project_id: UUID) -> None:
+        (
+            self.db.query(StudioProjectBackend)
+            .filter(
+                StudioProjectBackend.project_id == project_id,
+                StudioProjectBackend.is_current.is_(True),
+            )
+            .update({"is_current": False}, synchronize_session=False)
+        )
+
+    def create_backend(self, row: StudioProjectBackend) -> StudioProjectBackend:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_current_backend(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> Optional[StudioProjectBackend]:
+        return (
+            self.db.query(StudioProjectBackend)
+            .filter(
+                StudioProjectBackend.project_id == project_id,
+                StudioProjectBackend.workspace_id == workspace_id,
+                StudioProjectBackend.is_current.is_(True),
+            )
+            .order_by(StudioProjectBackend.version.desc())
             .first()
         )
