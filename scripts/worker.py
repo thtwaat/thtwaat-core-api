@@ -167,6 +167,20 @@ def process_job(payload: dict) -> None:
             if not deployment_id:
                 raise ValueError("studio.deploy missing deployment_id")
             StudioService(db).run_deploy(UUID(str(deployment_id)))
+        elif job_type == "agent.cleanup":
+            from uuid import UUID
+
+            from app.agent_platform.lifecycle import AgentLifecycleService
+
+            agent_id = payload.get("agent_id")
+            if not agent_id:
+                raise ValueError("agent.cleanup missing agent_id")
+            AgentLifecycleService(db).run_cleanup(UUID(str(agent_id)))
+        elif job_type == "agent.purge_expired":
+            from app.agent_platform.lifecycle import AgentLifecycleService, RETENTION_DAYS
+
+            days = int(payload.get("retention_days") or RETENTION_DAYS)
+            AgentLifecycleService(db).purge_expired(retention_days=days)
         else:
             logger.warning("unknown job type=%s", job_type)
     finally:

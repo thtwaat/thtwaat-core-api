@@ -33,6 +33,7 @@ export type Agent = {
   web_config: Record<string, unknown>;
   published_at?: string | null;
   widget_id?: string | null;
+  deleted_at?: string | null;
   created_at: string;
   updated_at: string;
 };

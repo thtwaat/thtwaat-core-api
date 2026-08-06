@@ -38,6 +38,26 @@ export const agentsApi = {
   list: () => api.v2<Agent[]>("/agents"),
   get: (id: string) => api.v2<Agent>(`/agents/${id}`),
   create: (body: Record<string, unknown>) => api.v2<Agent>("/agents", { method: "POST", body }),
+  clone: (id: string) => api.v2<Agent>(`/agents/${id}/clone`, { method: "POST" }),
+  deleteImpact: (id: string) => api.v2<AgentDeleteImpact>(`/agents/${id}/delete-impact`),
+  delete: (
+    id: string,
+    body: {
+      keep_conversations?: boolean;
+      keep_knowledge?: boolean;
+      reason?: string;
+      confirm_unpublish?: boolean;
+    } = {}
+  ) =>
+    api.v2<{ id: string; status: string; deleted_at: string; retention_days: number; message: string }>(
+      `/agents/${id}`,
+      { method: "DELETE", body }
+    ),
+  restore: (id: string, reason?: string) =>
+    api.v2<{ id: string; status: string; company_id: string; message: string }>(
+      `/admin/agents/${id}/restore`,
+      { method: "POST", body: { reason } }
+    ),
   publish: (id: string) => api.v1<PublishResult>(`/agents/${id}/publish`, { method: "POST" }),
   unpublish: (id: string) => api.v1(`/agents/${id}/unpublish`, { method: "POST" }),
   createApiKey: (id: string, name?: string) =>
@@ -49,6 +69,22 @@ export const agentsApi = {
   widget: (id: string) => api.v1<Record<string, unknown>>(`/agents/${id}/widget`),
   updateWidget: (id: string, body: Record<string, unknown>) =>
     api.v1<Record<string, unknown>>(`/agents/${id}/widget`, { method: "PATCH", body })
+};
+
+export type AgentDeleteImpact = {
+  agent_id: string;
+  name: string;
+  published: boolean;
+  status: string;
+  widget: boolean;
+  widget_id?: string | null;
+  api_keys: number;
+  playground: boolean;
+  draft_prompts: number;
+  scheduled_jobs: number;
+  conversations: number;
+  knowledge_attachments: number;
+  retention_days: number;
 };
 
 export const knowledgeApi = {

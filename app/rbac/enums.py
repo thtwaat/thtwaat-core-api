@@ -40,6 +40,7 @@ class Permission(str, enum.Enum):
     AGENTS_READ         = "agents:read"
     AGENTS_CREATE       = "agents:create"
     AGENTS_UPDATE       = "agents:update"
+    AGENTS_DELETE       = "agents:delete"
     AGENTS_PUBLISH      = "agents:publish"
     AGENTS_MANAGE_KEYS  = "agents:manage_keys"
 

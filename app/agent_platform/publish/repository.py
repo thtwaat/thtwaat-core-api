@@ -15,18 +15,31 @@ class PublishRepository:
     def __init__(self, db: Session):
         self.db = db
 
-    def get_agent_for_company(self, agent_id: UUID, company_id: UUID) -> Optional[AgentConfig]:
-        return (
-            self.db.query(AgentConfig)
-            .filter(AgentConfig.id == agent_id, AgentConfig.company_id == company_id)
-            .first()
+    def get_agent_for_company(
+        self, agent_id: UUID, company_id: UUID, *, include_deleted: bool = False
+    ) -> Optional[AgentConfig]:
+        q = self.db.query(AgentConfig).filter(
+            AgentConfig.id == agent_id, AgentConfig.company_id == company_id
         )
+        if not include_deleted:
+            q = q.filter(AgentConfig.deleted_at.is_(None))
+        return q.first()
 
-    def get_agent(self, agent_id: UUID) -> Optional[AgentConfig]:
-        return self.db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
+    def get_agent(self, agent_id: UUID, *, include_deleted: bool = False) -> Optional[AgentConfig]:
+        q = self.db.query(AgentConfig).filter(AgentConfig.id == agent_id)
+        if not include_deleted:
+            q = q.filter(AgentConfig.deleted_at.is_(None))
+        return q.first()
 
     def get_agent_by_widget_id(self, widget_id: str) -> Optional[AgentConfig]:
-        return self.db.query(AgentConfig).filter(AgentConfig.widget_id == widget_id).first()
+        return (
+            self.db.query(AgentConfig)
+            .filter(
+                AgentConfig.widget_id == widget_id,
+                AgentConfig.deleted_at.is_(None),
+            )
+            .first()
+        )
 
     def save_agent(self, agent: AgentConfig) -> AgentConfig:
         self.db.add(agent)

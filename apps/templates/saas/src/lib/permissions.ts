@@ -31,7 +31,12 @@ export function canViewProviders(role?: string | null): boolean {
   return canManageTemplates(role);
 }
 
-/** Studio project delete — owners/admins only (matches can_manage_company_users). */
+/** Studio / Agent delete — owners/admins only (matches can_manage_company_users). */
 export function canDeleteStudioProjects(role?: string | null): boolean {
+  return Boolean(role && STUDIO_DELETE_ROLES.has(role));
+}
+
+/** Agent soft-delete — company_owner / admin / super_admin only. */
+export function canDeleteAgents(role?: string | null): boolean {
   return Boolean(role && STUDIO_DELETE_ROLES.has(role));
 }

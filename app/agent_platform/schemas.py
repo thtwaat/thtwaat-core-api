@@ -51,10 +51,58 @@ class AgentResponse(BaseModel):
     web_config: Dict[str, Any]
     published_at: Optional[datetime] = None
     widget_id: Optional[str] = None
+    deleted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AgentDeleteRequest(BaseModel):
+    keep_conversations: bool = True
+    keep_knowledge: bool = True
+    reason: Optional[str] = None
+    confirm_unpublish: bool = False
+
+
+class AgentDeleteImpact(BaseModel):
+    agent_id: str
+    name: str
+    published: bool
+    status: str
+    widget: bool
+    widget_id: Optional[str] = None
+    api_keys: int
+    playground: bool
+    draft_prompts: int
+    scheduled_jobs: int
+    conversations: int
+    knowledge_attachments: int
+    retention_days: int
+
+
+class AgentDeleteResponse(BaseModel):
+    id: UUID
+    status: str
+    deleted_at: datetime
+    retention_days: int
+    message: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AgentRestoreRequest(BaseModel):
+    reason: Optional[str] = None
+
+
+class AgentRestoreResponse(BaseModel):
+    id: UUID
+    status: str
+    company_id: UUID
+    message: str
+
+    model_config = ConfigDict(from_attributes=True)
+
 
 class ApiKeyResponse(BaseModel):
     id: UUID

@@ -47,7 +47,7 @@ def verify_api_key_from_value(raw_key: str, db: Session) -> AgentApiKey:
             )
             .first()
         )
-        if not agent or agent.status != "PUBLISHED":
+        if not agent or agent.status != "PUBLISHED" or agent.deleted_at is not None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid embed token",
@@ -85,6 +85,11 @@ def verify_api_key_from_value(raw_key: str, db: Session) -> AgentApiKey:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key revoked")
     if api_key.expires_at is not None and api_key.expires_at <= datetime.now(timezone.utc):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key expired")
+
+    # Soft-deleted agents must not accept traffic (keys may still exist until cleanup).
+    agent_row = db.query(AgentConfig).filter(AgentConfig.id == api_key.agent_id).first()
+    if not agent_row or agent_row.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Agent unavailable")
 
     api_key.last_used_at = datetime.now(timezone.utc)
     db.commit()

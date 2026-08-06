@@ -24,3 +24,9 @@ class AgentConfig(Base, TimestampMixin):
     # Publish / embed
     published_at = Column(DateTime(timezone=True), nullable=True)
     widget_id = Column(String(64), unique=True, index=True, nullable=True)
+
+    # Soft delete / retention (permanent purge after retention window)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by = Column(UUID(as_uuid=True), nullable=True)
+    delete_reason = Column(Text, nullable=True)
+    delete_options = Column(JSONB, default=dict, nullable=False)

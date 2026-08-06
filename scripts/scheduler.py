@@ -92,6 +92,16 @@ def tick(r):
             result = EnterpriseService(db).apply_all_retention_policies()
             r.setex(retention_key, 86400, "1")
             logger.info("enterprise_retention_complete %s", result)
+
+        # Daily soft-deleted agent permanent purge (after retention window).
+        agent_purge_key = (
+            f"thtwaat:agents:purge:"
+            f"{datetime.now(timezone.utc).date().isoformat()}"
+        )
+        if not r.get(agent_purge_key):
+            enqueue(r, {"type": "agent.purge_expired"})
+            r.setex(agent_purge_key, 86400, "1")
+            logger.info("enqueued agent.purge_expired")
     finally:
         db.close()
 

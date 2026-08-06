@@ -192,8 +192,10 @@ from app.agent_platform.routers.public_router import router as public_router
 from app.agent_platform.knowledge.routers import router as knowledge_router
 from app.agent_platform.routers.conversation_router import router as conversation_router
 from app.agent_platform.routers.leads_router import public_leads_router, router as leads_router
+from app.agent_platform.routers.admin_router import router as agent_admin_router
 
 app.include_router(agent_router)
+app.include_router(agent_admin_router)
 app.include_router(public_router)
 app.include_router(public_leads_router)
 app.include_router(knowledge_router)

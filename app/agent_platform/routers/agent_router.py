@@ -1,16 +1,33 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Body
 from sqlalchemy.orm import Session
 from typing import List
 from uuid import UUID
 
 from app.database.database import get_db
 from app.auth.dependencies import get_current_user_and_company
-from app.agent_platform.schemas import AgentCreate, AgentResponse
+from app.auth.router import get_current_user
+from app.auth.schema import UserProfileResponse
+from app.agent_platform.schemas import (
+    AgentCreate,
+    AgentDeleteImpact,
+    AgentDeleteRequest,
+    AgentDeleteResponse,
+    AgentResponse,
+)
 from app.agent_platform.models.agent import AgentConfig
 from app.agent_platform.publish.service import PublishService
 from app.agent_platform.publish.schemas import PublishResponse, AgentApiKeyCreatedResponse
+from app.agent_platform.lifecycle import AgentLifecycleService, RETENTION_DAYS
+from app.rbac.dependencies import RequirePermission
+from app.rbac.enums import Permission
 
 router = APIRouter(prefix="/v2/agents", tags=["Agent Platform"])
+
+
+def _require_agents_delete(user: UserProfileResponse = Depends(get_current_user)):
+    RequirePermission(Permission.AGENTS_DELETE)(user.role)
+    return user
+
 
 @router.post("", response_model=AgentResponse)
 def create_agent(
@@ -19,7 +36,11 @@ def create_agent(
     auth_data: dict = Depends(get_current_user_and_company)
 ):
     company_id = auth_data.get("company_id")
-    current_count = db.query(AgentConfig).filter(AgentConfig.company_id == company_id).count()
+    current_count = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.company_id == company_id, AgentConfig.deleted_at.is_(None))
+        .count()
+    )
     try:
         from app.usage.dimensions import UsageDimension
         from app.usage.service import UsageService
@@ -74,7 +95,7 @@ def list_agents(
     company_id = auth_data.get("company_id")
     query = (
         db.query(AgentConfig)
-        .filter(AgentConfig.company_id == company_id)
+        .filter(AgentConfig.company_id == company_id, AgentConfig.deleted_at.is_(None))
         .order_by(AgentConfig.created_at.desc())
     )
     if is_template:
@@ -87,7 +108,11 @@ def list_templates(
     auth_data: dict = Depends(get_current_user_and_company),
 ):
     _ = auth_data  # JWT required; templates are platform-wide, not tenant-filtered
-    return db.query(AgentConfig).filter(AgentConfig.is_template == True).all()
+    return (
+        db.query(AgentConfig)
+        .filter(AgentConfig.is_template == True, AgentConfig.deleted_at.is_(None))
+        .all()
+    )
 
 @router.get("/{agent_id}", response_model=AgentResponse)
 def get_agent(
@@ -96,10 +121,64 @@ def get_agent(
     auth_data: dict = Depends(get_current_user_and_company)
 ):
     company_id = auth_data.get("company_id")
-    agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id, AgentConfig.company_id == company_id).first()
+    agent = (
+        db.query(AgentConfig)
+        .filter(
+            AgentConfig.id == agent_id,
+            AgentConfig.company_id == company_id,
+            AgentConfig.deleted_at.is_(None),
+        )
+        .first()
+    )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return agent
+
+
+@router.get("/{agent_id}/delete-impact", response_model=AgentDeleteImpact)
+def get_delete_impact(
+    agent_id: UUID,
+    db: Session = Depends(get_db),
+    user: UserProfileResponse = Depends(_require_agents_delete),
+):
+    agent = AgentLifecycleService(db).get_active(agent_id, UUID(str(user.company_id)))
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return AgentDeleteImpact(**AgentLifecycleService(db).delete_impact(agent))
+
+
+@router.delete("/{agent_id}", response_model=AgentDeleteResponse)
+def delete_agent(
+    agent_id: UUID,
+    request: Request,
+    body: AgentDeleteRequest = Body(default_factory=AgentDeleteRequest),
+    db: Session = Depends(get_db),
+    user: UserProfileResponse = Depends(_require_agents_delete),
+):
+    """Soft-delete an agent. Permanent cleanup runs after the retention window."""
+    ip = request.client.host if request.client else None
+    ua = request.headers.get("user-agent")
+    agent = AgentLifecycleService(db).soft_delete(
+        agent_id=agent_id,
+        company_id=UUID(str(user.company_id)),
+        user_id=UUID(str(user.id)),
+        keep_conversations=body.keep_conversations,
+        keep_knowledge=body.keep_knowledge,
+        reason=body.reason,
+        confirm_unpublish=body.confirm_unpublish,
+        ip_address=ip,
+        user_agent=ua,
+    )
+    return AgentDeleteResponse(
+        id=agent.id,
+        status=agent.status,
+        deleted_at=agent.deleted_at,
+        retention_days=RETENTION_DAYS,
+        message=(
+            f"Agent soft-deleted. Permanent cleanup after {RETENTION_DAYS} days "
+            "unless restored by a Super Admin."
+        ),
+    )
 
 @router.post("/{agent_id}/publish", response_model=PublishResponse)
 def publish_agent(
@@ -135,7 +214,11 @@ def clone_agent(
     auth_data: dict = Depends(get_current_user_and_company)
 ):
     company_id = auth_data.get("company_id")
-    source_agent = db.query(AgentConfig).filter(AgentConfig.id == agent_id).first()
+    source_agent = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.id == agent_id, AgentConfig.deleted_at.is_(None))
+        .first()
+    )
     if not source_agent:
         raise HTTPException(status_code=404, detail="Source agent not found")
         
