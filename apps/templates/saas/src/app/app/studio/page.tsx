@@ -6,6 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   ArrowRight,
+  Boxes,
   Eraser,
   History,
   LayoutTemplate,
@@ -25,12 +26,15 @@ import {
   STUDIO_PROMPT_PLACEHOLDER,
   STUDIO_TIPS,
   listFieldToText,
+  moduleKindLabel,
+  moduleKindTone,
   parseListField,
   studioStatusLabel,
   studioStatusTone,
   warningTone,
   type ProductBlueprint,
-  type StudioBlueprint
+  type StudioBlueprint,
+  type StudioBuildPlan
 } from "@/lib/studio";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge, Card } from "@/components/ui/card";
@@ -98,6 +102,13 @@ export default function StudioPage() {
     queryKey: ["studio-versions", selected?.id],
     queryFn: () => studioApi.versions(selected!.id),
     enabled: Boolean(selected?.id)
+  });
+
+  const buildPlanQ = useQuery({
+    queryKey: ["studio-build-plan", selected?.id],
+    queryFn: () => studioApi.getBuildPlan(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false
   });
 
   useEffect(() => {
@@ -172,6 +183,22 @@ export default function StudioPage() {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Restore failed")
   });
 
+  const composeM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.compose(selected.id);
+    },
+    onSuccess: (result) => {
+      toast.success(
+        `Build plan v${result.build_plan.version} · ${result.build_plan.summary.reuse_percent}% reuse`
+      );
+      void qc.invalidateQueries({ queryKey: ["studio-projects"] });
+      void qc.invalidateQueries({ queryKey: ["studio-build-plan", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Compose failed")
+  });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => studioApi.remove(id),
     onSuccess: (_, id) => {
@@ -183,8 +210,10 @@ export default function StudioPage() {
   });
 
   const currentBlueprint: StudioBlueprint | undefined = blueprintQ.data;
+  const buildPlan: StudioBuildPlan | undefined = buildPlanQ.data;
   const warnings = currentBlueprint?.warnings || [];
   const recommendations = currentBlueprint?.recommendations;
+  const composeWarnings = buildPlan?.summary?.warnings || [];
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -195,14 +224,14 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 2
+          THTWAAT Studio · Phase 3
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          AI Product Architect
+          Template Registry & Module Composer
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          AI Gateway builds a production blueprint (industry, pages, tables, modules, AI, billing,
-          auth, workflows, deployment). Heuristic fallback only if AI fails — never merged over AI.
+          Map an approved blueprint onto existing Auth, Billing, AI Gateway, Marketplace, Knowledge,
+          Agents, Publisher, and Admin — no frontend/backend codegen, no deploy.
         </p>
       </section>
 
@@ -252,6 +281,23 @@ export default function StudioPage() {
               disabled={createM.isPending || prompt.trim().length < 8}
             >
               Save Prompt
+            </Button>
+            <Button
+              onClick={() => composeM.mutate()}
+              disabled={!selected || !currentBlueprint || composeM.isPending}
+              className="bg-cyan-700 text-white hover:bg-cyan-600"
+            >
+              {composeM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Composing…
+                </>
+              ) : (
+                <>
+                  <Boxes className="mr-2 h-4 w-4" />
+                  Compose Modules
+                </>
+              )}
             </Button>
             <Button variant="secondary" onClick={() => setPrompt("")} disabled={!prompt}>
               <Eraser className="mr-2 h-4 w-4" />
@@ -503,6 +549,109 @@ export default function StudioPage() {
           </Link>
         </Card>
       </div>
+
+      {/* Module compose / build plan */}
+      <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Module plan</h2>
+            <p className="text-sm text-slate-400">
+              {buildPlan
+                ? `v${buildPlan.version} · blueprint v${buildPlan.blueprint_version} · ${buildPlan.summary.reuse_percent}% reuse · custom work: ${buildPlan.summary.estimated_custom_work}`
+                : "Compose Modules after a blueprint is ready"}
+            </p>
+          </div>
+          {buildPlan && (
+            <div className="flex flex-wrap gap-2">
+              <Badge tone="success">{buildPlan.summary.existing_count} existing</Badge>
+              <Badge tone="neutral">{buildPlan.summary.marketplace_count} marketplace</Badge>
+              <Badge tone="warn">{buildPlan.summary.custom_count} custom</Badge>
+            </div>
+          )}
+        </div>
+
+        {!buildPlan ? (
+          <EmptyState
+            title="No build plan yet"
+            description="Generate a blueprint, then click Compose Modules to map Auth, Billing, AI, and more."
+          />
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-3">
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Modules</h3>
+              <ul className="max-h-80 space-y-2 overflow-y-auto">
+                {buildPlan.modules.map((m) => (
+                  <li
+                    key={m.key}
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-100">{m.label}</span>
+                      <Badge tone={moduleKindTone(m.kind)}>{moduleKindLabel(m.kind)}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {m.platform_ref || m.marketplace_template || "custom"} · {m.reason}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Dependencies</h3>
+              <ul className="max-h-80 space-y-2 overflow-y-auto font-mono text-xs text-slate-300">
+                {buildPlan.dependency_graph.map((e) => (
+                  <li key={e.key} className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2">
+                    <span className="text-teal-300">{e.label}</span>
+                    {e.depends_on.length > 0 ? (
+                      <div className="mt-1 text-slate-500">
+                        ← {e.depends_on.join(", ")}
+                      </div>
+                    ) : (
+                      <div className="mt-1 text-slate-600">root</div>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Build plan</h3>
+              <ol className="max-h-80 space-y-2 overflow-y-auto">
+                {buildPlan.build_plan.map((s) => (
+                  <li
+                    key={`${s.order}-${s.key}`}
+                    className="flex gap-3 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+                  >
+                    <span className="font-mono text-teal-400">{s.order}.</span>
+                    <div>
+                      <p className="font-medium text-slate-100">
+                        {s.label}{" "}
+                        <span className="text-xs font-normal text-slate-500">({s.phase})</span>
+                      </p>
+                      {s.note && <p className="text-xs text-amber-200/80">{s.note}</p>}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          </div>
+        )}
+
+        {composeWarnings.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {composeWarnings.map((w) => (
+              <li
+                key={`compose-${w.code}-${w.message}`}
+                className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+              >
+                <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>
+                <span className="text-slate-200">{w.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/60 p-5">
         <div className="mb-3 flex items-center gap-2">

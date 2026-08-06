@@ -1,6 +1,7 @@
 """Blueprint schema, validation warnings, and API payloads."""
 from __future__ import annotations
 
+import enum
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import UUID
@@ -132,3 +133,84 @@ class StudioBlueprintVersionList(BaseModel):
 class StudioAnalyzeResponse(BaseModel):
     project: StudioProjectResponse
     blueprint: StudioBlueprintResponse
+
+
+# ── Compose / Build Plan (Phase 3) ────────────────────────────────────────────
+
+class ModuleKind(str, enum.Enum):
+    EXISTING = "existing_module"
+    MARKETPLACE = "marketplace_template"
+    CUSTOM = "custom_module"
+
+
+class ComposedModule(BaseModel):
+    key: str
+    label: str
+    kind: ModuleKind
+    platform_ref: Optional[str] = None
+    marketplace_template: Optional[str] = None
+    depends_on: List[str] = Field(default_factory=list)
+    reason: str = ""
+    custom_effort: str = "none"  # none | low | medium | high
+    category: str = "foundation"
+
+
+class DependencyEdge(BaseModel):
+    key: str
+    label: str
+    depends_on: List[str] = Field(default_factory=list)
+
+
+class BuildPlanStep(BaseModel):
+    order: int
+    key: str
+    label: str
+    phase: str
+    kind: ModuleKind
+    depends_on: List[str] = Field(default_factory=list)
+    platform_ref: Optional[str] = None
+    marketplace_template: Optional[str] = None
+    note: Optional[str] = None
+
+
+class BuildPlanSummary(BaseModel):
+    reuse_percent: float = 0.0
+    existing_count: int = 0
+    marketplace_count: int = 0
+    custom_count: int = 0
+    module_count: int = 0
+    estimated_custom_work: str = "none"
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+
+
+class StudioComposeResult(BaseModel):
+    """In-memory compose output (also stored on StudioProjectBuildPlan)."""
+
+    modules: List[ComposedModule] = Field(default_factory=list)
+    dependency_graph: List[DependencyEdge] = Field(default_factory=list)
+    dependency_tree: List[Dict[str, Any]] = Field(default_factory=list)
+    build_plan: List[BuildPlanStep] = Field(default_factory=list)
+    summary: BuildPlanSummary = Field(default_factory=BuildPlanSummary)
+
+
+class StudioBuildPlanResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    blueprint_version: int
+    version: int
+    is_current: bool
+    modules: List[ComposedModule] = Field(default_factory=list)
+    dependency_graph: List[DependencyEdge] = Field(default_factory=list)
+    dependency_tree: List[Dict[str, Any]] = Field(default_factory=list)
+    build_plan: List[BuildPlanStep] = Field(default_factory=list)
+    summary: BuildPlanSummary = Field(default_factory=BuildPlanSummary)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioComposeResponse(BaseModel):
+    project: StudioProjectResponse
+    build_plan: StudioBuildPlanResponse

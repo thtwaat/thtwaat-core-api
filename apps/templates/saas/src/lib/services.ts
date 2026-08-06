@@ -1209,7 +1209,13 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioBlueprint>(
       `/studio/projects/${id}/restore/${version}`,
       { method: "POST" }
-    )
+    ),
+  compose: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioComposeResult>(`/studio/projects/${id}/compose`, {
+      method: "POST"
+    }),
+  getBuildPlan: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioBuildPlan>(`/studio/projects/${id}/build-plan`)
 };
 
 /** AI Gateway provider status — enterprise dashboard surface */

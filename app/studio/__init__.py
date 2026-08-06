@@ -1,1 +1,1 @@
-"""THTWAAT Studio — One-Click AI Product Generation workspace (Phase 1: prompts only)."""
+"""THTWAAT Studio — AI product workspace (prompts, blueprints, module composer)."""

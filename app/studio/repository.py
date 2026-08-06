@@ -6,7 +6,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.studio.models import StudioProject, StudioProjectBlueprint
+from app.studio.models import StudioProject, StudioProjectBlueprint, StudioProjectBuildPlan
 
 
 class StudioRepository:
@@ -114,4 +114,43 @@ class StudioRepository:
             )
             .order_by(StudioProjectBlueprint.version.desc())
             .all()
+        )
+
+    def next_build_plan_version(self, project_id: UUID) -> int:
+        current = (
+            self.db.query(StudioProjectBuildPlan.version)
+            .filter(StudioProjectBuildPlan.project_id == project_id)
+            .order_by(StudioProjectBuildPlan.version.desc())
+            .first()
+        )
+        return int(current[0]) + 1 if current else 1
+
+    def clear_current_build_plans(self, project_id: UUID) -> None:
+        (
+            self.db.query(StudioProjectBuildPlan)
+            .filter(
+                StudioProjectBuildPlan.project_id == project_id,
+                StudioProjectBuildPlan.is_current.is_(True),
+            )
+            .update({"is_current": False}, synchronize_session=False)
+        )
+
+    def create_build_plan(self, row: StudioProjectBuildPlan) -> StudioProjectBuildPlan:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_current_build_plan(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> Optional[StudioProjectBuildPlan]:
+        return (
+            self.db.query(StudioProjectBuildPlan)
+            .filter(
+                StudioProjectBuildPlan.project_id == project_id,
+                StudioProjectBuildPlan.workspace_id == workspace_id,
+                StudioProjectBuildPlan.is_current.is_(True),
+            )
+            .order_by(StudioProjectBuildPlan.version.desc())
+            .first()
         )

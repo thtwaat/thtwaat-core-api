@@ -1,4 +1,4 @@
-"""THTWAAT Studio API — /api/v2/studio (prompts + AI Product Architect)."""
+"""THTWAAT Studio API — /api/v2/studio (architect + module composer)."""
 from __future__ import annotations
 
 from uuid import UUID
@@ -14,6 +14,8 @@ from app.studio.schemas import (
     StudioBlueprintResponse,
     StudioBlueprintUpdate,
     StudioBlueprintVersionList,
+    StudioBuildPlanResponse,
+    StudioComposeResponse,
     StudioProjectCreate,
     StudioProjectListResponse,
     StudioProjectResponse,
@@ -156,3 +158,29 @@ def restore_version(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.restore_version(user, project_id, version)
+
+
+@router.post(
+    "/projects/{project_id}/compose",
+    response_model=StudioComposeResponse,
+    summary="Compose blueprint into reusable module plan (no codegen / no deploy)",
+)
+def compose_project(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.compose(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/build-plan",
+    response_model=StudioBuildPlanResponse,
+    summary="Get current module compose / build plan",
+)
+def get_build_plan(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_build_plan(user, project_id)

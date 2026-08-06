@@ -96,3 +96,36 @@ class StudioProjectBlueprint(Base, TimestampMixin):
     warnings = Column(JSONB, nullable=False, default=list)
     recommendations = Column(JSONB, nullable=False, default=dict)
     created_by = Column(UUID(as_uuid=True), nullable=True)
+
+
+class StudioProjectBuildPlan(Base, TimestampMixin):
+    """Versioned module compose / build plan for a Studio project (no codegen)."""
+
+    __tablename__ = "studio_project_build_plans"
+    __table_args__ = (
+        UniqueConstraint("project_id", "version", name="uq_studio_build_plan_project_version"),
+        Index("ix_studio_build_plans_project_current", "project_id", "is_current"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    blueprint_version = Column(Integer, nullable=False, default=1)
+    version = Column(Integer, nullable=False, default=1)
+    is_current = Column(Boolean, nullable=False, default=True)
+    modules = Column(JSONB, nullable=False, default=list)
+    dependency_graph = Column(JSONB, nullable=False, default=list)
+    dependency_tree = Column(JSONB, nullable=False, default=list)
+    build_plan = Column(JSONB, nullable=False, default=list)
+    summary = Column(JSONB, nullable=False, default=dict)
+    created_by = Column(UUID(as_uuid=True), nullable=True)

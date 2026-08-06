@@ -1,4 +1,4 @@
-"""Studio service — prompts + AI Product Architect blueprints."""
+"""Studio service — prompts, blueprints, and module compose / build plans."""
 from __future__ import annotations
 
 from typing import List, Optional, Tuple
@@ -14,16 +14,28 @@ from app.studio.architect import (
     build_recommendations,
     validate_blueprint,
 )
-from app.studio.models import StudioProject, StudioProjectBlueprint, StudioProjectStatus
+from app.studio.composer import compose_blueprint
+from app.studio.models import (
+    StudioProject,
+    StudioProjectBlueprint,
+    StudioProjectBuildPlan,
+    StudioProjectStatus,
+)
 from app.studio.repository import StudioRepository
 from app.studio.schemas import (
     BlueprintRecommendations,
     BlueprintWarning,
+    BuildPlanStep,
+    BuildPlanSummary,
+    ComposedModule,
+    DependencyEdge,
     ProductBlueprint,
     StudioBlueprintResponse,
     StudioBlueprintUpdate,
     StudioBlueprintVersionList,
     StudioBlueprintVersionSummary,
+    StudioBuildPlanResponse,
+    StudioComposeResponse,
     StudioProjectCreate,
     StudioProjectResponse,
 )
@@ -52,6 +64,24 @@ def _blueprint_response(row: StudioProjectBlueprint) -> StudioBlueprintResponse:
         blueprint=bp,
         warnings=warnings,
         recommendations=recs,
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _build_plan_response(row: StudioProjectBuildPlan) -> StudioBuildPlanResponse:
+    return StudioBuildPlanResponse(
+        id=row.id,
+        project_id=row.project_id,
+        workspace_id=row.workspace_id,
+        blueprint_version=row.blueprint_version,
+        version=row.version,
+        is_current=row.is_current,
+        modules=[ComposedModule.model_validate(m) for m in (row.modules or [])],
+        dependency_graph=[DependencyEdge.model_validate(e) for e in (row.dependency_graph or [])],
+        dependency_tree=list(row.dependency_tree or []),
+        build_plan=[BuildPlanStep.model_validate(s) for s in (row.build_plan or [])],
+        summary=BuildPlanSummary.model_validate(row.summary or {}),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -223,6 +253,55 @@ class StudioService:
         project.status = StudioProjectStatus.BLUEPRINT_READY
         self.repo.save_project(project)
         return _blueprint_response(row)
+
+    def compose(self, user: UserProfileResponse, project_id: UUID) -> StudioComposeResponse:
+        """Map approved blueprint → module plan (reuse existing platform modules)."""
+        project = self.get(user, project_id)
+        bp_row = self.repo.get_current_blueprint(project.id, project.workspace_id)
+        if not bp_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No blueprint to compose — run Generate Blueprint first",
+            )
+        blueprint = ProductBlueprint.model_validate(bp_row.blueprint or {})
+        result = compose_blueprint(
+            blueprint,
+            recommendations=bp_row.recommendations or {},
+        )
+        self.repo.clear_current_build_plans(project.id)
+        version = self.repo.next_build_plan_version(project.id)
+        row = StudioProjectBuildPlan(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            blueprint_version=bp_row.version,
+            version=version,
+            is_current=True,
+            modules=[m.model_dump(mode="json") for m in result.modules],
+            dependency_graph=[e.model_dump(mode="json") for e in result.dependency_graph],
+            dependency_tree=result.dependency_tree,
+            build_plan=[s.model_dump(mode="json") for s in result.build_plan],
+            summary=result.summary.model_dump(mode="json"),
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_build_plan(row)
+        project.status = StudioProjectStatus.APPROVED
+        self.repo.save_project(project)
+        return StudioComposeResponse(
+            project=StudioProjectResponse.model_validate(project),
+            build_plan=_build_plan_response(saved),
+        )
+
+    def get_build_plan(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioBuildPlanResponse:
+        project = self.get(user, project_id)
+        row = self.repo.get_current_build_plan(project.id, project.workspace_id)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No build plan yet — run Compose Modules first",
+            )
+        return _build_plan_response(row)
 
     @staticmethod
     def project_response(project: StudioProject) -> StudioProjectResponse:
