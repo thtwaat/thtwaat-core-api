@@ -14,6 +14,7 @@ from app.studio.models import (
     StudioProjectBackend,
     StudioProjectAi,
     StudioProjectInfrastructure,
+    StudioProjectApproval,
 )
 
 
@@ -318,5 +319,24 @@ class StudioRepository:
                 StudioProjectInfrastructure.is_current.is_(True),
             )
             .order_by(StudioProjectInfrastructure.version.desc())
+            .first()
+        )
+
+    def create_approval(self, row: StudioProjectApproval) -> StudioProjectApproval:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_latest_approval(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> Optional[StudioProjectApproval]:
+        return (
+            self.db.query(StudioProjectApproval)
+            .filter(
+                StudioProjectApproval.project_id == project_id,
+                StudioProjectApproval.workspace_id == workspace_id,
+            )
+            .order_by(StudioProjectApproval.created_at.desc())
             .first()
         )

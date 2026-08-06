@@ -8,8 +8,10 @@ import {
   ArrowRight,
   Bot,
   Boxes,
+  CheckCircle2,
   Cloud,
   Database,
+  Download,
   Eraser,
   History,
   LayoutTemplate,
@@ -42,10 +44,12 @@ import {
   type FrontendManifest,
   type InfraManifest,
   type ProductBlueprint,
+  type ReviewManifest,
   type StudioAi,
   type StudioBackend,
   type StudioBlueprint,
   type StudioBuildPlan,
+  type StudioExportResult,
   type StudioFrontend,
   type StudioInfrastructure
 } from "@/lib/studio";
@@ -60,6 +64,24 @@ function formatWhen(iso: string) {
   } catch {
     return iso;
   }
+}
+
+function downloadExport(result: StudioExportResult) {
+  let blob: Blob;
+  if (result.encoding === "base64") {
+    const binary = atob(result.content);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    blob = new Blob([bytes], { type: result.content_type });
+  } else {
+    blob = new Blob([result.content], { type: result.content_type });
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = result.filename;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function ListEditor({
@@ -148,6 +170,13 @@ export default function StudioPage() {
   const infraQ = useQuery({
     queryKey: ["studio-infrastructure", selected?.id],
     queryFn: () => studioApi.getInfrastructure(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false
+  });
+
+  const reviewQ = useQuery({
+    queryKey: ["studio-review", selected?.id],
+    queryFn: () => studioApi.getReview(selected!.id),
     enabled: Boolean(selected?.id),
     retry: false
   });
@@ -385,6 +414,7 @@ export default function StudioPage() {
       void qc.invalidateQueries({
         queryKey: ["studio-infrastructure", result.project.id]
       });
+      void qc.invalidateQueries({ queryKey: ["studio-review", result.project.id] });
     },
     onError: (err) =>
       toast.error(
@@ -403,9 +433,37 @@ export default function StudioPage() {
       toast.success(`Infrastructure saved as v${row.version} (${row.status})`);
       setInfraDraft(row.manifest);
       void qc.invalidateQueries({ queryKey: ["studio-infrastructure", selected?.id] });
+      void qc.invalidateQueries({ queryKey: ["studio-review", selected?.id] });
     },
     onError: (err) =>
       toast.error(err instanceof ApiError ? err.message : "Save infrastructure failed")
+  });
+
+  const approveM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.approveBuild(selected.id, { notes: "Approved from Review Center" });
+    },
+    onSuccess: (result) => {
+      toast.success(`Build approved · project ${result.project.status}`);
+      void qc.invalidateQueries({ queryKey: ["studio-projects"] });
+      void qc.invalidateQueries({ queryKey: ["studio-review", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Approve failed")
+  });
+
+  const exportM = useMutation({
+    mutationFn: (opts: { kind: string; format: string }) => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.exportProject(selected.id, opts);
+    },
+    onSuccess: (result) => {
+      downloadExport(result);
+      toast.success(`Exported ${result.filename}`);
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Export failed")
   });
 
   const deleteM = useMutation({
@@ -435,6 +493,8 @@ export default function StudioPage() {
   const backendWarnings = backend?.warnings || backend?.summary?.warnings || [];
   const aiWarnings = ai?.warnings || ai?.summary?.warnings || [];
   const infraWarnings = infra?.warnings || infra?.summary?.warnings || [];
+  const review: ReviewManifest | undefined = reviewQ.data?.review;
+  const reviewWarnings = review?.warnings || [];
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -445,14 +505,14 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 7
+          THTWAAT Studio · Phase 8
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Infrastructure Generator
+          Review Center &amp; Build Approval
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          Plan Docker, Compose, Nginx, Redis, Postgres, Workers, Scheduler, env/secrets, monitoring,
-          and cost on the existing production stack. Planning only — no deploy, no app source.
+          Combine Blueprint, Frontend, Backend, AI, and Infrastructure into one enterprise review.
+          Validate gaps, estimate cost, export plans — approve without generating source or deploying.
         </p>
       </section>
 
@@ -1580,6 +1640,217 @@ export default function StudioPage() {
             {infraWarnings.map((w) => (
               <li
                 key={`infra-${w.code}-${w.message}`}
+                className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+              >
+                <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>
+                <span className="text-slate-200">{w.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Review Center */}
+      <section className="mt-6 rounded-3xl border border-teal-800/40 bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950/40 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Review Center</h2>
+            <p className="text-sm text-slate-400">
+              {review
+                ? `${review.ready_to_approve ? "Ready to approve" : "Needs attention"} · ${review.estimate.complexity} · ~$${review.estimate.estimated_cost_usd} build · ~$${review.estimate.monthly_run_cost_usd}/mo run`
+                : "Generate Infrastructure to unlock the full review dashboard"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={!selected || !review || exportM.isPending}
+              onClick={() => exportM.mutate({ kind: "blueprint", format: "json" })}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export Blueprint
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!selected || !review || exportM.isPending}
+              onClick={() => exportM.mutate({ kind: "build_plan", format: "markdown" })}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export Build Plan
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!selected || !review || exportM.isPending}
+              onClick={() => exportM.mutate({ kind: "review", format: "pdf" })}
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export PDF
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const el = document.getElementById("studio-prompt");
+                el?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+            >
+              Back to Edit
+            </Button>
+            <Button
+              className="bg-teal-600 text-white hover:bg-teal-500"
+              disabled={!selected || !review?.ready_to_approve || approveM.isPending}
+              onClick={() => approveM.mutate()}
+            >
+              {approveM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Approving…
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Approve Build
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {reviewQ.isLoading ? (
+          <p className="flex items-center gap-2 text-sm text-slate-400">
+            <Loader2 className="h-4 w-4 animate-spin" /> Loading review…
+          </p>
+        ) : !review ? (
+          <EmptyState
+            title="Review not ready"
+            description="Complete Blueprint → Compose → Frontend → Backend → AI → Infrastructure, then review here."
+          />
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Artifacts</h3>
+              <ul className="space-y-2 text-sm">
+                {review.artifacts.map((a) => (
+                  <li
+                    key={a.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <span className="text-slate-100">
+                      {a.label}
+                      {a.version != null ? ` · v${a.version}` : ""}
+                    </span>
+                    <Badge tone={a.present ? "success" : "danger"}>
+                      {a.present ? a.status : "missing"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Build estimate</h3>
+              <div className="grid grid-cols-2 gap-2 text-sm">
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs text-slate-500">Build time</p>
+                  <p className="mt-1 font-medium text-teal-200">{review.estimate.estimated_build_time}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs text-slate-500">Build cost</p>
+                  <p className="mt-1 font-medium text-teal-200">${review.estimate.estimated_cost_usd}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs text-slate-500">Files · Tables · APIs</p>
+                  <p className="mt-1 text-slate-200">
+                    {review.estimate.generated_files} · {review.estimate.database_tables} ·{" "}
+                    {review.estimate.rest_apis}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs text-slate-500">Workers · Jobs</p>
+                  <p className="mt-1 text-slate-200">
+                    {review.estimate.workers} · {review.estimate.background_jobs}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs text-slate-500">AI / mo</p>
+                  <p className="mt-1 text-slate-200">${review.estimate.ai_cost_monthly_usd}</p>
+                </div>
+                <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
+                  <p className="text-xs text-slate-500">Infra / mo</p>
+                  <p className="mt-1 text-slate-200">
+                    ${review.estimate.infrastructure_cost_monthly_usd}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Visual architecture</h3>
+              <div className="space-y-2 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm text-slate-300">
+                <p>
+                  <span className="text-slate-500">Pages · </span>
+                  {review.architecture.pages.slice(0, 8).join(", ") || "—"}
+                </p>
+                <p>
+                  <span className="text-slate-500">Routes · </span>
+                  {review.architecture.routes.slice(0, 8).join(", ") || "—"}
+                </p>
+                <p>
+                  <span className="text-slate-500">Database · </span>
+                  {review.architecture.database.slice(0, 8).join(", ") || "—"}
+                </p>
+                <p>
+                  <span className="text-slate-500">AI · </span>
+                  {review.architecture.ai_providers.join(", ") || "—"}
+                </p>
+                <p>
+                  <span className="text-slate-500">RBAC · </span>
+                  {review.architecture.rbac.join(", ") || "—"}
+                </p>
+                <p>
+                  <span className="text-slate-500">Deploy · </span>
+                  {review.architecture.deployment_targets.join(", ") || "—"}
+                </p>
+                <p className="text-xs text-slate-500">
+                  API endpoints: {review.architecture.api.length} · Knowledge:{" "}
+                  {review.architecture.knowledge?.enabled ? "enabled" : "plan"}
+                </p>
+              </div>
+              <ul className="mt-2 max-h-40 space-y-1 overflow-y-auto font-mono text-xs text-slate-500">
+                {review.architecture.dependency_graph.slice(0, 12).map((e) => (
+                  <li key={e.key}>
+                    {e.label || e.key} ← {(e.depends_on || []).join(", ") || "root"}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Required secrets</h3>
+              <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+                {review.required_secrets.map((s) => (
+                  <li
+                    key={s.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-100">{s.label}</p>
+                      <p className="text-xs text-slate-500">{s.keys.join(", ")}</p>
+                    </div>
+                    <Badge tone={s.required ? "warn" : "neutral"}>
+                      {s.required ? "required" : "optional"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {reviewWarnings.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {reviewWarnings.map((w) => (
+              <li
+                key={`rev-${w.code}-${w.message}`}
                 className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
               >
                 <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>

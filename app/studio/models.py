@@ -259,3 +259,35 @@ class StudioProjectInfrastructure(Base, TimestampMixin):
     status = Column(String(32), nullable=False, default="draft")  # draft | approved
     manifest = Column(JSONB, nullable=False, default=dict)
     created_by = Column(UUID(as_uuid=True), nullable=True)
+
+
+class StudioProjectApproval(Base, TimestampMixin):
+    """Final build approval audit (Phase 8) — no codegen / no deploy."""
+
+    __tablename__ = "studio_project_approvals"
+    __table_args__ = (
+        Index("ix_studio_approvals_project_created", "project_id", "created_at"),
+    )
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True)
+    project_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("studio_projects.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    workspace_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    blueprint_version = Column(Integer, nullable=False, default=1)
+    build_plan_version = Column(Integer, nullable=False, default=1)
+    frontend_version = Column(Integer, nullable=False, default=0)
+    backend_version = Column(Integer, nullable=False, default=0)
+    ai_version = Column(Integer, nullable=False, default=0)
+    infrastructure_version = Column(Integer, nullable=False, default=0)
+    notes = Column(Text, nullable=True)
+    snapshot = Column(JSONB, nullable=False, default=dict)
+    created_by = Column(UUID(as_uuid=True), nullable=True)

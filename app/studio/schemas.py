@@ -782,3 +782,132 @@ class StudioInfrastructureGenerateResponse(BaseModel):
 class StudioInfrastructureUpdate(BaseModel):
     manifest: InfraManifest
     status: Optional[str] = None
+
+
+# ── Review Center & Build Approval (Phase 8) ──────────────────────────────────
+
+class ReviewArtifactStatus(BaseModel):
+    id: str
+    label: str
+    present: bool = False
+    version: Optional[int] = None
+    status: str = "missing"
+
+
+class ReviewArchitecture(BaseModel):
+    pages: List[str] = Field(default_factory=list)
+    routes: List[str] = Field(default_factory=list)
+    database: List[str] = Field(default_factory=list)
+    api: List[str] = Field(default_factory=list)
+    ai_providers: List[str] = Field(default_factory=list)
+    knowledge: Dict[str, Any] = Field(default_factory=dict)
+    rbac: List[str] = Field(default_factory=list)
+    deployment_targets: List[str] = Field(default_factory=list)
+    dependency_graph: List[Dict[str, Any]] = Field(default_factory=list)
+    modules: List[Dict[str, Any]] = Field(default_factory=list)
+
+
+class ReviewValidationIssue(BaseModel):
+    code: str
+    severity: str = "warn"  # info | warn | error
+    message: str
+    field: Optional[str] = None
+
+
+class BuildEstimate(BaseModel):
+    estimated_build_time: str = "2-4 weeks"
+    estimated_cost_usd: float = 0.0
+    complexity: str = "medium"
+    generated_files: int = 0
+    database_tables: int = 0
+    rest_apis: int = 0
+    workers: int = 0
+    background_jobs: int = 0
+    ai_cost_monthly_usd: float = 0.0
+    infrastructure_cost_monthly_usd: float = 0.0
+    monthly_run_cost_usd: float = 0.0
+    notes: List[str] = Field(default_factory=list)
+
+
+class RequiredSecretGroup(BaseModel):
+    id: str
+    label: str
+    keys: List[str] = Field(default_factory=list)
+    required: bool = False
+    reason: str = ""
+
+
+class ReviewManifest(BaseModel):
+    """Aggregated review — reuses existing manifests, no new planning."""
+
+    schema_version: int = 1
+    product_name: str = "Untitled product"
+    project_status: str = "draft"
+    industry: str = "general"
+    product_type: str = "saas"
+    ready_to_approve: bool = False
+    artifacts: List[ReviewArtifactStatus] = Field(default_factory=list)
+    architecture: ReviewArchitecture = Field(default_factory=ReviewArchitecture)
+    validation: List[ReviewValidationIssue] = Field(default_factory=list)
+    estimate: BuildEstimate = Field(default_factory=BuildEstimate)
+    required_secrets: List[RequiredSecretGroup] = Field(default_factory=list)
+    summaries: Dict[str, Any] = Field(default_factory=dict)
+    versions: Dict[str, Optional[int]] = Field(default_factory=dict)
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+    note: str = ""
+
+    model_config = {"extra": "allow"}
+
+
+class StudioReviewResponse(BaseModel):
+    project: StudioProjectResponse
+    review: ReviewManifest
+
+
+class StudioApproveRequest(BaseModel):
+    notes: Optional[str] = Field(None, max_length=4000)
+
+
+class StudioApprovalRecord(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    blueprint_version: int
+    build_plan_version: int
+    frontend_version: int
+    backend_version: int
+    ai_version: int
+    infrastructure_version: int
+    notes: Optional[str] = None
+    snapshot: Dict[str, Any] = Field(default_factory=dict)
+    created_by: Optional[UUID] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioApproveResponse(BaseModel):
+    project: StudioProjectResponse
+    approval: StudioApprovalRecord
+    review: ReviewManifest
+
+
+class StudioExportRequest(BaseModel):
+    kind: str = "review"  # review | blueprint | build_plan
+    format: str = "json"  # json | markdown | pdf
+
+
+class StudioExportResponse(BaseModel):
+    kind: str
+    format: str
+    filename: str
+    content_type: str
+    encoding: str
+    content: str
+
+
+class StudioReviewExportKind(str, enum.Enum):
+    REVIEW = "review"
+    BLUEPRINT = "blueprint"
+    BUILD_PLAN = "build_plan"

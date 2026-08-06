@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from typing import Optional
+
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
@@ -14,6 +16,8 @@ from app.studio.schemas import (
     StudioAiResponse,
     StudioAiUpdate,
     StudioAnalyzeResponse,
+    StudioApproveRequest,
+    StudioApproveResponse,
     StudioBackendGenerateResponse,
     StudioBackendResponse,
     StudioBackendUpdate,
@@ -22,6 +26,8 @@ from app.studio.schemas import (
     StudioBlueprintVersionList,
     StudioBuildPlanResponse,
     StudioComposeResponse,
+    StudioExportRequest,
+    StudioExportResponse,
     StudioFrontendGenerateResponse,
     StudioFrontendResponse,
     StudioFrontendUpdate,
@@ -31,6 +37,7 @@ from app.studio.schemas import (
     StudioProjectCreate,
     StudioProjectListResponse,
     StudioProjectResponse,
+    StudioReviewResponse,
 )
 from app.studio.service import StudioService
 
@@ -356,3 +363,44 @@ def put_infrastructure(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.update_infrastructure(user, project_id, payload)
+
+
+@router.get(
+    "/projects/{project_id}/review",
+    response_model=StudioReviewResponse,
+    summary="Aggregated Review Center (no codegen / no deploy)",
+)
+def get_review(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_review(user, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/approve",
+    response_model=StudioApproveResponse,
+    summary="Approve build plan (locks planning — does not generate source or deploy)",
+)
+def approve_build(
+    project_id: UUID,
+    payload: Optional[StudioApproveRequest] = None,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.approve_build(user, project_id, payload or StudioApproveRequest())
+
+
+@router.post(
+    "/projects/{project_id}/export",
+    response_model=StudioExportResponse,
+    summary="Export review, blueprint, or build plan (json | markdown | pdf)",
+)
+def export_project(
+    project_id: UUID,
+    payload: StudioExportRequest,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.export_project(user, project_id, payload)

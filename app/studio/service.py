@@ -19,6 +19,7 @@ from app.studio.frontend_generator import generate_frontend_manifest
 from app.studio.backend_generator import generate_backend_manifest
 from app.studio.ai_generator import generate_ai_manifest
 from app.studio.infrastructure_generator import generate_infrastructure_manifest
+from app.studio.review import build_review_manifest, can_approve, export_review_payload
 from app.studio.models import (
     StudioProject,
     StudioProjectBlueprint,
@@ -27,6 +28,7 @@ from app.studio.models import (
     StudioProjectBackend,
     StudioProjectAi,
     StudioProjectInfrastructure,
+    StudioProjectApproval,
     StudioProjectStatus,
 )
 from app.studio.repository import StudioRepository
@@ -45,6 +47,9 @@ from app.studio.schemas import (
     StudioAiGenerateResponse,
     StudioAiResponse,
     StudioAiUpdate,
+    StudioApproveRequest,
+    StudioApproveResponse,
+    StudioApprovalRecord,
     StudioBackendGenerateResponse,
     StudioBackendResponse,
     StudioBackendUpdate,
@@ -54,6 +59,8 @@ from app.studio.schemas import (
     StudioBlueprintVersionSummary,
     StudioBuildPlanResponse,
     StudioComposeResponse,
+    StudioExportRequest,
+    StudioExportResponse,
     StudioFrontendGenerateResponse,
     StudioFrontendResponse,
     StudioFrontendUpdate,
@@ -62,6 +69,7 @@ from app.studio.schemas import (
     StudioInfrastructureUpdate,
     StudioProjectCreate,
     StudioProjectResponse,
+    StudioReviewResponse,
 )
 
 
@@ -864,6 +872,161 @@ class StudioService:
         )
         saved = self.repo.create_infrastructure(row)
         return _infrastructure_response(saved)
+
+    def _load_review_context(self, project: StudioProject):
+        bp_row = self.repo.get_current_blueprint(project.id, project.workspace_id)
+        plan_row = self.repo.get_current_build_plan(project.id, project.workspace_id)
+        fe_row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        be_row = self.repo.get_current_backend(project.id, project.workspace_id)
+        ai_row = self.repo.get_current_ai(project.id, project.workspace_id)
+        infra_row = self.repo.get_current_infrastructure(project.id, project.workspace_id)
+        return bp_row, plan_row, fe_row, be_row, ai_row, infra_row
+
+    def _build_review_for_project(self, project: StudioProject):
+        bp_row, plan_row, fe_row, be_row, ai_row, infra_row = self._load_review_context(
+            project
+        )
+        if not bp_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No blueprint — run Generate Blueprint first",
+            )
+        blueprint = ProductBlueprint.model_validate(bp_row.blueprint or {})
+        modules: List[ComposedModule] = []
+        dependency_graph: List[DependencyEdge] = []
+        build_plan_version = None
+        if plan_row:
+            modules = [ComposedModule.model_validate(m) for m in (plan_row.modules or [])]
+            dependency_graph = [
+                DependencyEdge.model_validate(e) for e in (plan_row.dependency_graph or [])
+            ]
+            build_plan_version = plan_row.version
+        frontend = (
+            FrontendManifest.model_validate(fe_row.manifest or {}) if fe_row else None
+        )
+        backend = (
+            BackendManifest.model_validate(be_row.manifest or {}) if be_row else None
+        )
+        ai = AiManifest.model_validate(ai_row.manifest or {}) if ai_row else None
+        infra = (
+            InfraManifest.model_validate(infra_row.manifest or {}) if infra_row else None
+        )
+        status_value = (
+            project.status.value
+            if hasattr(project.status, "value")
+            else str(project.status)
+        )
+        review = build_review_manifest(
+            project_title=project.title or "Untitled product",
+            project_status=status_value,
+            blueprint=blueprint,
+            modules=modules,
+            dependency_graph=dependency_graph,
+            frontend=frontend,
+            backend=backend,
+            ai=ai,
+            infra=infra,
+            blueprint_version=bp_row.version,
+            build_plan_version=build_plan_version,
+            frontend_version=fe_row.version if fe_row else None,
+            frontend_status=fe_row.status if fe_row else None,
+            backend_version=be_row.version if be_row else None,
+            backend_status=be_row.status if be_row else None,
+            ai_version=ai_row.version if ai_row else None,
+            ai_status=ai_row.status if ai_row else None,
+            infra_version=infra_row.version if infra_row else None,
+            infra_status=infra_row.status if infra_row else None,
+        )
+        return review, bp_row, plan_row, fe_row, be_row, ai_row, infra_row
+
+    def get_review(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioReviewResponse:
+        """Aggregate all Studio manifests into a review (no codegen / no deploy)."""
+        project = self.get(user, project_id)
+        review, *_ = self._build_review_for_project(project)
+        return StudioReviewResponse(
+            project=StudioProjectResponse.model_validate(project),
+            review=review,
+        )
+
+    def approve_build(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        payload: Optional[StudioApproveRequest] = None,
+    ) -> StudioApproveResponse:
+        """Final build approval — locks planning; does not generate source or deploy."""
+        project = self.get(user, project_id)
+        review, bp_row, plan_row, fe_row, be_row, ai_row, infra_row = (
+            self._build_review_for_project(project)
+        )
+        ok, reason = can_approve(review)
+        if not ok:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Cannot approve build — {reason}",
+            )
+        notes = (payload.notes if payload else None) or None
+        row = StudioProjectApproval(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            blueprint_version=bp_row.version if bp_row else 0,
+            build_plan_version=plan_row.version if plan_row else 0,
+            frontend_version=fe_row.version if fe_row else 0,
+            backend_version=be_row.version if be_row else 0,
+            ai_version=ai_row.version if ai_row else 0,
+            infrastructure_version=infra_row.version if infra_row else 0,
+            notes=notes,
+            snapshot=review.model_dump(mode="json"),
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_approval(row)
+        project.status = StudioProjectStatus.COMPLETED
+        self.repo.save_project(project)
+        return StudioApproveResponse(
+            project=StudioProjectResponse.model_validate(project),
+            approval=StudioApprovalRecord.model_validate(saved),
+            review=review,
+        )
+
+    def export_project(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        payload: StudioExportRequest,
+    ) -> StudioExportResponse:
+        """Export review / blueprint / build plan as JSON, Markdown, or PDF."""
+        project = self.get(user, project_id)
+        review, bp_row, plan_row, *_rest = self._build_review_for_project(project)
+        blueprint = (
+            ProductBlueprint.model_validate(bp_row.blueprint or {}) if bp_row else None
+        )
+        build_plan = None
+        if plan_row:
+            build_plan = {
+                "version": plan_row.version,
+                "blueprint_version": plan_row.blueprint_version,
+                "modules": plan_row.modules or [],
+                "dependency_graph": plan_row.dependency_graph or [],
+                "dependency_tree": plan_row.dependency_tree or [],
+                "build_plan": plan_row.build_plan or [],
+                "summary": plan_row.summary or {},
+            }
+        try:
+            exported = export_review_payload(
+                review=review,
+                kind=payload.kind,
+                format=payload.format,
+                blueprint=blueprint,
+                build_plan=build_plan,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(exc),
+            ) from exc
+        return StudioExportResponse(**exported)
 
     @staticmethod
     def project_response(project: StudioProject) -> StudioProjectResponse:

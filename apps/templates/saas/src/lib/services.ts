@@ -1270,6 +1270,21 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioInfrastructure>(`/studio/projects/${id}/infrastructure`, {
       method: "PUT",
       body
+    }),
+  getReview: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioReviewResult>(`/studio/projects/${id}/review`),
+  approveBuild: (id: string, body?: { notes?: string }) =>
+    api.apiV2<import("@/lib/studio").StudioApproveResult>(`/studio/projects/${id}/approve`, {
+      method: "POST",
+      body: body || {}
+    }),
+  exportProject: (
+    id: string,
+    body: { kind?: string; format?: string }
+  ) =>
+    api.apiV2<import("@/lib/studio").StudioExportResult>(`/studio/projects/${id}/export`, {
+      method: "POST",
+      body: { kind: body.kind || "review", format: body.format || "json" }
     })
 };
 

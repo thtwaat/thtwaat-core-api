@@ -566,6 +566,96 @@ export type StudioInfrastructureGenerateResult = {
   infrastructure: StudioInfrastructure;
 };
 
+export type ReviewManifest = {
+  schema_version: number;
+  product_name: string;
+  project_status: string;
+  industry: string;
+  product_type: string;
+  ready_to_approve: boolean;
+  artifacts: Array<{
+    id: string;
+    label: string;
+    present: boolean;
+    version?: number | null;
+    status: string;
+  }>;
+  architecture: {
+    pages: string[];
+    routes: string[];
+    database: string[];
+    api: string[];
+    ai_providers: string[];
+    knowledge: Record<string, unknown>;
+    rbac: string[];
+    deployment_targets: string[];
+    dependency_graph: Array<{ key: string; label?: string; depends_on?: string[] }>;
+    modules: Array<{ key: string; label: string; kind: string }>;
+  };
+  validation: Array<{
+    code: string;
+    severity: string;
+    message: string;
+    field?: string | null;
+  }>;
+  estimate: {
+    estimated_build_time: string;
+    estimated_cost_usd: number;
+    complexity: string;
+    generated_files: number;
+    database_tables: number;
+    rest_apis: number;
+    workers: number;
+    background_jobs: number;
+    ai_cost_monthly_usd: number;
+    infrastructure_cost_monthly_usd: number;
+    monthly_run_cost_usd: number;
+    notes: string[];
+  };
+  required_secrets: Array<{
+    id: string;
+    label: string;
+    keys: string[];
+    required: boolean;
+    reason: string;
+  }>;
+  summaries: Record<string, unknown>;
+  versions: Record<string, number | null | undefined>;
+  warnings: BlueprintWarning[];
+  note: string;
+};
+
+export type StudioReviewResult = {
+  project: StudioProject;
+  review: ReviewManifest;
+};
+
+export type StudioApproveResult = {
+  project: StudioProject;
+  approval: {
+    id: string;
+    project_id: string;
+    blueprint_version: number;
+    build_plan_version: number;
+    frontend_version: number;
+    backend_version: number;
+    ai_version: number;
+    infrastructure_version: number;
+    notes?: string | null;
+    created_at: string;
+  };
+  review: ReviewManifest;
+};
+
+export type StudioExportResult = {
+  kind: string;
+  format: string;
+  filename: string;
+  content_type: string;
+  encoding: string;
+  content: string;
+};
+
 export function moduleKindLabel(kind: ModuleKind | string): string {
   if (kind === "existing_module") return "Existing";
   if (kind === "marketplace_template") return "Marketplace";
@@ -641,6 +731,7 @@ export const STUDIO_TIPS = [
   "Generate Backend builds API/DB/RBAC/queue manifests — reuses platform modules, no source yet.",
   "Generate AI plans agents, prompts, tools, and providers on the existing AI Gateway — no duplicate runtime.",
   "Generate Infrastructure plans Docker/Compose/Nginx/Redis/Postgres/Workers — planning only, no deploy.",
+  "Review Center combines all manifests — Approve Build locks planning without generating source or deploying.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 
