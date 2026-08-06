@@ -16,6 +16,9 @@ from app.studio.schemas import (
     StudioBlueprintVersionList,
     StudioBuildPlanResponse,
     StudioComposeResponse,
+    StudioFrontendGenerateResponse,
+    StudioFrontendResponse,
+    StudioFrontendUpdate,
     StudioProjectCreate,
     StudioProjectListResponse,
     StudioProjectResponse,
@@ -184,3 +187,43 @@ def get_build_plan(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.get_build_plan(user, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/generate/frontend",
+    response_model=StudioFrontendGenerateResponse,
+    summary="Generate frontend preview manifest from build plan (no codegen / no deploy)",
+)
+def generate_frontend(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.generate_frontend(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/frontend",
+    response_model=StudioFrontendResponse,
+    summary="Get current frontend preview manifest",
+)
+def get_frontend(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_frontend(user, project_id)
+
+
+@router.put(
+    "/projects/{project_id}/frontend",
+    response_model=StudioFrontendResponse,
+    summary="Save edited frontend manifest (edit before approval)",
+)
+def put_frontend(
+    project_id: UUID,
+    payload: StudioFrontendUpdate,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.update_frontend(user, project_id, payload)

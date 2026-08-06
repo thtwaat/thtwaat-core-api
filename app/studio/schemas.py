@@ -214,3 +214,136 @@ class StudioBuildPlanResponse(BaseModel):
 class StudioComposeResponse(BaseModel):
     project: StudioProjectResponse
     build_plan: StudioBuildPlanResponse
+
+
+# ── Frontend Generator (Phase 4) ──────────────────────────────────────────────
+
+class FrontendReuseRef(BaseModel):
+    kind: str = "existing_page"  # existing_page | layout | component | existing_form
+    path: str
+    route: Optional[str] = None
+    module_key: Optional[str] = None
+    component: Optional[str] = None
+
+
+class FrontendFormField(BaseModel):
+    name: str
+    type: str = "string"  # string | email | password | number | date | datetime | select | textarea | uuid
+    required: bool = False
+    label: str = ""
+    list_column: bool = False
+
+
+class FrontendFormSpec(BaseModel):
+    id: str
+    page_id: str
+    title: str
+    reuse: bool = False
+    fields: List[FrontendFormField] = Field(default_factory=list)
+    submit_label: str = "Save"
+
+
+class FrontendCrudSpec(BaseModel):
+    entity: str
+    table: str
+    operations: List[str] = Field(default_factory=lambda: ["list", "create", "update", "delete"])
+    fields: List[FrontendFormField] = Field(default_factory=list)
+    table_columns: List[str] = Field(default_factory=list)
+    form_id: Optional[str] = None
+
+
+class FrontendNavItem(BaseModel):
+    id: str
+    label: str
+    route: str
+    icon: str = "LayoutDashboard"
+    page_id: str
+    reuse: bool = True
+
+
+class FrontendRoute(BaseModel):
+    path: str
+    page_id: str
+    layout: str = "app"
+    auth: str = "session"  # public | session
+    reuse: bool = True
+
+
+class FrontendPageSpec(BaseModel):
+    id: str
+    title: str
+    kind: str = "reuse"  # reuse | generated_spec
+    route: str
+    layout: str = "app"
+    auth: str = "session"
+    module_key: Optional[str] = None
+    reuse: Optional[FrontendReuseRef] = None
+    reason: str = ""
+    responsive: bool = True
+    cards: List[Dict[str, Any]] = Field(default_factory=list)
+    crud: Optional[FrontendCrudSpec] = None
+    layout_slots: List[str] = Field(default_factory=list)
+    preview: Dict[str, Any] = Field(default_factory=dict)
+
+
+class FrontendSummary(BaseModel):
+    page_count: int = 0
+    reuse_page_count: int = 0
+    generated_page_count: int = 0
+    nav_item_count: int = 0
+    route_count: int = 0
+    form_count: int = 0
+    reuse_percent: float = 0.0
+    estimated_custom_work: str = "none"
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+
+
+class FrontendManifest(BaseModel):
+    """Production-ready frontend preview plan — no Next.js source emission."""
+
+    schema_version: int = 1
+    product_name: str = "Untitled product"
+    industry: str = "general"
+    product_type: str = "saas"
+    theme: Dict[str, Any] = Field(default_factory=dict)
+    layouts: List[Dict[str, Any]] = Field(default_factory=list)
+    design_system: Dict[str, str] = Field(default_factory=dict)
+    nav: List[FrontendNavItem] = Field(default_factory=list)
+    routes: List[FrontendRoute] = Field(default_factory=list)
+    pages: List[FrontendPageSpec] = Field(default_factory=list)
+    forms: List[FrontendFormSpec] = Field(default_factory=list)
+    dashboard_cards: List[Dict[str, Any]] = Field(default_factory=list)
+    responsive: Dict[str, Any] = Field(default_factory=dict)
+    summary: FrontendSummary = Field(default_factory=FrontendSummary)
+    traceability: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+
+    model_config = {"extra": "allow"}
+
+
+class StudioFrontendResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    blueprint_version: int
+    build_plan_version: int
+    version: int
+    is_current: bool
+    status: str = "draft"  # draft | approved
+    manifest: FrontendManifest
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioFrontendGenerateResponse(BaseModel):
+    project: StudioProjectResponse
+    frontend: StudioFrontendResponse
+
+
+class StudioFrontendUpdate(BaseModel):
+    """Allow editing the frontend manifest before approval."""
+
+    manifest: FrontendManifest
+    status: Optional[str] = None  # draft | approved

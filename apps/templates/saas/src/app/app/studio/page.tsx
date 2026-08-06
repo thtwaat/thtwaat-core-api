@@ -12,6 +12,7 @@ import {
   LayoutTemplate,
   Lightbulb,
   Loader2,
+  MonitorSmartphone,
   RotateCcw,
   Save,
   Sparkles,
@@ -32,9 +33,11 @@ import {
   studioStatusLabel,
   studioStatusTone,
   warningTone,
+  type FrontendManifest,
   type ProductBlueprint,
   type StudioBlueprint,
-  type StudioBuildPlan
+  type StudioBuildPlan,
+  type StudioFrontend
 } from "@/lib/studio";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge, Card } from "@/components/ui/card";
@@ -111,6 +114,15 @@ export default function StudioPage() {
     retry: false
   });
 
+  const frontendQ = useQuery({
+    queryKey: ["studio-frontend", selected?.id],
+    queryFn: () => studioApi.getFrontend(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false
+  });
+
+  const [frontendDraft, setFrontendDraft] = useState<FrontendManifest | null>(null);
+
   useEffect(() => {
     if (blueprintQ.data?.blueprint) {
       setDraft(blueprintQ.data.blueprint);
@@ -118,6 +130,14 @@ export default function StudioPage() {
       setDraft(EMPTY_BLUEPRINT);
     }
   }, [blueprintQ.data, blueprintQ.isError, selected?.id]);
+
+  useEffect(() => {
+    if (frontendQ.data?.manifest) {
+      setFrontendDraft(frontendQ.data.manifest);
+    } else if (frontendQ.isError) {
+      setFrontendDraft(null);
+    }
+  }, [frontendQ.data, frontendQ.isError, selected?.id]);
 
   const createM = useMutation({
     mutationFn: () => studioApi.create({ prompt }),
@@ -199,6 +219,38 @@ export default function StudioPage() {
       toast.error(err instanceof ApiError || err instanceof Error ? err.message : "Compose failed")
   });
 
+  const generateFrontendM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.generateFrontend(selected.id);
+    },
+    onSuccess: (result) => {
+      toast.success(
+        `Frontend v${result.frontend.version} · ${result.frontend.manifest.summary.reuse_percent}% UI reuse`
+      );
+      setFrontendDraft(result.frontend.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-projects"] });
+      void qc.invalidateQueries({ queryKey: ["studio-frontend", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(
+        err instanceof ApiError || err instanceof Error ? err.message : "Frontend generate failed"
+      )
+  });
+
+  const saveFrontendM = useMutation({
+    mutationFn: (status?: string) => {
+      if (!selected?.id || !frontendDraft) throw new Error("No frontend to save");
+      return studioApi.saveFrontend(selected.id, { manifest: frontendDraft, status });
+    },
+    onSuccess: (row) => {
+      toast.success(`Frontend saved as v${row.version} (${row.status})`);
+      setFrontendDraft(row.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-frontend", selected?.id] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Save frontend failed")
+  });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => studioApi.remove(id),
     onSuccess: (_, id) => {
@@ -211,9 +263,12 @@ export default function StudioPage() {
 
   const currentBlueprint: StudioBlueprint | undefined = blueprintQ.data;
   const buildPlan: StudioBuildPlan | undefined = buildPlanQ.data;
+  const frontendRow: StudioFrontend | undefined = frontendQ.data;
+  const frontend = frontendDraft;
   const warnings = currentBlueprint?.warnings || [];
   const recommendations = currentBlueprint?.recommendations;
   const composeWarnings = buildPlan?.summary?.warnings || [];
+  const frontendWarnings = frontend?.warnings || frontend?.summary?.warnings || [];
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -224,14 +279,15 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 3
+          THTWAAT Studio · Phase 4
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Template Registry & Module Composer
+          Frontend Generator
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          Map an approved blueprint onto existing Auth, Billing, AI Gateway, Marketplace, Knowledge,
-          Agents, Publisher, and Admin — no frontend/backend codegen, no deploy.
+          Turn an approved build plan into a production-ready frontend preview — navigation, routes,
+          dashboard cards, CRUD screens — reusing Dashboard, Auth, Billing, Agents, Marketplace, and
+          Admin. No backend codegen. No deploy.
         </p>
       </section>
 
@@ -296,6 +352,23 @@ export default function StudioPage() {
                 <>
                   <Boxes className="mr-2 h-4 w-4" />
                   Compose Modules
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={() => generateFrontendM.mutate()}
+              disabled={!selected || !buildPlan || generateFrontendM.isPending}
+              className="bg-indigo-700 text-white hover:bg-indigo-600"
+            >
+              {generateFrontendM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <MonitorSmartphone className="mr-2 h-4 w-4" />
+                  Generate Frontend
                 </>
               )}
             </Button>
@@ -643,6 +716,186 @@ export default function StudioPage() {
             {composeWarnings.map((w) => (
               <li
                 key={`compose-${w.code}-${w.message}`}
+                className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+              >
+                <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>
+                <span className="text-slate-200">{w.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Frontend preview */}
+      <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Frontend preview</h2>
+            <p className="text-sm text-slate-400">
+              {frontend && frontendRow
+                ? `v${frontendRow.version} · ${frontendRow.status} · ${frontend.summary.reuse_percent}% UI reuse · custom: ${frontend.summary.estimated_custom_work}`
+                : "Compose Modules, then Generate Frontend for a live preview manifest"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={!frontend || saveFrontendM.isPending}
+              onClick={() => saveFrontendM.mutate("draft")}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              Save draft
+            </Button>
+            <Button
+              className="bg-teal-600 text-white hover:bg-teal-500"
+              disabled={!frontend || saveFrontendM.isPending}
+              onClick={() => saveFrontendM.mutate("approved")}
+            >
+              Approve frontend
+            </Button>
+          </div>
+        </div>
+
+        {!frontend ? (
+          <EmptyState
+            title="No frontend yet"
+            description="Generate Frontend after a build plan to preview nav, routes, cards, and CRUD screens."
+          />
+        ) : (
+          <div className="space-y-6">
+            {/* Responsive preview chrome */}
+            <div className="overflow-hidden rounded-2xl border border-slate-700 bg-slate-950">
+              <div className="flex items-center gap-2 border-b border-slate-800 px-4 py-2 text-xs text-slate-400">
+                <MonitorSmartphone className="h-3.5 w-3.5" />
+                Preview · AppShell · sm/md/lg responsive
+              </div>
+              <div className="grid md:grid-cols-[200px_1fr]">
+                <aside className="border-b border-slate-800 bg-slate-900/80 p-3 md:border-b-0 md:border-r">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                    Navigation
+                  </p>
+                  <ul className="space-y-1">
+                    {frontend.nav.map((item) => (
+                      <li key={item.id}>
+                        <div className="flex items-center justify-between rounded-lg px-2 py-1.5 text-sm text-slate-200 hover:bg-slate-800">
+                          <span>{item.label}</span>
+                          {item.reuse && <Badge tone="success">reuse</Badge>}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                </aside>
+                <div className="p-4">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Dashboard cards
+                  </p>
+                  <div className="mt-2 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    {frontend.dashboard_cards.map((card) => (
+                      <div
+                        key={String(card.id)}
+                        className="rounded-xl border border-slate-800 bg-slate-900/70 p-3"
+                      >
+                        <p className="text-xs text-slate-500">{String(card.type || "card")}</p>
+                        <p className="mt-1 font-medium text-slate-100">{String(card.title)}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid gap-6 xl:grid-cols-3">
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-white">Pages</h3>
+                <ul className="max-h-72 space-y-2 overflow-y-auto">
+                  {frontend.pages.map((p) => (
+                    <li
+                      key={p.id}
+                      className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="font-medium text-slate-100">{p.title}</span>
+                        <Badge tone={p.kind === "reuse" ? "success" : "warn"}>
+                          {p.kind === "reuse" ? "Existing" : "CRUD"}
+                        </Badge>
+                      </div>
+                      <p className="mt-1 font-mono text-xs text-slate-500">{p.route}</p>
+                      <input
+                        className="mt-2 w-full rounded-lg border border-slate-700 bg-slate-950 px-2 py-1 text-xs text-slate-200"
+                        value={p.title}
+                        onChange={(e) => {
+                          const title = e.target.value;
+                          setFrontendDraft((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  pages: prev.pages.map((x) =>
+                                    x.id === p.id ? { ...x, title } : x
+                                  ),
+                                  nav: prev.nav.map((n) =>
+                                    n.page_id === p.id ? { ...n, label: title } : n
+                                  )
+                                }
+                              : prev
+                          );
+                        }}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-white">Routes</h3>
+                <ul className="max-h-72 space-y-2 overflow-y-auto font-mono text-xs text-slate-300">
+                  {frontend.routes.map((r) => (
+                    <li
+                      key={r.path}
+                      className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                    >
+                      <span className="text-teal-300">{r.path}</span>
+                      <div className="mt-1 text-slate-500">
+                        {r.layout} · {r.auth}
+                        {r.reuse ? " · reuse" : " · generated"}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-white">Forms / CRUD</h3>
+                <ul className="max-h-72 space-y-2 overflow-y-auto text-sm">
+                  {frontend.pages
+                    .filter((p) => p.crud)
+                    .map((p) => (
+                      <li
+                        key={`crud-${p.id}`}
+                        className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                      >
+                        <p className="font-medium text-slate-100">{p.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          {p.crud?.operations.join(", ")} · {p.crud?.table}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-400">
+                          Fields: {(p.crud?.table_columns || []).join(", ") || "—"}
+                        </p>
+                      </li>
+                    ))}
+                  {frontend.pages.every((p) => !p.crud) && (
+                    <li className="text-sm text-slate-500">No custom CRUD — full UI reuse.</li>
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {frontendWarnings.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {frontendWarnings.map((w) => (
+              <li
+                key={`fe-${w.code}-${w.message}`}
                 className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
               >
                 <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>

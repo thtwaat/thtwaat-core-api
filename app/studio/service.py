@@ -15,10 +15,12 @@ from app.studio.architect import (
     validate_blueprint,
 )
 from app.studio.composer import compose_blueprint
+from app.studio.frontend_generator import generate_frontend_manifest
 from app.studio.models import (
     StudioProject,
     StudioProjectBlueprint,
     StudioProjectBuildPlan,
+    StudioProjectFrontend,
     StudioProjectStatus,
 )
 from app.studio.repository import StudioRepository
@@ -29,6 +31,7 @@ from app.studio.schemas import (
     BuildPlanSummary,
     ComposedModule,
     DependencyEdge,
+    FrontendManifest,
     ProductBlueprint,
     StudioBlueprintResponse,
     StudioBlueprintUpdate,
@@ -36,6 +39,9 @@ from app.studio.schemas import (
     StudioBlueprintVersionSummary,
     StudioBuildPlanResponse,
     StudioComposeResponse,
+    StudioFrontendGenerateResponse,
+    StudioFrontendResponse,
+    StudioFrontendUpdate,
     StudioProjectCreate,
     StudioProjectResponse,
 )
@@ -82,6 +88,22 @@ def _build_plan_response(row: StudioProjectBuildPlan) -> StudioBuildPlanResponse
         dependency_tree=list(row.dependency_tree or []),
         build_plan=[BuildPlanStep.model_validate(s) for s in (row.build_plan or [])],
         summary=BuildPlanSummary.model_validate(row.summary or {}),
+        created_at=row.created_at,
+        updated_at=row.updated_at,
+    )
+
+
+def _frontend_response(row: StudioProjectFrontend) -> StudioFrontendResponse:
+    return StudioFrontendResponse(
+        id=row.id,
+        project_id=row.project_id,
+        workspace_id=row.workspace_id,
+        blueprint_version=row.blueprint_version,
+        build_plan_version=row.build_plan_version,
+        version=row.version,
+        is_current=row.is_current,
+        status=row.status or "draft",
+        manifest=FrontendManifest.model_validate(row.manifest or {}),
         created_at=row.created_at,
         updated_at=row.updated_at,
     )
@@ -302,6 +324,112 @@ class StudioService:
                 detail="No build plan yet — run Compose Modules first",
             )
         return _build_plan_response(row)
+
+    def generate_frontend(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioFrontendGenerateResponse:
+        """Generate frontend preview manifest from build plan (no codegen / no deploy)."""
+        project = self.get(user, project_id)
+        bp_row = self.repo.get_current_blueprint(project.id, project.workspace_id)
+        if not bp_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No blueprint — run Generate Blueprint first",
+            )
+        plan_row = self.repo.get_current_build_plan(project.id, project.workspace_id)
+        if not plan_row:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No build plan — run Compose Modules first",
+            )
+        blueprint = ProductBlueprint.model_validate(bp_row.blueprint or {})
+        modules = [ComposedModule.model_validate(m) for m in (plan_row.modules or [])]
+        project.status = StudioProjectStatus.BUILDING
+        self.repo.save_project(project)
+        try:
+            manifest = generate_frontend_manifest(
+                blueprint=blueprint,
+                modules=modules,
+                project_title=project.title,
+                blueprint_version=bp_row.version,
+                build_plan_version=plan_row.version,
+            )
+            self.repo.clear_current_frontends(project.id)
+            version = self.repo.next_frontend_version(project.id)
+            row = StudioProjectFrontend(
+                project_id=project.id,
+                workspace_id=project.workspace_id,
+                blueprint_version=bp_row.version,
+                build_plan_version=plan_row.version,
+                version=version,
+                is_current=True,
+                status="draft",
+                manifest=manifest.model_dump(mode="json"),
+                created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+            )
+            saved = self.repo.create_frontend(row)
+            # Stay approved — Phase 4 is preview only (no deploy / no backend)
+            project.status = StudioProjectStatus.APPROVED
+            self.repo.save_project(project)
+            return StudioFrontendGenerateResponse(
+                project=StudioProjectResponse.model_validate(project),
+                frontend=_frontend_response(saved),
+            )
+        except Exception as exc:
+            project.status = StudioProjectStatus.FAILED
+            self.repo.save_project(project)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Frontend generation failed: {exc}",
+            ) from exc
+
+    def get_frontend(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioFrontendResponse:
+        project = self.get(user, project_id)
+        row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No frontend yet — run Generate Frontend first",
+            )
+        return _frontend_response(row)
+
+    def update_frontend(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        payload: StudioFrontendUpdate,
+    ) -> StudioFrontendResponse:
+        """Save edited frontend manifest as a new version (edit before approval)."""
+        project = self.get(user, project_id)
+        current = self.repo.get_current_frontend(project.id, project.workspace_id)
+        if not current:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No frontend yet — run Generate Frontend first",
+            )
+        status_value = (payload.status or current.status or "draft").strip().lower()
+        if status_value not in {"draft", "approved"}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Frontend status must be draft or approved",
+            )
+        self.repo.clear_current_frontends(project.id)
+        version = self.repo.next_frontend_version(project.id)
+        row = StudioProjectFrontend(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            blueprint_version=current.blueprint_version,
+            build_plan_version=current.build_plan_version,
+            version=version,
+            is_current=True,
+            status=status_value,
+            manifest=payload.manifest.model_dump(mode="json"),
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_frontend(row)
+        return _frontend_response(saved)
 
     @staticmethod
     def project_response(project: StudioProject) -> StudioProjectResponse:

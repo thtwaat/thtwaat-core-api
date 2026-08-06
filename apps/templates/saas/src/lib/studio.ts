@@ -164,6 +164,107 @@ export type StudioComposeResult = {
   build_plan: StudioBuildPlan;
 };
 
+export type FrontendFormField = {
+  name: string;
+  type: string;
+  required: boolean;
+  label: string;
+  list_column?: boolean;
+};
+
+export type FrontendNavItem = {
+  id: string;
+  label: string;
+  route: string;
+  icon: string;
+  page_id: string;
+  reuse: boolean;
+};
+
+export type FrontendRoute = {
+  path: string;
+  page_id: string;
+  layout: string;
+  auth: string;
+  reuse: boolean;
+};
+
+export type FrontendPageSpec = {
+  id: string;
+  title: string;
+  kind: "reuse" | "generated_spec" | string;
+  route: string;
+  layout: string;
+  auth: string;
+  module_key?: string | null;
+  reuse?: {
+    kind: string;
+    path: string;
+    route?: string | null;
+    module_key?: string | null;
+  } | null;
+  reason: string;
+  responsive: boolean;
+  cards: Array<Record<string, unknown>>;
+  crud?: {
+    entity: string;
+    table: string;
+    operations: string[];
+    fields: FrontendFormField[];
+    table_columns: string[];
+  } | null;
+  layout_slots?: string[];
+  preview: Record<string, unknown>;
+};
+
+export type FrontendManifest = {
+  schema_version: number;
+  product_name: string;
+  industry: string;
+  product_type: string;
+  theme: Record<string, unknown>;
+  layouts: Array<Record<string, unknown>>;
+  design_system: Record<string, string>;
+  nav: FrontendNavItem[];
+  routes: FrontendRoute[];
+  pages: FrontendPageSpec[];
+  forms: Array<Record<string, unknown>>;
+  dashboard_cards: Array<Record<string, unknown>>;
+  responsive: Record<string, unknown>;
+  summary: {
+    page_count: number;
+    reuse_page_count: number;
+    generated_page_count: number;
+    nav_item_count: number;
+    route_count: number;
+    form_count: number;
+    reuse_percent: number;
+    estimated_custom_work: string;
+    warnings: BlueprintWarning[];
+  };
+  traceability: Record<string, unknown>;
+  warnings: BlueprintWarning[];
+};
+
+export type StudioFrontend = {
+  id: string;
+  project_id: string;
+  workspace_id: string;
+  blueprint_version: number;
+  build_plan_version: number;
+  version: number;
+  is_current: boolean;
+  status: string;
+  manifest: FrontendManifest;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudioFrontendGenerateResult = {
+  project: StudioProject;
+  frontend: StudioFrontend;
+};
+
 export function moduleKindLabel(kind: ModuleKind | string): string {
   if (kind === "existing_module") return "Existing";
   if (kind === "marketplace_template") return "Marketplace";
@@ -235,6 +336,7 @@ export const STUDIO_TIPS = [
   "Mention AI features (chat, RAG, booking) if you need an agent.",
   "Generate Blueprint uses the AI Gateway first; heuristic only if AI fails.",
   "Compose Modules maps the blueprint to Auth, Billing, AI, Marketplace — no codegen yet.",
+  "Generate Frontend builds a preview manifest that reuses Dashboard, Auth, Billing, Agents, and Admin UI.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 

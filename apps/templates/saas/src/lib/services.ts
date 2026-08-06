@@ -1215,7 +1215,22 @@ export const studioApi = {
       method: "POST"
     }),
   getBuildPlan: (id: string) =>
-    api.apiV2<import("@/lib/studio").StudioBuildPlan>(`/studio/projects/${id}/build-plan`)
+    api.apiV2<import("@/lib/studio").StudioBuildPlan>(`/studio/projects/${id}/build-plan`),
+  generateFrontend: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioFrontendGenerateResult>(
+      `/studio/projects/${id}/generate/frontend`,
+      { method: "POST" }
+    ),
+  getFrontend: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioFrontend>(`/studio/projects/${id}/frontend`),
+  saveFrontend: (
+    id: string,
+    body: { manifest: import("@/lib/studio").FrontendManifest; status?: string }
+  ) =>
+    api.apiV2<import("@/lib/studio").StudioFrontend>(`/studio/projects/${id}/frontend`, {
+      method: "PUT",
+      body
+    })
 };
 
 /** AI Gateway provider status — enterprise dashboard surface */
