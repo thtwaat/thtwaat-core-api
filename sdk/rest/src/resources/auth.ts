@@ -22,19 +22,15 @@ export class AuthResource {
     return this.http.get<Schemas["UserProfileResponse"]>("/api/v1/auth/me");
   }
 
-  sendOtp(body: unknown) {
-    return this.http.post("/api/v1/auth/send-otp", body);
-  }
-
-  verifyOtp(body: unknown) {
-    return this.http.post("/api/v1/auth/verify-otp", body);
-  }
-
-  forgotPassword(body: unknown) {
+  forgotPassword(body: { email: string }) {
     return this.http.post("/api/v1/auth/forgot-password", body);
   }
 
-  resetPassword(body: unknown) {
+  resetPassword(body: { token: string; new_password: string }) {
     return this.http.post("/api/v1/auth/reset-password", body);
+  }
+
+  google(body: { id_token: string }) {
+    return this.http.post<Schemas["TokenResponse"]>("/api/v1/auth/google", body);
   }
 }

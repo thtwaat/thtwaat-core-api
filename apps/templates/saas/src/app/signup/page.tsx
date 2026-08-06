@@ -9,7 +9,7 @@ import { AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { setTokens } from "@/lib/api";
-import { onboardingApi } from "@/lib/services";
+import { authApi, onboardingApi } from "@/lib/services";
 import { useAuth } from "@/lib/auth";
 import { signupSchema } from "@/lib/validators";
 import { clearOnboardingDraft, defaultOnboardingDraft, saveOnboardingDraft } from "@/lib/onboarding";
@@ -36,7 +36,7 @@ export default function SignupPage() {
           slug: values.company_slug,
           display_name: values.company_name
         },
-        send_verification: true
+        send_welcome_email: true
       });
       setTokens({
         access_token: started.access_token,
@@ -58,39 +58,52 @@ export default function SignupPage() {
     }
   }
 
+  function continueWithGoogle() {
+    window.location.href = authApi.googleStartUrl();
+  }
+
   return (
     <AuthShell title="Create workspace" subtitle="Company + owner account — then guided setup">
-      <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label>First name</Label>
-            <Input {...form.register("first_name")} />
-          </div>
-          <div>
-            <Label>Last name</Label>
-            <Input {...form.register("last_name")} />
-          </div>
-        </div>
-        <div>
-          <Label>Work email</Label>
-          <Input type="email" {...form.register("email")} />
-        </div>
-        <div>
-          <Label>Password</Label>
-          <Input type="password" {...form.register("password")} />
-        </div>
-        <div>
-          <Label>Company name</Label>
-          <Input {...form.register("company_name")} />
-        </div>
-        <div>
-          <Label>Company slug</Label>
-          <Input placeholder="acme-ai" {...form.register("company_slug")} />
-        </div>
-        <Button className="w-full" disabled={form.formState.isSubmitting}>
-          {form.formState.isSubmitting ? "Creating…" : "Create account"}
+      <div className="space-y-4">
+        <Button className="w-full" type="button" onClick={continueWithGoogle}>
+          Continue with Google
         </Button>
-      </form>
+        <div className="relative py-1 text-center text-xs text-muted">
+          <span className="bg-surface relative z-10 px-2">or create with email</span>
+          <span className="absolute inset-x-0 top-1/2 border-t border-line" />
+        </div>
+        <form className="space-y-3" onSubmit={form.handleSubmit(onSubmit)}>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label>First name</Label>
+              <Input {...form.register("first_name")} />
+            </div>
+            <div>
+              <Label>Last name</Label>
+              <Input {...form.register("last_name")} />
+            </div>
+          </div>
+          <div>
+            <Label>Work email</Label>
+            <Input type="email" {...form.register("email")} />
+          </div>
+          <div>
+            <Label>Password</Label>
+            <Input type="password" {...form.register("password")} />
+          </div>
+          <div>
+            <Label>Company name</Label>
+            <Input {...form.register("company_name")} />
+          </div>
+          <div>
+            <Label>Company slug</Label>
+            <Input placeholder="acme-ai" {...form.register("company_slug")} />
+          </div>
+          <Button className="w-full" variant="secondary" disabled={form.formState.isSubmitting}>
+            {form.formState.isSubmitting ? "Creating…" : "Create account"}
+          </Button>
+        </form>
+      </div>
       <p className="mt-4 text-center text-sm text-muted">
         Already have an account? <Link className="text-brand" href="/login">Sign in</Link>
       </p>

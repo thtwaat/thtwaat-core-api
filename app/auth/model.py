@@ -45,6 +45,8 @@ class RefreshToken(Base, TimestampMixin):
         return f"<RefreshToken id={self.id} user_id={self.user_id}>"
 
 class OTPPurpose(str, enum.Enum):
+    """Legacy enum retained for MFA lockout rows in ``otp_codes`` only."""
+
     REGISTER = "REGISTER"
     LOGIN = "LOGIN"
     PASSWORD_RESET = "PASSWORD_RESET"
@@ -52,22 +54,25 @@ class OTPPurpose(str, enum.Enum):
     PHONE_VERIFY = "PHONE_VERIFY"
     MFA = "MFA"
 
+
 class OTPCode(Base, TimestampMixin):
+    """Internal MFA attempt lockout records (email OTP delivery removed)."""
+
     __tablename__ = "otp_codes"
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True, nullable=False)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=True, index=True)
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
-    
+
     email = Column(String(255), nullable=True, index=True)
     phone = Column(String(50), nullable=True, index=True)
-    
+
     purpose = Column(SAEnum(OTPPurpose, name="otp_purpose_enum"), nullable=False)
     otp_hash = Column(String(255), nullable=False)
-    
+
     expires_at = Column(DateTime(timezone=True), nullable=False)
     verified_at = Column(DateTime(timezone=True), nullable=True)
-    
+
     attempts = Column(Integer, default=0, nullable=False)
     is_used = Column(Boolean, default=False, nullable=False)
 
@@ -76,6 +81,28 @@ class OTPCode(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<OTPCode id={self.id} purpose={self.purpose} email={self.email} phone={self.phone}>"
+
+
+class PasswordResetToken(Base, TimestampMixin):
+    """One-time password reset link tokens (email OTP removed)."""
+
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True, nullable=False)
+    user_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    token_hash = Column(String(64), unique=True, nullable=False, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User", backref="password_reset_tokens")
+
+    def __repr__(self) -> str:
+        return f"<PasswordResetToken id={self.id} user_id={self.user_id}>"
 
 class MFASettings(Base, TimestampMixin):
     """

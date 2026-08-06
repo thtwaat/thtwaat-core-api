@@ -39,7 +39,7 @@ def test_normalize_ai_blueprint_preserves_ai_fields():
         "database_tables": ["users", "patients", "appointments", "invoices", "agents"],
         "roles": ["company_owner", "admin", "doctor", "patient"],
         "permissions": ["patients:read", "billing:manage"],
-        "authentication": {"methods": ["email_password", "otp"], "mfa": True, "jwt": True, "rbac": True},
+        "authentication": {"methods": ["email_password", "google_oauth"], "mfa": True, "jwt": True, "rbac": True},
         "billing": {"enabled": True, "plans": ["starter", "pro"], "metering": True},
         "payments": {"providers": ["stripe", "razorpay"], "region_pricing": True},
         "ai_features": ["chat", "rag", "appointment_assistant", "memory"],

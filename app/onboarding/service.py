@@ -107,13 +107,16 @@ class OnboardingService:
         )
 
         now = datetime.now(timezone.utc)
-        completed = [OnboardingStep.CREATE_ACCOUNT.value]
+        completed = [
+            OnboardingStep.CREATE_ACCOUNT.value,
+            OnboardingStep.VERIFY_EMAIL.value,
+        ]
         session = OnboardingSession(
             resume_token=secrets.token_urlsafe(32),
             user_id=user.id,
             company_id=company.id,
             status=OnboardingStatus.IN_PROGRESS,
-            current_step=OnboardingStep.VERIFY_EMAIL,
+            current_step=OnboardingStep.CREATE_COMPANY,
             completed_steps=completed,
             skipped_steps=[],
             draft_data={
@@ -133,16 +136,25 @@ class OnboardingService:
         )
         self.db.add(session)
         self.db.flush()
+
+        # Email OTP removed — mark verified and allow immediate login.
+        from app.users.model import User as UserModel
+
+        owner = self.db.scalar(select(UserModel).where(UserModel.id == user.id))
+        if owner:
+            self.auth.mark_email_verified(owner)
+
         self._record_event(session, OnboardingStep.CREATE_ACCOUNT, StepEventType.COMPLETED)
-        self._record_event(session, OnboardingStep.VERIFY_EMAIL, StepEventType.ENTERED)
+        self._record_event(session, OnboardingStep.VERIFY_EMAIL, StepEventType.COMPLETED)
+        self._record_event(session, OnboardingStep.CREATE_COMPANY, StepEventType.ENTERED)
         self.db.commit()
         self.db.refresh(session)
 
-        if body.send_verification:
-            try:
-                self.auth.send_email_verification(email=body.account.email)
-            except Exception as exc:
-                logger.warning("onboarding verification send skipped: %s", exc)
+        if body.send_welcome_email:
+            self.auth.send_welcome_email(
+                email=body.account.email,
+                first_name=body.account.first_name or "",
+            )
 
         tokens = self.auth.authenticate_user(
             LoginRequest(email=body.account.email, password=body.account.password)
@@ -173,7 +185,7 @@ class OnboardingService:
             refresh_token=tokens.refresh_token,
             expires_in=tokens.expires_in,
             next_actions=[
-                "POST /api/v1/onboarding/me/steps/verify_email/complete",
+                "POST /api/v1/onboarding/me/steps/create_company/complete",
                 "GET /api/v1/onboarding/me",
             ],
         )
@@ -463,12 +475,16 @@ class OnboardingService:
         return {"user_id": str(session.user_id), "already_created": True}
 
     def _step_verify_email(self, session: OnboardingSession, data: Dict[str, Any]) -> Dict[str, Any]:
+        """OTP removed — idempotently mark email verified for legacy sessions."""
+        from app.users.model import User as UserModel
+
+        owner = self.db.scalar(select(UserModel).where(UserModel.id == session.user_id))
+        if owner:
+            self.auth.mark_email_verified(owner)
+            self.db.commit()
+            return {"detail": "Email verified", "email": owner.email}
         email = data.get("email") or (session.draft_data or {}).get("account", {}).get("email")
-        code = data.get("code")
-        if not email or not code:
-            raise HTTPException(status_code=422, detail="email and code are required")
-        result = self.auth.verify_email(email=email, code=str(code))
-        return {"detail": result.get("detail"), "email": email}
+        return {"detail": "Email verified", "email": email}
 
     def _step_create_company(self, session: OnboardingSession, data: Dict[str, Any]) -> Dict[str, Any]:
         # Company already exists from start — refine profile via CompanyService.

@@ -4,35 +4,35 @@ app/auth/router.py
 FastAPI APIRouter for Authentication.
 """
 
-from fastapi import APIRouter, Depends, status, Request
+from typing import Optional, Union
+from urllib.parse import quote, urlencode
+
+from fastapi import APIRouter, Depends, status, Request, Query
+from fastapi.responses import RedirectResponse
 from fastapi.security import HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 
 from app.database.database import get_db
 from app.auth.security import bearer_scheme
 from app.auth.schema import (
-    LoginRequest, 
-    RefreshRequest, 
-    LogoutRequest, 
-    TokenResponse, 
+    LoginRequest,
+    RefreshRequest,
+    LogoutRequest,
+    TokenResponse,
     UserProfileResponse,
-    SendOTPRequest,
-    VerifyOTPRequest,
-    ResendOTPRequest,
-    EmailVerificationRequest,
-    VerifyEmailRequest,
-    PhoneVerificationRequest,
-    VerifyPhoneRequest,
     ForgotPasswordRequest,
     ResetPasswordRequest,
+    GoogleIdTokenRequest,
     MFASetupResponse,
     MFAEnableRequest,
     MFAVerifyRequest,
     MFABackupCodesResponse,
-    MFARequiredResponse
+    MFARequiredResponse,
 )
 from app.auth.service import AuthService
 from app.auth.rate_limit import auth_rate_limit
+from app.auth import google_oauth
+from app.config.settings import settings
 
 
 router = APIRouter(
@@ -42,11 +42,10 @@ router = APIRouter(
 
 security = bearer_scheme
 
-# Auth-sensitive routes: keep limits tight to blunt credential stuffing / OTP spray.
 _LOGIN_LIMIT = auth_rate_limit(times=10, seconds=60)
 _REFRESH_LIMIT = auth_rate_limit(times=30, seconds=60)
-_OTP_LIMIT = auth_rate_limit(times=5, seconds=60)
 _PASSWORD_RESET_LIMIT = auth_rate_limit(times=5, seconds=60)
+_GOOGLE_LIMIT = auth_rate_limit(times=20, seconds=60)
 
 
 def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
@@ -54,9 +53,27 @@ def get_auth_service(db: Session = Depends(get_db)) -> AuthService:
     return AuthService(db)
 
 
-# ── Endpoints ─────────────────────────────────────────────────────────────────
+def _frontend_auth_redirect(
+    *,
+    access_token: Optional[str] = None,
+    refresh_token: Optional[str] = None,
+    expires_in: Optional[int] = None,
+    error: Optional[str] = None,
+) -> RedirectResponse:
+    base = (settings.PUBLIC_APP_BASE_URL or "").rstrip("/")
+    if error:
+        url = f"{base}/login?error={quote(error)}"
+        return RedirectResponse(url=url, status_code=302)
+    fragment = urlencode(
+        {
+            "access_token": access_token or "",
+            "refresh_token": refresh_token or "",
+            "expires_in": str(expires_in or 0),
+            "token_type": "bearer",
+        }
+    )
+    return RedirectResponse(url=f"{base}/auth/callback#{fragment}", status_code=302)
 
-from typing import Union
 
 @router.post(
     "/login",
@@ -68,10 +85,7 @@ def login(
     payload: LoginRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    """
-    Authenticate a user by email and password, returning JWT access and refresh tokens.
-    Accepts application/json payload.
-    """
+    """Authenticate with email and password."""
     return service.authenticate_user(payload)
 
 
@@ -85,9 +99,6 @@ def refresh_token(
     payload: RefreshRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    """
-    Obtain a new access token by providing a valid refresh token.
-    """
     return service.refresh_tokens(payload.refresh_token)
 
 
@@ -100,9 +111,6 @@ def logout(
     payload: LogoutRequest,
     service: AuthService = Depends(get_auth_service),
 ):
-    """
-    Log out by revoking the provided refresh token so it cannot be used again.
-    """
     service.logout_user(payload.refresh_token)
     return {"detail": "Successfully logged out."}
 
@@ -116,129 +124,14 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security),
     service: AuthService = Depends(get_auth_service),
 ):
-    """
-    Retrieve the profile of the currently authenticated user based on their access token.
-    Requires Authorization: Bearer <token> header.
-    """
     return service.get_current_user_profile(credentials.credentials)
 
-# ── OTP Endpoints ─────────────────────────────────────────────────────────────
 
-@router.post("/send-otp", summary="Send an OTP code", dependencies=_OTP_LIMIT)
-def send_otp(
-    payload: SendOTPRequest,
-    request: Request,
-    service: AuthService = Depends(get_auth_service),
-):
-    """Generate and send an OTP code to the provided email or phone."""
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    return service.send_otp(
-        purpose=payload.purpose,
-        email=payload.email,
-        phone=payload.phone,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-
-
-@router.post("/verify-otp", summary="Verify an OTP code", dependencies=_OTP_LIMIT)
-def verify_otp(
-    payload: VerifyOTPRequest,
-    request: Request,
-    service: AuthService = Depends(get_auth_service),
-):
-    """Verify an OTP code. If the purpose is LOGIN, this returns JWT tokens."""
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    return service.verify_otp(
-        purpose=payload.purpose,
-        code=payload.code,
-        email=payload.email,
-        phone=payload.phone,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-
-
-@router.post("/resend-otp", summary="Resend an OTP code", dependencies=_OTP_LIMIT)
-def resend_otp(
-    payload: ResendOTPRequest,
-    request: Request,
-    service: AuthService = Depends(get_auth_service),
-):
-    """Resend an OTP code after the cooldown period."""
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    return service.resend_otp(
-        purpose=payload.purpose,
-        email=payload.email,
-        phone=payload.phone,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-
-# ── Identity Verification Endpoints ───────────────────────────────────────────
-
-@router.post("/send-email-verification", summary="Send an email verification code")
-def send_email_verification(
-    payload: EmailVerificationRequest,
-    request: Request,
-    service: AuthService = Depends(get_auth_service),
-):
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    return service.send_email_verification(
-        email=payload.email,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-
-@router.post("/verify-email", summary="Verify email with code")
-def verify_email(
-    payload: VerifyEmailRequest,
-    request: Request,
-    service: AuthService = Depends(get_auth_service),
-):
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    return service.verify_email(
-        email=payload.email,
-        code=payload.code,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-
-@router.post("/send-phone-verification", summary="Send a phone verification code")
-def send_phone_verification(
-    payload: PhoneVerificationRequest,
-    request: Request,
-    service: AuthService = Depends(get_auth_service),
-):
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    return service.send_phone_verification(
-        phone=payload.phone,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-
-@router.post("/verify-phone", summary="Verify phone with code")
-def verify_phone(
-    payload: VerifyPhoneRequest,
-    request: Request,
-    service: AuthService = Depends(get_auth_service),
-):
-    ip_address = request.client.host if request.client else None
-    user_agent = request.headers.get("user-agent")
-    return service.verify_phone(
-        phone=payload.phone,
-        code=payload.code,
-        ip_address=ip_address,
-        user_agent=user_agent
-    )
-
-@router.post("/forgot-password", summary="Send a password reset code", dependencies=_PASSWORD_RESET_LIMIT)
+@router.post(
+    "/forgot-password",
+    summary="Send a password reset link",
+    dependencies=_PASSWORD_RESET_LIMIT,
+)
 def forgot_password(
     payload: ForgotPasswordRequest,
     request: Request,
@@ -249,10 +142,15 @@ def forgot_password(
     return service.forgot_password(
         email=payload.email,
         ip_address=ip_address,
-        user_agent=user_agent
+        user_agent=user_agent,
     )
 
-@router.post("/reset-password", summary="Reset password using OTP code", dependencies=_PASSWORD_RESET_LIMIT)
+
+@router.post(
+    "/reset-password",
+    summary="Reset password using email link token",
+    dependencies=_PASSWORD_RESET_LIMIT,
+)
 def reset_password(
     payload: ResetPasswordRequest,
     request: Request,
@@ -261,12 +159,80 @@ def reset_password(
     ip_address = request.client.host if request.client else None
     user_agent = request.headers.get("user-agent")
     return service.reset_password(
-        email=payload.email,
-        code=payload.code,
+        token=payload.token,
         new_password=payload.new_password,
         ip_address=ip_address,
-        user_agent=user_agent
+        user_agent=user_agent,
     )
+
+
+@router.get(
+    "/google/start",
+    summary="Start Google OAuth (redirect)",
+    dependencies=_GOOGLE_LIMIT,
+)
+def google_oauth_start():
+    google_oauth.require_google_oauth_configured()
+    state = google_oauth.new_oauth_state()
+    url = google_oauth.build_authorize_url(state=state)
+    response = RedirectResponse(url=url, status_code=302)
+    response.set_cookie(
+        "tht_google_oauth_state",
+        state,
+        httponly=True,
+        samesite="lax",
+        max_age=600,
+        path="/",
+    )
+    return response
+
+
+@router.get(
+    "/google/callback",
+    summary="Google OAuth callback",
+    dependencies=_GOOGLE_LIMIT,
+)
+async def google_oauth_callback(
+    request: Request,
+    code: Optional[str] = Query(None),
+    state: Optional[str] = Query(None),
+    error: Optional[str] = Query(None),
+    service: AuthService = Depends(get_auth_service),
+):
+    if error:
+        return _frontend_auth_redirect(error="google_denied")
+    cookie_state = request.cookies.get("tht_google_oauth_state")
+    if not code or not state or not cookie_state or state != cookie_state:
+        return _frontend_auth_redirect(error="google_invalid_state")
+    try:
+        raw = await google_oauth.exchange_code_for_userinfo(code)
+        profile = google_oauth.normalize_google_profile(raw)
+        tokens = service.login_or_register_google_profile(profile)
+    except Exception:
+        return _frontend_auth_redirect(error="google_failed")
+    response = _frontend_auth_redirect(
+        access_token=tokens.access_token,
+        refresh_token=tokens.refresh_token,
+        expires_in=tokens.expires_in,
+    )
+    response.delete_cookie("tht_google_oauth_state", path="/")
+    return response
+
+
+@router.post(
+    "/google",
+    response_model=TokenResponse,
+    summary="Sign in with Google ID token",
+    dependencies=_GOOGLE_LIMIT,
+)
+async def google_id_token_login(
+    payload: GoogleIdTokenRequest,
+    service: AuthService = Depends(get_auth_service),
+):
+    raw = await google_oauth.verify_google_id_token(payload.id_token)
+    profile = google_oauth.normalize_google_profile(raw)
+    return service.login_or_register_google_profile(profile)
+
 
 # ── MFA Endpoints ────────────────────────────────────────────────────────────
 
@@ -347,4 +313,3 @@ def verify_mfa(
         ip_address=ip_address,
         user_agent=user_agent
     )
-

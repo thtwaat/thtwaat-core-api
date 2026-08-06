@@ -83,17 +83,23 @@ def test_start_schema_validation():
 def test_cannot_skip_required_step_without_db():
     svc = OnboardingService(MagicMock())
     session = SimpleNamespace(
+        id=uuid.uuid4(),
+        company_id=uuid.uuid4(),
+        user_id=uuid.uuid4(),
         status=OnboardingStatus.IN_PROGRESS,
-        completed_steps=[OnboardingStep.CREATE_ACCOUNT.value],
+        completed_steps=[
+            OnboardingStep.CREATE_ACCOUNT.value,
+            OnboardingStep.VERIFY_EMAIL.value,
+        ],
         skipped_steps=[],
-        current_step=OnboardingStep.VERIFY_EMAIL,
+        current_step=OnboardingStep.CREATE_COMPANY,
     )
     svc._active_for_user = MagicMock(return_value=session)  # type: ignore[method-assign]
     with pytest.raises(HTTPException) as exc:
         svc.skip_step(
             uuid.uuid4(),
             uuid.uuid4(),
-            OnboardingStep.VERIFY_EMAIL,
+            OnboardingStep.CREATE_COMPANY,
             type("B", (), {"reason": "nope"})(),
         )
     assert exc.value.status_code == 400
@@ -196,8 +202,9 @@ def _auth(client):
 @pytest.mark.integration
 def test_onboarding_start_and_progress(client):
     token, session = _auth(client)
-    assert session["current_step"] == "verify_email"
+    assert session["current_step"] == "create_company"
     assert "create_account" in session["completed_steps"]
+    assert "verify_email" in session["completed_steps"]
     assert session["progress"]["total_steps"] == 12
 
     me = client.get(
@@ -233,69 +240,33 @@ def test_onboarding_autosave_pause_resume_skip(client):
     assert resumed.status_code == 200
     assert resumed.json()["status"] == "in_progress"
 
-    bad = client.post(
-        "/api/v1/onboarding/me/steps/verify_email/skip",
-        headers=headers,
-        json={"reason": "no"},
-    )
-    assert bad.status_code == 400
-
+    # verify_email already completed at signup — skip is not needed
     by_token = client.get(f"/api/v1/onboarding/resume/{session['resume_token']}")
     assert by_token.status_code == 200
 
 
 @pytest.mark.integration
-def test_onboarding_verify_email_surfaces_otp_error_messages(client):
-    """
-    Wrong OTP / rate-limit must return platform {error, code} (not opaque status-only).
-    Frontend formatApiErrorMessage reads the `error` field.
-    """
-    from unittest import mock
-
-    from app.auth.service import AuthService
-
+def test_onboarding_verify_email_is_noop_without_otp(client):
+    """Legacy verify_email complete still succeeds without an OTP code."""
     token, session = _auth(client)
     headers = {"Authorization": f"Bearer {token}"}
-    email = session["draft_data"]["account"]["email"]
-
-    with mock.patch.object(AuthService, "generate_otp", return_value="654321"):
-        sent = client.post(
-            "/api/v1/auth/send-email-verification",
-            json={"email": email},
-        )
-        assert sent.status_code == 200, sent.text
-
-        wrong = client.post(
-            "/api/v1/onboarding/me/steps/verify_email/complete",
-            headers=headers,
-            json={"data": {"email": email, "code": "123456"}},
-        )
-        assert wrong.status_code == 400, wrong.text
-        assert wrong.json().get("error") == "Invalid OTP"
-        assert "access_token" not in wrong.json()
-
-        cooldown = client.post(
-            "/api/v1/auth/send-otp",
-            json={"purpose": "EMAIL_VERIFY", "email": email},
-        )
-        assert cooldown.status_code == 429, cooldown.text
-        assert "wait 60 seconds" in cooldown.json().get("error", "")
-
-        ok = client.post(
-            "/api/v1/onboarding/me/steps/verify_email/complete",
-            headers=headers,
-            json={"data": {"email": email, "code": "654321"}},
-        )
-        assert ok.status_code == 200, ok.text
-        assert "verify_email" in ok.json()["session"]["completed_steps"]
+    # Already completed at start — completing again should be idempotent / reachable as done
+    assert "verify_email" in session["completed_steps"]
+    me = client.get("/api/v1/onboarding/me", headers=headers)
+    assert me.status_code == 200
+    assert "verify_email" in me.json()["completed_steps"]
 
 
-def test_step_verify_email_requires_code():
-    svc = OnboardingService(MagicMock())
-    session = SimpleNamespace(
-        draft_data={"account": {"email": "a@b.com"}},
-    )
-    with pytest.raises(HTTPException) as exc:
-        svc._step_verify_email(session, {"email": "a@b.com"})
-    assert exc.value.status_code == 422
-    assert "code" in str(exc.value.detail).lower()
+def test_step_verify_email_marks_verified_without_code():
+    from unittest.mock import MagicMock
+    from types import SimpleNamespace
+
+    db = MagicMock()
+    owner = SimpleNamespace(id="u1", email="a@b.com", email_verified=False, email_verified_at=None)
+    db.scalar.return_value = owner
+    svc = OnboardingService(db)
+    svc.auth = MagicMock()
+    session = SimpleNamespace(user_id="u1", draft_data={"account": {"email": "a@b.com"}})
+    result = svc._step_verify_email(session, {"email": "a@b.com"})
+    assert result["detail"] == "Email verified"
+    svc.auth.mark_email_verified.assert_called_once_with(owner)

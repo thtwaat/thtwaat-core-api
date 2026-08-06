@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
 import { useAuth } from "@/lib/auth";
 import { loginSchema } from "@/lib/validators";
-import { onboardingApi } from "@/lib/services";
+import { authApi, onboardingApi } from "@/lib/services";
 import { ApiError } from "@/lib/api";
 import type { z } from "zod";
 
@@ -80,22 +80,35 @@ function LoginForm() {
     }
   }
 
+  function continueWithGoogle() {
+    window.location.href = authApi.googleStartUrl();
+  }
+
   return (
     <AuthShell title="Sign in" subtitle="Access your AI workspace">
       {!mfaToken ? (
-        <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input id="email" type="email" {...form.register("email")} />
-          </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input id="password" type="password" {...form.register("password")} />
-          </div>
-          <Button className="w-full" disabled={form.formState.isSubmitting}>
-            {form.formState.isSubmitting ? "Signing in…" : "Sign in"}
+        <div className="space-y-4">
+          <Button className="w-full" type="button" onClick={continueWithGoogle}>
+            Continue with Google
           </Button>
-        </form>
+          <div className="relative py-1 text-center text-xs text-muted">
+            <span className="bg-surface relative z-10 px-2">or use email</span>
+            <span className="absolute inset-x-0 top-1/2 border-t border-line" />
+          </div>
+          <form className="space-y-4" onSubmit={form.handleSubmit(onSubmit)}>
+            <div>
+              <Label htmlFor="email">Email</Label>
+              <Input id="email" type="email" {...form.register("email")} />
+            </div>
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input id="password" type="password" {...form.register("password")} />
+            </div>
+            <Button className="w-full" variant="secondary" disabled={form.formState.isSubmitting}>
+              {form.formState.isSubmitting ? "Signing in…" : "Sign in with email"}
+            </Button>
+          </form>
+        </div>
       ) : (
         <div className="space-y-4">
           <div>
@@ -111,9 +124,6 @@ function LoginForm() {
         </p>
         <p>
           Need an account? <Link className="text-brand" href="/signup">Sign up</Link>
-        </p>
-        <p>
-          Have an OTP? <Link className="text-brand" href="/otp">Verify OTP</Link>
         </p>
       </div>
     </AuthShell>

@@ -37,14 +37,16 @@ class CompanyDraft(BaseModel):
 
 class StartOnboardingRequest(BaseModel):
     """
-    Creates company + owner account, then starts the wizard at Verify Email.
+    Creates company + owner account, marks email verified (no OTP), issues JWTs.
 
     Backend requires a company_id to create a user, so company is collected
-    together with the account. Step 3 (Create Company) then refines the profile.
+    together with the account. Step Create Company then refines the profile.
     """
     account: AccountDraft
     company: CompanyDraft
-    send_verification: bool = True
+    send_welcome_email: bool = True
+    # Deprecated alias — ignored (OTP verification removed).
+    send_verification: bool = False
 
 
 class AutosaveRequest(BaseModel):

@@ -253,64 +253,30 @@ def run_tests():
     assert resp.status_code == 200, f"Delete product failed: {resp.text}"
     logger.info("[OK] Product deletion works.")
 
-    # 13. Test OTP Flow
+    # 13. Password reset via email link (OTP removed)
     import unittest.mock as mock
     from app.auth.service import AuthService
-    with mock.patch.object(AuthService, 'generate_otp', return_value="123456"):
-        resp = client.post("/api/v1/auth/send-otp", json={
-            "purpose": "LOGIN",
-            "email": f"admin{uid}@test.com"
-        })
-        assert resp.status_code == 200, f"Send OTP failed: {resp.text}"
-        logger.info("[OK] OTP Sent.")
-        
-        resp = client.post("/api/v1/auth/verify-otp", json={
-            "purpose": "LOGIN",
-            "email": f"admin{uid}@test.com",
-            "code": "654321"
-        })
-        assert resp.status_code == 400, "Invalid OTP should fail"
-        
-        resp = client.post("/api/v1/auth/verify-otp", json={
-            "purpose": "LOGIN",
-            "email": f"admin{uid}@test.com",
-            "code": "123456"
-        })
-        assert resp.status_code == 200, f"Verify OTP failed: {resp.text}"
-        assert "access_token" in resp.json()
-        logger.info("[OK] OTP Verified.")
 
-    # 14. Test Identity Verification Flow
-    with mock.patch.object(AuthService, 'generate_otp', return_value="123456"):
-        # Email Verification
-        resp = client.post("/api/v1/auth/send-email-verification", json={"email": f"admin{uid}@test.com"})
-        assert resp.status_code == 200, f"Send email verification failed: {resp.text}"
-        
-        resp = client.post("/api/v1/auth/verify-email", json={"email": f"admin{uid}@test.com", "code": "123456"})
-        assert resp.status_code == 200, f"Verify email failed: {resp.text}"
-        logger.info("[OK] Email Verification works.")
-        
-        # Phone Verification
-        test_phone = f"+1{uuid.uuid4().int % 10000000000:010}"
-        resp = client.post("/api/v1/auth/send-phone-verification", json={"phone": test_phone})
-        assert resp.status_code == 200, f"Send phone verification failed: {resp.text}"
-        
-        resp = client.post("/api/v1/auth/verify-phone", json={"phone": test_phone, "code": "123456"})
-        assert resp.status_code == 200, f"Verify phone failed: {resp.text}"
-        logger.info("[OK] Phone Verification works.")
-        
-        # Forgot Password
+    captured: dict = {}
+
+    def _capture_reset(self, recipient: str, reset_url: str) -> None:
+        captured["reset_url"] = reset_url
+
+    with mock.patch.object(AuthService, "_send_password_reset_email", _capture_reset):
         resp = client.post("/api/v1/auth/forgot-password", json={"email": f"admin{uid}@test.com"})
         assert resp.status_code == 200, f"Forgot password failed: {resp.text}"
-        
-        # Reset Password
-        resp = client.post("/api/v1/auth/reset-password", json={
-            "email": f"admin{uid}@test.com",
-            "code": "123456",
-            "new_password": "newsecurepassword123"
-        })
+        assert "token=" in captured.get("reset_url", "")
+        token = captured["reset_url"].split("token=", 1)[1]
+        resp = client.post(
+            "/api/v1/auth/reset-password",
+            json={"token": token, "new_password": "newsecurepassword123"},
+        )
         assert resp.status_code == 200, f"Reset password failed: {resp.text}"
         logger.info("[OK] Password Reset works.")
+
+    # OTP routes must be gone
+    assert client.post("/api/v1/auth/send-otp", json={"purpose": "LOGIN", "email": f"admin{uid}@test.com"}).status_code == 404
+    logger.info("[OK] OTP routes removed.")
 
     # 15. Test MFA Flow
     # First login with new password to get access token

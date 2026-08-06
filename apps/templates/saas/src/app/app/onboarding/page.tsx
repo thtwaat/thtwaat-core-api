@@ -8,12 +8,10 @@ import { toast } from "sonner";
 import {
   agentsApi,
   aiProvidersApi,
-  authApi,
   knowledgeApi,
   onboardingApi,
   type OnboardingSession
 } from "@/lib/services";
-import { useAuth } from "@/lib/auth";
 import { mergeProviderRows, providerHealthLabel, providerHealthTone } from "@/lib/provider-status";
 import {
   AGENT_STARTERS,
@@ -60,13 +58,11 @@ function toneClass(tone: string) {
 
 export default function OnboardingWizardPage() {
   const router = useRouter();
-  const { user, refreshProfile } = useAuth();
   const [session, setSession] = useState<OnboardingSession | null>(null);
   const [draft, setDraft] = useState<OnboardingLocalDraft>(() => defaultOnboardingDraft());
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [otp, setOtp] = useState("");
   const [uploads, setUploads] = useState<UploadRow[]>([]);
   const [docQuery, setDocQuery] = useState("");
   const [searchHits, setSearchHits] = useState<
@@ -216,11 +212,6 @@ export default function OnboardingWizardPage() {
     };
   }, [draft, session?.id, session?.status]);
 
-  const needsEmailVerify =
-    Boolean(session) &&
-    !sessionStepDone(session, "verify_email") &&
-    (session?.current_step === "verify_email" || draft.uiStep === 1);
-
   async function ensureStep(
     current: OnboardingSession,
     step: string,
@@ -243,38 +234,6 @@ export default function OnboardingWizardPage() {
     return action.session;
   }
 
-  async function verifyEmail() {
-    if (!user?.email || otp.trim().length !== 6) {
-      toast.error("Enter the 6-digit verification code");
-      return;
-    }
-    setBusy(true);
-    try {
-      const action = await onboardingApi.completeStep("verify_email", {
-        email: user.email,
-        code: otp.trim()
-      });
-      applySession(action.session);
-      toast.success("Email verified");
-      setOtp("");
-      await refreshProfile();
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Verification failed");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function resendCode() {
-    if (!user?.email) return;
-    try {
-      await authApi.sendOtp({ purpose: "EMAIL_VERIFY", email: user.email });
-      toast.success("Verification code sent");
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Could not resend code");
-    }
-  }
-
   async function onSkipSetup() {
     setBusy(true);
     try {
@@ -295,10 +254,6 @@ export default function OnboardingWizardPage() {
     const validation = validateOnboardingUiStep(draft.uiStep, draft);
     if (!validation.ok) {
       toast.error(validation.errors[0] || "Please fix the form");
-      return;
-    }
-    if (needsEmailVerify && draft.uiStep === 1) {
-      toast.error("Verify your email to continue");
       return;
     }
 
@@ -638,34 +593,6 @@ export default function OnboardingWizardPage() {
                 {session?.progress?.estimated_minutes_remaining ?? 15} minutes
               </strong>
             </p>
-            {needsEmailVerify && (
-              <div className="space-y-3 rounded-xl border border-line bg-canvas p-4">
-                <p className="text-sm font-medium text-ink">Verify your email</p>
-                <p className="text-xs text-muted">
-                  We sent a 6-digit code to <strong>{user?.email}</strong>.
-                </p>
-                <div>
-                  <Label htmlFor="otp">Verification code</Label>
-                  <Input
-                    id="otp"
-                    inputMode="numeric"
-                    autoComplete="one-time-code"
-                    maxLength={6}
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                    aria-label="Email verification code"
-                  />
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button onClick={() => void verifyEmail()} disabled={busy}>
-                    Verify email
-                  </Button>
-                  <Button variant="secondary" onClick={() => void resendCode()} disabled={busy}>
-                    Resend code
-                  </Button>
-                </div>
-              </div>
-            )}
             <p className="text-xs text-muted">
               Tip: progress autosaves. You can leave and resume later from this page.
             </p>

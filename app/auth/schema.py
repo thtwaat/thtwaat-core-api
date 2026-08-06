@@ -49,51 +49,24 @@ class UserProfileResponse(BaseModel):
     last_name: str
     role: str
 
-# ── OTP ──────────────────────────────────────────────────────────────────────
 
-from app.auth.model import OTPPurpose
-
-class SendOTPRequest(BaseModel):
-    purpose: OTPPurpose
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-
-class VerifyOTPRequest(BaseModel):
-    purpose: OTPPurpose
-    code: str = Field(..., min_length=6, max_length=6)
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-
-class ResendOTPRequest(BaseModel):
-    purpose: OTPPurpose
-    email: Optional[EmailStr] = None
-    phone: Optional[str] = None
-
-# ── Identity Verification ──────────────────────────────────────────────────
-
-class EmailVerificationRequest(BaseModel):
-    email: EmailStr
-
-class VerifyEmailRequest(BaseModel):
-    email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6)
-
-class PhoneVerificationRequest(BaseModel):
-    phone: str = Field(..., min_length=10)
-
-class VerifyPhoneRequest(BaseModel):
-    phone: str = Field(..., min_length=10)
-    code: str = Field(..., min_length=6, max_length=6)
+# ── Password reset (link-based) ──────────────────────────────────────────────
 
 class ForgotPasswordRequest(BaseModel):
     email: EmailStr
 
+
 class ResetPasswordRequest(BaseModel):
-    email: EmailStr
-    code: str = Field(..., min_length=6, max_length=6)
+    token: str = Field(..., min_length=20, description="Token from the reset email link")
     new_password: str = Field(..., min_length=8, description="Must be at least 8 characters long")
 
-# ── MFA ──────────────────────────────────────────────────────────────────────
+
+class GoogleIdTokenRequest(BaseModel):
+    """GIS / one-tap credential (ID token)."""
+    id_token: str = Field(..., min_length=20)
+
+
+# ── MFA (TOTP — not email OTP) ───────────────────────────────────────────────
 
 class MFASetupResponse(BaseModel):
     secret: str
@@ -114,4 +87,3 @@ class MFARequiredResponse(BaseModel):
     mfa_required: bool = True
     mfa_token: str
     expires_in: int = 300
-

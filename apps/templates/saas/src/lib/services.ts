@@ -24,14 +24,13 @@ import type {
 } from "@/lib/types";
 
 export const authApi = {
-  sendOtp: (body: { purpose: string; email: string }) =>
-    api.v1("/auth/send-otp", { method: "POST", auth: false, body }),
-  verifyOtp: (body: { purpose: string; email: string; code: string }) =>
-    api.v1("/auth/verify-otp", { method: "POST", auth: false, body }),
   forgotPassword: (email: string) =>
     api.v1("/auth/forgot-password", { method: "POST", auth: false, body: { email } }),
-  resetPassword: (body: { email: string; code: string; new_password: string }) =>
-    api.v1("/auth/reset-password", { method: "POST", auth: false, body })
+  resetPassword: (body: { token: string; new_password: string }) =>
+    api.v1("/auth/reset-password", { method: "POST", auth: false, body }),
+  googleIdToken: (id_token: string) =>
+    api.v1("/auth/google", { method: "POST", auth: false, body: { id_token } }),
+  googleStartUrl: () => `${apiPaths.v1}/auth/google/start`
 };
 
 export const agentsApi = {
@@ -1456,6 +1455,7 @@ export const onboardingApi = {
       industry?: string;
       timezone?: string;
     };
+    send_welcome_email?: boolean;
     send_verification?: boolean;
   }) =>
     api.v1<StartOnboardingResponse>("/onboarding/start", {

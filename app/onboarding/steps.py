@@ -55,6 +55,7 @@ STEP_ORDER: List[OnboardingStep] = [
 
 # Optional steps may be skipped without blocking progress.
 OPTIONAL_STEPS = {
+    OnboardingStep.VERIFY_EMAIL,
     OnboardingStep.UPLOAD_KNOWLEDGE,
     OnboardingStep.CHOOSE_TEMPLATE,  # Product Generator can select a template
     OnboardingStep.CONNECT_DOMAIN,  # Can go live on platform subdomain
@@ -70,10 +71,10 @@ STEP_META: Dict[OnboardingStep, Dict[str, Any]] = {
     },
     OnboardingStep.VERIFY_EMAIL: {
         "title": "Verify Email",
-        "description": "Confirm ownership of your email address.",
-        "estimated_minutes": 2,
+        "description": "Email is confirmed automatically at signup (OTP removed).",
+        "estimated_minutes": 0,
         "integration": "auth",
-        "optional": False,
+        "optional": True,
     },
     OnboardingStep.CREATE_COMPANY: {
         "title": "Create Company",

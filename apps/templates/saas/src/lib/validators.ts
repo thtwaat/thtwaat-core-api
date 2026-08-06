@@ -22,15 +22,8 @@ export const forgotSchema = z.object({
 });
 
 export const resetSchema = z.object({
-  email: z.string().email(),
-  code: z.string().length(6),
+  token: z.string().min(20, "Invalid reset link"),
   new_password: z.string().min(8)
-});
-
-export const otpSchema = z.object({
-  email: z.string().email(),
-  code: z.string().length(6),
-  purpose: z.enum(["LOGIN", "REGISTER", "PASSWORD_RESET", "EMAIL_VERIFY", "PHONE_VERIFY", "MFA"])
 });
 
 export const agentSchema = z.object({

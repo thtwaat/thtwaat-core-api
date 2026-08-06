@@ -311,228 +311,261 @@ class AuthService:
             role=user.role.value
         )
 
-    # ── OTP Foundation ────────────────────────────────────────────────────────
+    # ── Session helpers ───────────────────────────────────────────────────────
 
-    @staticmethod
-    def generate_otp() -> str:
-        """Generate a secure 6-digit OTP."""
-        import secrets
-        return "".join(str(secrets.randbelow(10)) for _ in range(6))
-
-    @staticmethod
-    def hash_otp(code: str) -> str:
-        """Hash OTP using bcrypt."""
-        salt = bcrypt.gensalt()
-        return bcrypt.hashpw(code.encode("utf-8"), salt).decode("utf-8")
-
-    @staticmethod
-    def verify_otp_hash(code: str, hashed: str) -> bool:
-        """Check if OTP matches hash."""
-        try:
-            return bcrypt.checkpw(code.encode("utf-8"), hashed.encode("utf-8"))
-        except ValueError:
-            return False
-
-    def send_otp(self, purpose, email: Optional[str], phone: Optional[str], ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        from app.auth.model import OTPCode
-        from app.auth.audit import log_otp_event
-        from app.auth.providers.factory import OTPProviderFactory
-        
-        if not email and not phone:
-            raise HTTPException(status_code=400, detail="Must provide email or phone")
-
-        # Rate Limiting: max 5 requests per hour
-        one_hour_ago = datetime.now(timezone.utc) - timedelta(hours=1)
-        count = self.repo.count_recent_otps(email=email, phone=phone, since=one_hour_ago)
-        if count >= 5:
-            log_otp_event("OTP Blocked (Rate Limit)", email=email, phone=phone, ip_address=ip_address, user_agent=user_agent)
-            raise HTTPException(status_code=429, detail="Too many OTP requests. Please try again later.")
-
-        # Cooldown: 60 seconds
-        latest = self.repo.get_latest_otp(email=email, phone=phone, purpose=purpose)
-        if latest and latest.created_at >= datetime.now(timezone.utc) - timedelta(seconds=60):
-            raise HTTPException(status_code=429, detail="Please wait 60 seconds before requesting a new OTP.")
-
-        # Lookup user if exists
-        user_id = None
-        company_id = None
-        if email:
-            stmt = select(User).where(User.email == email)
-            user = self.db.scalar(stmt)
-            if user:
-                user_id = user.id
-                company_id = user.company_id
-
-        code = self.generate_otp()
-        hashed = self.hash_otp(code)
-        expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
-
-        otp_record = OTPCode(
-            company_id=company_id,
-            user_id=user_id,
-            email=email,
-            phone=phone,
-            purpose=purpose,
-            otp_hash=hashed,
-            expires_at=expires_at
+    def issue_tokens_for_user(self, user: User) -> TokenResponse:
+        """Issue access + refresh tokens for an active user (no MFA gate)."""
+        if not user.is_active or user.status != UserStatus.ACTIVE:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="User account is suspended or inactive.",
+            )
+        access_token = self.create_access_token(subject=str(user.id))
+        refresh_token = self.create_refresh_token(subject=str(user.id))
+        return TokenResponse(
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60,
         )
-        self.repo.create_otp(otp_record)
 
-        channel = "email" if email else "phone"
-        recipient = email if email else phone
-        provider = OTPProviderFactory.get_provider(channel)
-        provider.send_otp(recipient, code)
-
-        log_otp_event("OTP Sent", email=email, phone=phone, user_id=user_id, company_id=company_id, ip_address=ip_address, user_agent=user_agent)
-        return {"detail": "OTP sent successfully"}
-
-    def resend_otp(self, purpose, email: Optional[str], phone: Optional[str], ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        from app.auth.audit import log_otp_event
-        # Resend logic is basically the same as send, but logs "OTP Resent"
-        # We call send_otp directly and override the log if successful
-        res = self.send_otp(purpose=purpose, email=email, phone=phone, ip_address=ip_address, user_agent=user_agent)
-        log_otp_event("OTP Resent", email=email, phone=phone, ip_address=ip_address, user_agent=user_agent)
-        return res
-
-    def verify_otp(self, purpose, code: str, email: Optional[str], phone: Optional[str], ip_address: Optional[str] = None, user_agent: Optional[str] = None):
-        from app.auth.audit import log_otp_event
-        if not email and not phone:
-            raise HTTPException(status_code=400, detail="Must provide email or phone")
-
-        latest = self.repo.get_latest_otp(email=email, phone=phone, purpose=purpose)
-        if not latest:
-            raise HTTPException(status_code=404, detail="No OTP requested")
-
-        # Expiry Check
-        if datetime.now(timezone.utc) > latest.expires_at:
-            log_otp_event("OTP Expired", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
-            raise HTTPException(status_code=400, detail="OTP has expired")
-
-        # Used Check
-        if latest.is_used:
-            log_otp_event("OTP Failed (Reused)", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
-            raise HTTPException(status_code=400, detail="OTP has already been used")
-
-        # Attempts Check
-        if latest.attempts >= 5:
-            log_otp_event("OTP Failed (Max Attempts)", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
-            raise HTTPException(status_code=400, detail="Maximum OTP attempts reached")
-
-        # Validation Check
-        if not self.verify_otp_hash(code, latest.otp_hash):
-            latest.attempts += 1
-            self.repo.update_otp(latest)
-            log_otp_event("OTP Failed", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
-            raise HTTPException(status_code=400, detail="Invalid OTP")
-
-        # Success
-        latest.is_used = True
-        latest.verified_at = datetime.now(timezone.utc)
-        self.repo.update_otp(latest)
-
-        log_otp_event("OTP Verified", email=email, phone=phone, user_id=latest.user_id, company_id=latest.company_id, ip_address=ip_address, user_agent=user_agent)
-        
-        # If purpose is LOGIN and user_id is present, issue tokens
-        if purpose == "LOGIN" and latest.user_id:
-            stmt = select(User).where(User.id == latest.user_id)
-            user = self.db.scalar(stmt)
-            if user and user.is_active and user.status == UserStatus.ACTIVE:
-                access_token = self.create_access_token(subject=str(user.id))
-                refresh_token = self.create_refresh_token(subject=str(user.id))
-                return TokenResponse(
-                    access_token=access_token,
-                    refresh_token=refresh_token,
-                    expires_in=ACCESS_TOKEN_EXPIRE_MINUTES * 60
-                )
-
-        return {"detail": "OTP verified successfully"}
-
-    # ── Identity Verification ────────────────────────────────────────────────
-
-    def send_email_verification(self, email: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        stmt = select(User).where(User.email == email)
-        user = self.db.scalar(stmt)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
+    def mark_email_verified(self, user: User) -> None:
         if user.email_verified:
-            raise HTTPException(status_code=400, detail="Email is already verified")
-            
-        return self.send_otp(purpose="EMAIL_VERIFY", email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
-
-    def verify_email(self, email: str, code: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        from app.auth.audit import log_otp_event
-        stmt = select(User).where(User.email == email)
-        user = self.db.scalar(stmt)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-        if user.email_verified:
-            raise HTTPException(status_code=400, detail="Email is already verified")
-            
-        self.verify_otp(purpose="EMAIL_VERIFY", code=code, email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
-        
+            return
         user.email_verified = True
         user.email_verified_at = datetime.now(timezone.utc)
-        self.db.commit()
-        log_otp_event("EMAIL_VERIFIED", email=email, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
-        return {"detail": "Email verified successfully"}
 
-    def send_phone_verification(self, phone: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        # Note: phone might not be set yet on user registration, 
-        # but if we require it to be attached to a user first, they must update their profile.
-        # Alternatively, verify_phone can just attach it.
-        # The prompt didn't specify, but let's assume the phone is verified globally.
-        return self.send_otp(purpose="PHONE_VERIFY", email=None, phone=phone, ip_address=ip_address, user_agent=user_agent)
+    # ── Password reset (email link) ───────────────────────────────────────────
 
-    def verify_phone(self, phone: str, code: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        from app.auth.audit import log_otp_event
-        
-        self.verify_otp(purpose="PHONE_VERIFY", code=code, email=None, phone=phone, ip_address=ip_address, user_agent=user_agent)
-        
-        # Link to a user if the phone matches an existing user profile's phone
-        stmt = select(User).where(User.phone == phone)
-        user = self.db.scalar(stmt)
-        if user:
-            user.phone_verified = True
-            user.phone_verified_at = datetime.now(timezone.utc)
-            self.db.commit()
-            log_otp_event("PHONE_VERIFIED", phone=phone, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
-        else:
-            # We still log the verification even if no user found with that phone yet.
-            log_otp_event("PHONE_VERIFIED", phone=phone, ip_address=ip_address, user_agent=user_agent)
+    @staticmethod
+    def _hash_reset_token(raw_token: str) -> str:
+        import hashlib
 
-        return {"detail": "Phone verified successfully"}
+        return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
-    def forgot_password(self, email: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        stmt = select(User).where(User.email == email)
-        user = self.db.scalar(stmt)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
-        return self.send_otp(purpose="PASSWORD_RESET", email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
+    def _send_password_reset_email(self, recipient: str, reset_url: str) -> None:
+        from app.notifications.email.errors import EmailConfigurationError, EmailDeliveryError
+        from app.notifications.email.factory import get_email_backend
+        from app.notifications.email.templates import render_password_reset_link_email
 
-    def reset_password(self, email: str, code: str, new_password: str, ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> dict:
-        from app.auth.audit import log_otp_event
-        from sqlalchemy import delete
-        
-        stmt = select(User).where(User.email == email)
-        user = self.db.scalar(stmt)
-        if not user:
-            raise HTTPException(status_code=404, detail="User not found")
-            
+        subject, html, text = render_password_reset_link_email(reset_url)
         try:
-            self.verify_otp(purpose="PASSWORD_RESET", code=code, email=email, phone=None, ip_address=ip_address, user_agent=user_agent)
-        except Exception as e:
-            log_otp_event("PASSWORD_RESET_FAILED", email=email, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
-            raise e
-            
+            backend = get_email_backend()
+            result = backend.send(
+                recipient=recipient,
+                subject=subject,
+                body=text,
+                html=html,
+                text=text,
+            )
+        except EmailConfigurationError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Email delivery is not configured",
+            ) from None
+        except EmailDeliveryError:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Email delivery failed",
+            ) from None
+        if not result.success:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=result.error_message or "Email delivery failed",
+            )
+
+    def send_welcome_email(self, *, email: str, first_name: str = "") -> None:
+        """Best-effort welcome email after signup (never blocks account creation)."""
+        try:
+            from app.notifications.email.factory import get_email_backend
+            from app.notifications.email.templates import render_welcome_email
+
+            subject, html, text = render_welcome_email(first_name=first_name)
+            backend = get_email_backend()
+            backend.send(
+                recipient=email,
+                subject=subject,
+                body=text,
+                html=html,
+                text=text,
+            )
+        except Exception:
+            pass
+
+    def forgot_password(
+        self,
+        email: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> dict:
+        """
+        Send a one-time reset link. Always returns the same message to avoid
+        account enumeration when the email is unknown or delivery fails quietly.
+        """
+        import secrets
+
+        from app.auth.audit import log_otp_event
+        from app.auth.model import PasswordResetToken
+
+        generic = {
+            "detail": "If an account exists for that email, a reset link has been sent."
+        }
+        stmt = select(User).where(User.email == email)
+        user = self.db.scalar(stmt)
+        if not user:
+            log_otp_event(
+                "PASSWORD_RESET_REQUESTED_UNKNOWN",
+                email=email,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            return generic
+
+        raw = secrets.token_urlsafe(32)
+        ttl = int(getattr(settings, "PASSWORD_RESET_TOKEN_TTL_MINUTES", 60) or 60)
+        record = PasswordResetToken(
+            user_id=user.id,
+            token_hash=self._hash_reset_token(raw),
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=ttl),
+        )
+        self.db.add(record)
+        self.db.commit()
+
+        app_base = (settings.PUBLIC_APP_BASE_URL or "").rstrip("/")
+        reset_url = f"{app_base}/reset-password?token={raw}"
+        try:
+            self._send_password_reset_email(user.email, reset_url)
+        except HTTPException:
+            # Do not leak configuration failures to callers of forgot-password.
+            log_otp_event(
+                "PASSWORD_RESET_EMAIL_FAILED",
+                email=email,
+                user_id=user.id,
+                company_id=user.company_id,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+            return generic
+
+        log_otp_event(
+            "PASSWORD_RESET_LINK_SENT",
+            email=email,
+            user_id=user.id,
+            company_id=user.company_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+        return generic
+
+    def reset_password(
+        self,
+        token: str,
+        new_password: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None,
+    ) -> dict:
+        from app.auth.audit import log_otp_event
+        from app.auth.model import PasswordResetToken
+
+        token_hash = self._hash_reset_token(token.strip())
+        stmt = select(PasswordResetToken).where(PasswordResetToken.token_hash == token_hash)
+        record = self.db.scalar(stmt)
+        if not record or record.used_at is not None:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        if datetime.now(timezone.utc) > record.expires_at:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+        user = self.db.scalar(select(User).where(User.id == record.user_id))
+        if not user:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
         user.hashed_password = self.get_password_hash(new_password)
-        
-        # Invalidate all refresh tokens
+        record.used_at = datetime.now(timezone.utc)
         self.db.execute(delete(RefreshToken).where(RefreshToken.user_id == user.id))
         self.db.commit()
-        
-        log_otp_event("PASSWORD_RESET", email=email, user_id=user.id, company_id=user.company_id, ip_address=ip_address, user_agent=user_agent)
+
+        log_otp_event(
+            "PASSWORD_RESET",
+            email=user.email,
+            user_id=user.id,
+            company_id=user.company_id,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
         return {"detail": "Password reset successfully"}
+
+    # ── Google OAuth (consumer) ───────────────────────────────────────────────
+
+    def login_or_register_google_profile(self, profile: dict) -> TokenResponse:
+        """
+        Find user by email or create company + owner automatically, then issue JWTs.
+        """
+        import re
+        import secrets
+
+        from app.companies.schema import CompanyCreate
+        from app.companies.service import CompanyService
+        from app.rbac.enums import EnterpriseRole
+        from app.users.schema import UserCreate
+        from app.users.service import UserService
+
+        email = (profile.get("email") or "").strip().lower()
+        if not email:
+            raise HTTPException(status_code=400, detail="Google account has no email")
+
+        candidates = list(
+            self.db.scalars(select(User).where(User.email == email).limit(2)).all()
+        )
+        if len(candidates) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={
+                    "code": "company_required",
+                    "message": "This email belongs to multiple organizations; use email login with company_slug.",
+                },
+            )
+        if candidates:
+            user = candidates[0]
+            self.mark_email_verified(user)
+            self.db.commit()
+            return self.issue_tokens_for_user(user)
+
+        local = re.sub(r"[^a-z0-9]+", "-", email.split("@", 1)[0].lower()).strip("-") or "workspace"
+        base_slug = (local[:40] or "workspace").strip("-") or "workspace"
+        companies = CompanyService(self.db)
+        slug = base_slug
+        for _ in range(8):
+            if not companies.repo.slug_exists(slug):
+                break
+            slug = f"{base_slug}-{secrets.token_hex(2)}"
+        else:
+            slug = f"ws-{secrets.token_hex(4)}"
+
+        display = f"{profile.get('first_name', 'My')} Workspace"
+        company = companies.create_company(
+            CompanyCreate(
+                name=display[:255],
+                slug=slug,
+                display_name=display[:255],
+            )
+        )
+        users = UserService(self.db)
+        created = users.create_user(
+            UserCreate(
+                email=email,
+                password=secrets.token_urlsafe(32),
+                first_name=profile.get("first_name") or "User",
+                last_name=profile.get("last_name") or "User",
+                company_id=company.id,
+                role=EnterpriseRole.COMPANY_OWNER,
+            )
+        )
+        user = self.db.scalar(select(User).where(User.id == created.id))
+        if not user:
+            raise HTTPException(status_code=500, detail="Could not create Google user")
+        self.mark_email_verified(user)
+        self.db.commit()
+        self.send_welcome_email(email=user.email, first_name=user.first_name or "")
+        return self.issue_tokens_for_user(user)
 
     # ── MFA Implementation ───────────────────────────────────────────────────
 

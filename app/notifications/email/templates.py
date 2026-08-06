@@ -1,4 +1,4 @@
-"""Safe HTML + plaintext email bodies for auth OTP / verification / reset."""
+"""Safe HTML + plaintext email bodies for auth (password reset / welcome)."""
 from __future__ import annotations
 
 import re
@@ -6,43 +6,37 @@ from html import escape
 from typing import Tuple
 
 
-def render_security_code_email(
-    code: str,
-    *,
-    purpose: str = "verification",
-) -> Tuple[str, str, str]:
-    """
-    Return ``(subject, html_body, text_body)``.
-
-    ``code`` is embedded in the message only — callers must never log it.
-    """
-    purpose_l = (purpose or "verification").lower()
-    if "password" in purpose_l or "reset" in purpose_l:
-        subject = "Reset your password"
-        headline = "Password reset code"
-        intro = "Use this code to reset your password. It expires in a few minutes."
-    elif "email" in purpose_l or "verify" in purpose_l:
-        subject = "Verify your email"
-        headline = "Email verification code"
-        intro = "Use this code to verify your email address. It expires in a few minutes."
-    else:
-        subject = "Your verification code"
-        headline = "Verification code"
-        intro = "Use this one-time code to continue. It expires in a few minutes."
-
-    safe_code = escape(str(code))
+def render_password_reset_link_email(reset_url: str) -> Tuple[str, str, str]:
+    """Return ``(subject, html_body, text_body)`` for a password-reset link."""
+    subject = "Reset your password"
+    intro = "Click the link below to choose a new password. It expires in about an hour."
+    safe_url = escape(str(reset_url))
     text = (
-        f"{headline}\n\n"
+        "Reset your password\n\n"
         f"{intro}\n\n"
-        f"Code: {code}\n\n"
+        f"{reset_url}\n\n"
         "If you did not request this, you can ignore this email.\n"
     )
     html = f"""<!DOCTYPE html>
 <html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#111">
-  <h2 style="margin-bottom:8px">{escape(headline)}</h2>
+  <h2 style="margin-bottom:8px">Reset your password</h2>
   <p>{escape(intro)}</p>
-  <p style="font-size:28px;letter-spacing:4px;font-weight:700">{safe_code}</p>
+  <p><a href="{safe_url}" style="color:#0f766e;font-weight:600">Choose a new password</a></p>
   <p style="color:#666;font-size:13px">If you did not request this, you can ignore this email.</p>
+</body></html>"""
+    return subject, html, text
+
+
+def render_welcome_email(*, first_name: str = "") -> Tuple[str, str, str]:
+    """Optional welcome email after email signup (no verification OTP)."""
+    name = (first_name or "").strip() or "there"
+    subject = "Welcome to THTWAAT"
+    intro = f"Hi {name}, your account is ready. Sign in anytime with your email and password."
+    text = f"{subject}\n\n{intro}\n"
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:system-ui,sans-serif;line-height:1.5;color:#111">
+  <h2 style="margin-bottom:8px">{escape(subject)}</h2>
+  <p>{escape(intro)}</p>
 </body></html>"""
     return subject, html, text
 

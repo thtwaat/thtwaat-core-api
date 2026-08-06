@@ -220,6 +220,14 @@ class Settings(BaseSettings):
     
     MFA_ISSUER_NAME: str = "THTWAAT Enterprise"
 
+    # Consumer Google OAuth (email + password launch auth; not enterprise Workspace SSO)
+    GOOGLE_OAUTH_CLIENT_ID: Optional[str] = None
+    GOOGLE_OAUTH_CLIENT_SECRET: Optional[str] = None
+    GOOGLE_OAUTH_REDIRECT_URI: str = "http://localhost:8000/api/v1/auth/google/callback"
+    # SaaS web app origin for post-login / password-reset redirects
+    PUBLIC_APP_BASE_URL: str = "http://localhost:3300"
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
+
     # Public publish / embed base URL (used in embed scripts & iframe URLs)
     PUBLIC_API_BASE_URL: str = "http://localhost:8000"
     # iframe embed JWT lifetime (seconds). Live API keys must never appear in iframe URLs.
