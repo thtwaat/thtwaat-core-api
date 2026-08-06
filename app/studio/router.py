@@ -32,6 +32,8 @@ from app.studio.schemas import (
     StudioDeployStartResponse,
     StudioDeploymentListResponse,
     StudioDeploymentResponse,
+    StudioDomainWizardRequest,
+    StudioDomainWizardResponse,
     StudioExportRequest,
     StudioExportResponse,
     StudioFrontendGenerateResponse,
@@ -42,6 +44,8 @@ from app.studio.schemas import (
     StudioInfrastructureGenerateResponse,
     StudioInfrastructureResponse,
     StudioInfrastructureUpdate,
+    StudioLaunchChecklistResponse,
+    StudioLaunchDiagnosticsResponse,
     StudioProjectCreate,
     StudioProjectListResponse,
     StudioProjectResponse,
@@ -579,6 +583,65 @@ def rollback_deploy(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.rollback_deploy(user, project_id, payload or StudioRollbackRequest())
+
+
+@router.get(
+    "/projects/{project_id}/launch-checklist",
+    response_model=StudioLaunchChecklistResponse,
+    summary="Production launch checklist (AI, billing, email, storage, domain, HTTPS, health, workers)",
+)
+def launch_checklist(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_launch_checklist(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/launch-diagnostics",
+    response_model=StudioLaunchDiagnosticsResponse,
+    summary="Launch diagnostics — API, workers, Redis, DB, storage, SMTP, AI, deployment",
+)
+def launch_diagnostics(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_launch_diagnostics(user, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/domain-wizard",
+    response_model=StudioDomainWizardResponse,
+    summary="Domain wizard — DNS records + verify (poll every 30s from UI)",
+)
+def domain_wizard(
+    project_id: UUID,
+    payload: StudioDomainWizardRequest,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.domain_wizard(
+        user,
+        project_id,
+        payload.hostname,
+        auto_verify=payload.auto_verify,
+    )
+
+
+@router.get(
+    "/projects/{project_id}/domain-wizard",
+    response_model=StudioDomainWizardResponse,
+    summary="Poll domain wizard status (Pending DNS → SSL Active)",
+)
+def domain_wizard_poll(
+    project_id: UUID,
+    hostname: str = Query(..., min_length=3),
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.domain_wizard(user, project_id, hostname, auto_verify=True)
 
 
 @router.get(

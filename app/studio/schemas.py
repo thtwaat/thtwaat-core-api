@@ -1031,10 +1031,55 @@ class StudioDeploymentResponse(BaseModel):
     builder: Optional[str] = None
     free_subdomain: Optional[str] = None
     domain_validation: Optional[Dict[str, Any]] = None
+    launch_status: Optional[str] = None
+    launch_status_label: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class StudioLaunchChecklistResponse(BaseModel):
+    project_id: str
+    workspace_id: str
+    ready: bool
+    passed: int
+    total: int
+    items: List[Dict[str, Any]] = Field(default_factory=list)
+    checked_at: str
+
+
+class StudioLaunchDiagnosticsResponse(BaseModel):
+    project_id: str
+    workspace_id: str
+    overall: str
+    failed: int = 0
+    warnings: int = 0
+    components: List[Dict[str, Any]] = Field(default_factory=list)
+    checked_at: str
+
+
+class StudioDomainWizardRequest(BaseModel):
+    hostname: str = Field(..., min_length=3, max_length=255)
+    auto_verify: bool = True
+
+
+class StudioDomainWizardResponse(BaseModel):
+    hostname: str
+    domain_id: Optional[str] = None
+    phase: str
+    phase_label: str
+    dns_reachable: bool = False
+    dns_verified: bool = False
+    domain_status: str = ""
+    ssl_status: str = ""
+    dns_records: List[Any] = Field(default_factory=list)
+    validation: Optional[Dict[str, Any]] = None
+    verify: Optional[Any] = None
+    ssl_request: Optional[Dict[str, Any]] = None
+    poll_interval_seconds: int = 30
+    checked_at: str
+    error: Optional[str] = None
 
 
 class StudioDeployStartResponse(BaseModel):

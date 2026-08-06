@@ -1364,7 +1364,58 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioRollbackResult>(`/studio/projects/${id}/rollback`, {
       method: "POST",
       body: body || { sync: true }
-    })
+    }),
+  launchChecklist: (id: string) =>
+    api.apiV2<{
+      ready: boolean;
+      passed: number;
+      total: number;
+      items: Array<{
+        key: string;
+        title: string;
+        ok: boolean;
+        required?: boolean;
+        detail?: string;
+        href?: string;
+      }>;
+      checked_at: string;
+    }>(`/studio/projects/${id}/launch-checklist`),
+  launchDiagnostics: (id: string) =>
+    api.apiV2<{
+      overall: string;
+      failed: number;
+      warnings: number;
+      components: Array<{
+        key: string;
+        title: string;
+        status: string;
+        detail?: Record<string, unknown>;
+      }>;
+      checked_at: string;
+    }>(`/studio/projects/${id}/launch-diagnostics`),
+  domainWizard: (id: string, hostname: string, auto_verify = true) =>
+    api.apiV2<{
+      hostname: string;
+      domain_id?: string;
+      phase: string;
+      phase_label: string;
+      dns_reachable: boolean;
+      dns_verified: boolean;
+      domain_status: string;
+      ssl_status: string;
+      dns_records: Array<Record<string, unknown>>;
+      poll_interval_seconds: number;
+      checked_at: string;
+      error?: string;
+    }>(`/studio/projects/${id}/domain-wizard?hostname=${encodeURIComponent(hostname)}`),
+  startDomainWizard: (id: string, body: { hostname: string; auto_verify?: boolean }) =>
+    api.apiV2<{
+      hostname: string;
+      phase: string;
+      phase_label: string;
+      dns_records: Array<Record<string, unknown>>;
+      poll_interval_seconds: number;
+    }>(`/studio/projects/${id}/domain-wizard`, { method: "POST", body })
 };
 
 /** AI Gateway provider status — enterprise dashboard surface */

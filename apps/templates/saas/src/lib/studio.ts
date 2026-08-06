@@ -744,6 +744,8 @@ export type StudioDeployment = {
     message?: string;
     options?: Array<{ id: string; label: string; hostname: string }>;
   } | null;
+  launch_status?: string | null;
+  launch_status_label?: string | null;
   created_at: string;
   updated_at: string;
 };

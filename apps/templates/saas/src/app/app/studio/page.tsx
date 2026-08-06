@@ -212,7 +212,12 @@ export default function StudioPage() {
     retry: false,
     refetchInterval: (query) => {
       const cur = query.state.data?.items?.find((d) => d.id === query.state.data?.current_id);
-      if (cur && ["queued", "deploying"].includes(cur.status)) return 2000;
+      if (
+        cur &&
+        ["queued", "deploying", "waiting_for_domain", "provisioning_ssl"].includes(cur.status)
+      ) {
+        return 2000;
+      }
       return false;
     }
   });
@@ -545,11 +550,43 @@ export default function StudioPage() {
   const [deployEnv, setDeployEnv] = useState("production");
   const [showDeployLogs, setShowDeployLogs] = useState(false);
   const [liveLogLines, setLiveLogLines] = useState<string[]>([]);
+  const [showDomainWizard, setShowDomainWizard] = useState(false);
+  const [wizardHostname, setWizardHostname] = useState("");
 
   const domainsQ = useQuery({
     queryKey: ["domains"],
     queryFn: () => domainsApi.list(),
     staleTime: 60_000
+  });
+
+  const checklistQ = useQuery({
+    queryKey: ["studio-launch-checklist", selected?.id],
+    queryFn: () => studioApi.launchChecklist(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false,
+    refetchInterval: 30_000
+  });
+
+  const diagnosticsQ = useQuery({
+    queryKey: ["studio-launch-diagnostics", selected?.id],
+    queryFn: () => studioApi.launchDiagnostics(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false,
+    refetchInterval: 30_000
+  });
+
+  const wizardHost = wizardHostname || deployDomain || "";
+
+  const domainWizardQ = useQuery({
+    queryKey: ["studio-domain-wizard", selected?.id, wizardHost],
+    queryFn: () => studioApi.domainWizard(selected!.id, wizardHost),
+    enabled: Boolean(selected?.id && showDomainWizard && wizardHost.length >= 3),
+    retry: false,
+    refetchInterval: (q) => {
+      const phase = q.state.data?.phase;
+      if (phase === "ssl_active" || phase === "failed") return false;
+      return 30_000;
+    }
   });
 
   const deployM = useMutation({
@@ -2181,7 +2218,18 @@ export default function StudioPage() {
             <h2 className="text-lg font-semibold text-white">Deployment Center</h2>
             <p className="text-sm text-slate-400">
               {currentDeploy
-                ? `v${currentDeploy.version} · ${currentDeploy.provider} · ${currentDeploy.status}/${currentDeploy.stage}${currentDeploy.live ? " · LIVE" : currentDeploy.status === "waiting_for_domain" ? " · Waiting for Domain" : ""}`
+                ? `v${currentDeploy.version} · ${currentDeploy.provider} · ${
+                    currentDeploy.launch_status_label ||
+                    (currentDeploy.live
+                      ? "LIVE"
+                      : currentDeploy.status === "waiting_for_domain"
+                        ? "Waiting for DNS"
+                        : currentDeploy.status === "provisioning_ssl"
+                          ? "Provisioning SSL"
+                          : currentDeploy.status === "failed"
+                            ? "Failed"
+                            : "Building")
+                  }`
                 : "Requires completed source build — Deploy never regenerates code"}
             </p>
           </div>
@@ -2249,6 +2297,21 @@ export default function StudioPage() {
                 Open Dashboard
               </a>
             )}
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => {
+                setDeployDomainMode("custom");
+                setWizardHostname(
+                  currentDeploy?.domain ||
+                    deployDomain ||
+                    ""
+                );
+                setShowDomainWizard(true);
+              }}
+            >
+              Connect Custom Domain
+            </Button>
           </div>
         </div>
 
@@ -2483,6 +2546,185 @@ export default function StudioPage() {
             </div>
           </div>
         )}
+      </section>
+
+      {/* Launch Checklist */}
+      <section className="mt-6 rounded-3xl border border-emerald-900/40 bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950/30 p-5 sm:p-6">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Launch Checklist</h2>
+            <p className="text-sm text-slate-400">
+              {checklistQ.data
+                ? `${checklistQ.data.passed}/${checklistQ.data.total} ready${
+                    checklistQ.data.ready ? " · Ready to launch" : ""
+                  }`
+                : "Verify platform prerequisites before go-live"}
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={!selected || checklistQ.isFetching}
+            onClick={() => void checklistQ.refetch()}
+          >
+            Refresh
+          </Button>
+        </div>
+        <ul className="grid gap-2 sm:grid-cols-2">
+          {(checklistQ.data?.items || []).map((item) => (
+            <li
+              key={item.key}
+              className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+            >
+              <span className={item.ok ? "text-emerald-400" : "text-amber-400"}>
+                {item.ok ? "✓" : "○"}
+              </span>
+              <span>
+                <span className="font-medium text-slate-100">{item.title}</span>
+                {item.detail ? (
+                  <span className="mt-0.5 block text-xs text-slate-500">{item.detail}</span>
+                ) : null}
+              </span>
+            </li>
+          ))}
+          {!checklistQ.data && !checklistQ.isLoading ? (
+            <li className="text-sm text-slate-500">Select a project to load checklist.</li>
+          ) : null}
+        </ul>
+      </section>
+
+      {/* Domain Wizard */}
+      {showDomainWizard && (
+        <section className="mt-6 rounded-3xl border border-violet-900/40 bg-gradient-to-br from-slate-900 via-slate-950 to-violet-950/30 p-5 sm:p-6">
+          <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-white">Domain Wizard</h2>
+              <p className="text-sm text-slate-400">
+                Pending DNS → DNS Verified → SSL Issuing → SSL Active · auto-refresh 30s
+              </p>
+            </div>
+            <Button variant="secondary" onClick={() => setShowDomainWizard(false)}>
+              Close
+            </Button>
+          </div>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <input
+              value={wizardHostname}
+              onChange={(e) => setWizardHostname(e.target.value)}
+              placeholder="custom.example.com"
+              className="min-w-[240px] flex-1 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            />
+            <Button
+              disabled={!selected || wizardHostname.trim().length < 3}
+              onClick={() => {
+                void studioApi
+                  .startDomainWizard(selected!.id, {
+                    hostname: wizardHostname.trim(),
+                    auto_verify: true
+                  })
+                  .then(() => domainWizardQ.refetch())
+                  .catch((err) =>
+                    toast.error(err instanceof Error ? err.message : "Domain wizard failed")
+                  );
+              }}
+            >
+              Verify now
+            </Button>
+          </div>
+          {domainWizardQ.data && (
+            <div className="space-y-3">
+              <p className="text-sm text-slate-200">
+                Status:{" "}
+                <strong className="text-violet-300">{domainWizardQ.data.phase_label}</strong>
+                {domainWizardQ.data.ssl_status
+                  ? ` · SSL ${domainWizardQ.data.ssl_status}`
+                  : ""}
+              </p>
+              {(domainWizardQ.data.dns_records || []).length > 0 && (
+                <div className="overflow-x-auto rounded-xl border border-slate-800">
+                  <table className="w-full text-left text-xs text-slate-300">
+                    <thead className="bg-slate-950 text-slate-500">
+                      <tr>
+                        <th className="px-3 py-2">Type</th>
+                        <th className="px-3 py-2">Host</th>
+                        <th className="px-3 py-2">Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {domainWizardQ.data.dns_records.map((rec, idx) => (
+                        <tr key={idx} className="border-t border-slate-800">
+                          <td className="px-3 py-2 font-mono">
+                            {String(rec.type || rec.record_type || "—")}
+                          </td>
+                          <td className="px-3 py-2 font-mono">
+                            {String(rec.host || rec.name || "—")}
+                          </td>
+                          <td className="px-3 py-2 font-mono break-all">
+                            {String(rec.value || rec.content || "—")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+      )}
+
+      {/* Launch Diagnostics */}
+      <section className="mt-6 rounded-3xl border border-amber-900/40 bg-gradient-to-br from-slate-900 via-slate-950 to-amber-950/20 p-5 sm:p-6">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <div>
+            <h2 className="text-lg font-semibold text-white">Launch Diagnostics</h2>
+            <p className="text-sm text-slate-400">
+              Overall:{" "}
+              <span
+                className={
+                  diagnosticsQ.data?.overall === "healthy"
+                    ? "text-emerald-400"
+                    : diagnosticsQ.data?.overall === "failed"
+                      ? "text-rose-400"
+                      : "text-amber-300"
+                }
+              >
+                {diagnosticsQ.data?.overall || "—"}
+              </span>
+            </p>
+          </div>
+          <Button
+            variant="secondary"
+            disabled={!selected || diagnosticsQ.isFetching}
+            onClick={() => void diagnosticsQ.refetch()}
+          >
+            Refresh
+          </Button>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {(diagnosticsQ.data?.components || []).map((c) => (
+            <div
+              key={c.key}
+              className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+            >
+              <p className="text-xs uppercase tracking-wide text-slate-500">{c.title}</p>
+              <p
+                className={
+                  c.status === "healthy"
+                    ? "mt-1 font-semibold text-emerald-400"
+                    : c.status === "failed"
+                      ? "mt-1 font-semibold text-rose-400"
+                      : "mt-1 font-semibold text-amber-300"
+                }
+              >
+                {c.status === "healthy"
+                  ? "Healthy"
+                  : c.status === "failed"
+                    ? "Failed"
+                    : "Warning"}
+              </p>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/60 p-5">

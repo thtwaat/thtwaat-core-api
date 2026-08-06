@@ -187,6 +187,23 @@ def test_vps_deploy_workflow(tmp_path: Path):
     with patch(
         "app.studio.domain_validation.resolve_deploy_hostname",
         return_value=(free, "free_subdomain", _reachable(free)),
+    ), patch(
+        "app.studio.deploy.ensure_platform_stack",
+        return_value={"ok": True, "note": "test stack", "actions": []},
+    ), patch(
+        "app.studio.deploy.run_platform_health",
+        return_value={
+            "api": {"ok": True, "status_code": 200},
+            "database": {"ok": True},
+            "storage": {"ok": True},
+            "redis": {"ok": True},
+            "workers": {"ok": True},
+            "ai_gateway": {"ok": True},
+            "frontend": {"ok": True},
+        },
+    ), patch(
+        "app.studio.deploy.bind_domain_and_ssl",
+        return_value={"ssl_enabled": True, "ssl_status": "PLATFORM_WILDCARD", "status": "platform_wildcard"},
     ):
         ctx = DeployContext(
             project_id=pid,
@@ -232,6 +249,7 @@ def test_deploy_stages_include_migration():
     assert "database_migration" in DEPLOY_STAGES
     assert "waiting_for_domain" in DEPLOY_STAGES
     assert "building" in DEPLOY_STAGES
+    assert "provisioning_ssl" in DEPLOY_STAGES
 
 
 @pytest.mark.unit

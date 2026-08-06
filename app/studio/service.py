@@ -1397,6 +1397,7 @@ class StudioService:
         commit = meta.get("commit_sha") or commit
         builder = meta.get("builder") or builder
         from app.studio.domain_validation import allocate_free_subdomain
+        from app.studio.launch import compute_launch_status, launch_status_label
 
         project = (
             self.db.query(StudioProject).filter(StudioProject.id == row.project_id).first()
@@ -1408,6 +1409,12 @@ class StudioService:
         domain_validation = None
         if isinstance(row.health, dict) and isinstance(row.health.get("domain"), dict):
             domain_validation = row.health.get("domain")
+        launch = compute_launch_status(
+            live=bool(row.live),
+            status=row.status or "queued",
+            stage=row.stage or "queued",
+            ssl=dict(row.ssl or {}),
+        )
         return StudioDeploymentResponse(
             id=row.id,
             project_id=row.project_id,
@@ -1439,6 +1446,8 @@ class StudioService:
             builder=builder,
             free_subdomain=row.subdomain or free_host,
             domain_validation=domain_validation,
+            launch_status=launch,
+            launch_status_label=launch_status_label(launch),
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -1655,7 +1664,13 @@ class StudioService:
 
         def on_progress(stage: str, payload: dict) -> None:
             row.stage = stage
-            if stage in {"failed", "completed", "rollback", "waiting_for_domain"}:
+            if stage in {
+                "failed",
+                "completed",
+                "rollback",
+                "waiting_for_domain",
+                "provisioning_ssl",
+            }:
                 row.status = stage
             elif stage == "queued":
                 row.status = "queued"
@@ -1770,6 +1785,57 @@ class StudioService:
         if not row or row.project_id != project.id or row.workspace_id != project.workspace_id:
             raise HTTPException(status_code=404, detail="Deployment not found")
         return self._deployment_response(row)
+
+    def get_launch_checklist(self, user: UserProfileResponse, project_id: UUID):
+        from app.studio.launch import build_launch_checklist
+        from app.studio.schemas import StudioLaunchChecklistResponse
+
+        project = self.get(user, project_id)
+        rows = self.repo.list_deployments(project.id, project.workspace_id)
+        current = next((r for r in rows if r.is_current), None) or (rows[0] if rows else None)
+        payload = build_launch_checklist(
+            self.db,
+            workspace_id=project.workspace_id,
+            project_id=project.id,
+            deployment=current,
+        )
+        return StudioLaunchChecklistResponse(**payload)
+
+    def get_launch_diagnostics(self, user: UserProfileResponse, project_id: UUID):
+        from app.studio.launch import build_launch_diagnostics
+        from app.studio.schemas import StudioLaunchDiagnosticsResponse
+
+        project = self.get(user, project_id)
+        rows = self.repo.list_deployments(project.id, project.workspace_id)
+        current = next((r for r in rows if r.is_current), None) or (rows[0] if rows else None)
+        payload = build_launch_diagnostics(
+            self.db,
+            workspace_id=project.workspace_id,
+            project_id=project.id,
+            deployment=current,
+        )
+        return StudioLaunchDiagnosticsResponse(**payload)
+
+    def domain_wizard(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        hostname: str,
+        *,
+        auto_verify: bool = True,
+    ):
+        from app.studio.launch import build_domain_wizard
+        from app.studio.schemas import StudioDomainWizardResponse
+
+        project = self.get(user, project_id)
+        payload = build_domain_wizard(
+            self.db,
+            workspace_id=project.workspace_id,
+            hostname=hostname,
+            actor_id=user.id,
+            auto_verify=auto_verify,
+        )
+        return StudioDomainWizardResponse(**payload)
 
     def rollback_deploy(
         self,
