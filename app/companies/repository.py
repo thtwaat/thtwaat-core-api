@@ -46,6 +46,16 @@ class CompanyRepository:
         stmt = select(func.count()).select_from(Company).where(Company.slug == slug)
         return self.db.scalar(stmt) > 0
 
+    def name_exists_ci(self, name: str) -> bool:
+        """Case-insensitive check for an existing company legal name."""
+        cleaned = (name or "").strip()
+        if not cleaned:
+            return False
+        stmt = select(func.count()).select_from(Company).where(
+            func.lower(Company.name) == cleaned.lower()
+        )
+        return (self.db.scalar(stmt) or 0) > 0
+
     def list_all(
         self,
         page: int = 1,

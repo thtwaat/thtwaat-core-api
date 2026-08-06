@@ -92,19 +92,43 @@ class OnboardingService:
     # ── Public: start / resume ────────────────────────────────────────────────
 
     def start(self, body: StartOnboardingRequest) -> StartOnboardingResponse:
-        company = self.companies.create_company(
-            CompanyCreate(**body.company.model_dump())
-        )
-        user = self.users.create_user(
-            UserCreate(
-                email=body.account.email,
-                password=body.account.password,
-                first_name=body.account.first_name,
-                last_name=body.account.last_name,
-                company_id=company.id,
-                role=EnterpriseRole.COMPANY_OWNER,
+        company_payload = body.company.model_dump()
+        # Slug is optional — CompanyService auto-generates from name.
+        if not (company_payload.get("slug") or "").strip():
+            company_payload.pop("slug", None)
+        if not company_payload.get("display_name"):
+            company_payload["display_name"] = body.company.name
+
+        try:
+            company = self.companies.create_company(CompanyCreate(**company_payload))
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("onboarding workspace create failed: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to create workspace.",
+            ) from exc
+
+        try:
+            user = self.users.create_user(
+                UserCreate(
+                    email=body.account.email,
+                    password=body.account.password,
+                    first_name=body.account.first_name,
+                    last_name=body.account.last_name,
+                    company_id=company.id,
+                    role=EnterpriseRole.COMPANY_OWNER,
+                )
             )
-        )
+        except HTTPException:
+            raise
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("onboarding owner create failed: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to create workspace.",
+            ) from exc
 
         now = datetime.now(timezone.utc)
         completed = [
@@ -125,7 +149,12 @@ class OnboardingService:
                     "first_name": body.account.first_name,
                     "last_name": body.account.last_name,
                 },
-                "company": body.company.model_dump(),
+                "company": {
+                    **body.company.model_dump(),
+                    "slug": company.slug,
+                    "name": company.name,
+                    "display_name": company.display_name or company.name,
+                },
             },
             resource_ids={},
             checklist=build_checklist(completed, []),

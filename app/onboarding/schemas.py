@@ -21,8 +21,9 @@ class AccountDraft(BaseModel):
 
 class CompanyDraft(BaseModel):
     name: str = Field(..., min_length=2, max_length=255)
-    slug: str = Field(
-        ...,
+    # Optional — backend auto-generates from name when omitted.
+    slug: Optional[str] = Field(
+        None,
         min_length=3,
         max_length=100,
         pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",

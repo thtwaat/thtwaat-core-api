@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { AuthShell } from "@/components/layout/auth-shell";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
-import { setTokens } from "@/lib/api";
+import { ApiError, setTokens } from "@/lib/api";
 import { authApi, onboardingApi } from "@/lib/services";
 import { useAuth } from "@/lib/auth";
 import { signupSchema } from "@/lib/validators";
@@ -20,7 +20,16 @@ type FormValues = z.infer<typeof signupSchema>;
 export default function SignupPage() {
   const router = useRouter();
   const { refreshProfile } = useAuth();
-  const form = useForm<FormValues>({ resolver: zodResolver(signupSchema) });
+  const form = useForm<FormValues>({
+    resolver: zodResolver(signupSchema),
+    defaultValues: {
+      first_name: "",
+      last_name: "",
+      email: "",
+      password: "",
+      company_name: ""
+    }
+  });
 
   async function onSubmit(values: FormValues) {
     try {
@@ -28,16 +37,19 @@ export default function SignupPage() {
         account: {
           email: values.email,
           password: values.password,
-          first_name: values.first_name,
-          last_name: values.last_name
+          first_name: values.first_name?.trim() || "Owner",
+          last_name: values.last_name?.trim() || "User"
         },
         company: {
-          name: values.company_name,
-          slug: values.company_slug,
-          display_name: values.company_name
+          name: values.company_name.trim(),
+          display_name: values.company_name.trim()
         },
         send_welcome_email: true
       });
+      if (!started?.access_token || !started?.refresh_token) {
+        toast.error("Unable to create workspace.");
+        return;
+      }
       setTokens({
         access_token: started.access_token,
         refresh_token: started.refresh_token,
@@ -47,20 +59,28 @@ export default function SignupPage() {
       clearOnboardingDraft();
       saveOnboardingDraft({
         ...defaultOnboardingDraft(),
-        displayName: values.company_name,
+        displayName: values.company_name.trim(),
         uiStep: 1
       });
       await refreshProfile();
       toast.success("Welcome — let's finish setup");
       router.replace("/app/onboarding");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Signup failed");
+      const message =
+        error instanceof ApiError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : "Unable to create workspace.";
+      toast.error(message || "Unable to create workspace.");
     }
   }
 
   function continueWithGoogle() {
     window.location.href = authApi.googleStartUrl();
   }
+
+  const errors = form.formState.errors;
 
   return (
     <AuthShell title="Create workspace" subtitle="Company + owner account — then guided setup">
@@ -76,28 +96,33 @@ export default function SignupPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label>First name</Label>
-              <Input {...form.register("first_name")} />
+              <Input {...form.register("first_name")} autoComplete="given-name" />
             </div>
             <div>
               <Label>Last name</Label>
-              <Input {...form.register("last_name")} />
+              <Input {...form.register("last_name")} autoComplete="family-name" />
             </div>
           </div>
           <div>
             <Label>Work email</Label>
-            <Input type="email" {...form.register("email")} />
+            <Input type="email" autoComplete="email" {...form.register("email")} />
+            {errors.email ? (
+              <p className="mt-1 text-xs text-rose-600">{errors.email.message}</p>
+            ) : null}
           </div>
           <div>
             <Label>Password</Label>
-            <Input type="password" {...form.register("password")} />
+            <Input type="password" autoComplete="new-password" {...form.register("password")} />
+            {errors.password ? (
+              <p className="mt-1 text-xs text-rose-600">{errors.password.message}</p>
+            ) : null}
           </div>
           <div>
             <Label>Company name</Label>
-            <Input {...form.register("company_name")} />
-          </div>
-          <div>
-            <Label>Company slug</Label>
-            <Input placeholder="acme-ai" {...form.register("company_slug")} />
+            <Input {...form.register("company_name")} autoComplete="organization" />
+            {errors.company_name ? (
+              <p className="mt-1 text-xs text-rose-600">{errors.company_name.message}</p>
+            ) : null}
           </div>
           <Button className="w-full" variant="secondary" disabled={form.formState.isSubmitting}>
             {form.formState.isSubmitting ? "Creating…" : "Create account"}

@@ -1501,7 +1501,7 @@ export const onboardingApi = {
     };
     company: {
       name: string;
-      slug: string;
+      slug?: string;
       display_name?: string;
       industry?: string;
       timezone?: string;

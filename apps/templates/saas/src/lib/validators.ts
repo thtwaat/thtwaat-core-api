@@ -6,14 +6,10 @@ export const loginSchema = z.object({
 });
 
 export const signupSchema = z.object({
-  company_name: z.string().min(2),
-  company_slug: z
-    .string()
-    .min(3, "Slug must be at least 3 characters")
-    .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use lowercase letters, numbers, and hyphens"),
-  first_name: z.string().min(1),
-  last_name: z.string().min(1),
-  email: z.string().email(),
+  company_name: z.string().trim().min(2, "Company name is required"),
+  first_name: z.string().optional(),
+  last_name: z.string().optional(),
+  email: z.string().email("Enter a valid email"),
   password: z.string().min(8, "At least 8 characters")
 });
 

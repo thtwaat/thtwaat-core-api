@@ -76,6 +76,9 @@ def test_start_schema_validation():
         company=CompanyDraft(name="Acme Corp", slug="acme-corp"),
     )
     assert body.company.slug == "acme-corp"
+    # Slug is optional — backend auto-generates
+    without_slug = CompanyDraft(name="Asma Garments")
+    assert without_slug.slug is None
     with pytest.raises(ValidationError):
         CompanyDraft(name="X", slug="Bad Slug")
 
@@ -190,7 +193,7 @@ def _auth(client):
                 "first_name": "Owner",
                 "last_name": "User",
             },
-            "company": {"name": "Onboard Co", "slug": slug},
+            "company": {"name": f"Onboard Co {slug}"},
             "send_verification": False,
         },
     )
@@ -255,6 +258,53 @@ def test_onboarding_verify_email_is_noop_without_otp(client):
     me = client.get("/api/v1/onboarding/me", headers=headers)
     assert me.status_code == 200
     assert "verify_email" in me.json()["completed_steps"]
+
+
+@pytest.mark.integration
+def test_onboarding_start_auto_generates_slug(client):
+    suffix = uuid.uuid4().hex[:8]
+    start = client.post(
+        "/api/v1/onboarding/start",
+        json={
+            "account": {
+                "email": f"owner-asma-{suffix}@example.com",
+                "password": "secret12345",
+                "first_name": "Asma",
+                "last_name": "Owner",
+            },
+            "company": {"name": f"Asma Garments {suffix}"},
+            "send_welcome_email": False,
+        },
+    )
+    assert start.status_code == 201, start.text
+    body = start.json()
+    assert body["access_token"]
+    company = body["session"]["draft_data"]["company"]
+    assert company["slug"].startswith("asma-garments")
+
+
+@pytest.mark.integration
+def test_onboarding_start_duplicate_company_name_returns_error(client):
+    suffix = uuid.uuid4().hex[:8]
+    name = f"Unique Co {suffix}"
+    payload = {
+        "account": {
+            "email": f"a-{suffix}@example.com",
+            "password": "secret12345",
+            "first_name": "A",
+            "last_name": "B",
+        },
+        "company": {"name": name},
+        "send_welcome_email": False,
+    }
+    first = client.post("/api/v1/onboarding/start", json=payload)
+    assert first.status_code == 201, first.text
+
+    payload["account"]["email"] = f"b-{suffix}@example.com"
+    second = client.post("/api/v1/onboarding/start", json=payload)
+    assert second.status_code == 409, second.text
+    detail = second.json().get("error") or second.json().get("detail") or ""
+    assert "Company name already exists" in str(detail)
 
 
 def test_step_verify_email_marks_verified_without_code():

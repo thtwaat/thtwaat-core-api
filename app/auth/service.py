@@ -499,11 +499,11 @@ class AuthService:
         """
         Find user by email or create company + owner automatically, then issue JWTs.
         """
-        import re
         import secrets
 
         from app.companies.schema import CompanyCreate
         from app.companies.service import CompanyService
+        from app.companies.slugify import allocate_unique_slug
         from app.rbac.enums import EnterpriseRole
         from app.users.schema import UserCreate
         from app.users.service import UserService
@@ -529,18 +529,11 @@ class AuthService:
             self.db.commit()
             return self.issue_tokens_for_user(user)
 
-        local = re.sub(r"[^a-z0-9]+", "-", email.split("@", 1)[0].lower()).strip("-") or "workspace"
-        base_slug = (local[:40] or "workspace").strip("-") or "workspace"
-        companies = CompanyService(self.db)
-        slug = base_slug
-        for _ in range(8):
-            if not companies.repo.slug_exists(slug):
-                break
-            slug = f"{base_slug}-{secrets.token_hex(2)}"
-        else:
-            slug = f"ws-{secrets.token_hex(4)}"
-
         display = f"{profile.get('first_name', 'My')} Workspace"
+        companies = CompanyService(self.db)
+        if companies.repo.name_exists_ci(display):
+            display = f"{display} {secrets.token_hex(2)}"
+        slug = allocate_unique_slug(display, slug_exists=companies.repo.slug_exists)
         company = companies.create_company(
             CompanyCreate(
                 name=display[:255],

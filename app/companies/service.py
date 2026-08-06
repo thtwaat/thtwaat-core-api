@@ -96,23 +96,53 @@ class CompanyService:
     def create_company(self, data: CompanyCreate) -> CompanyResponse:
         """
         Register a new company tenant.
-        - Validates slug uniqueness
+        - Validates name uniqueness (case-insensitive)
+        - Auto-allocates slug when needed; validates slug uniqueness
         - Applies plan-based resource limits automatically
         """
-        if self.repo.slug_exists(data.slug):
+        from app.companies.slugify import allocate_unique_slug, slugify_company_name
+
+        name = (data.name or "").strip()
+        if len(name) < 2:
+            raise HTTPException(
+                status_code=http_status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Company name is required.",
+            )
+        if self.repo.name_exists_ci(name):
             raise HTTPException(
                 status_code=http_status.HTTP_409_CONFLICT,
-                detail=f"Slug '{data.slug}' is already taken. Please choose another.",
+                detail="Company name already exists.",
             )
+
+        slug = (data.slug or "").strip().lower()
+        if not slug:
+            slug = allocate_unique_slug(name, slug_exists=self.repo.slug_exists)
+        else:
+            slug = slugify_company_name(slug)
+            if self.repo.slug_exists(slug):
+                # Caller provided a taken slug — allocate a unique variant
+                slug = allocate_unique_slug(
+                    name, slug_exists=self.repo.slug_exists, preferred=slug
+                )
 
         # Apply FREE plan limits automatically on creation
         # Plan is always FREE at registration; admin can upgrade later
         limits = PLAN_LIMITS[CompanyPlan.FREE]
         company_data = data.model_dump()
+        company_data["name"] = name
+        company_data["slug"] = slug
+        if not company_data.get("display_name"):
+            company_data["display_name"] = name
         company_data.setdefault("max_users", limits["max_users"])
         company_data.setdefault("max_apps", limits["max_apps"])
 
-        company = self.repo.create_from_dict(company_data)
+        try:
+            company = self.repo.create_from_dict(company_data)
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(
+                status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Unable to create workspace.",
+            ) from exc
 
         # ── Dispatch in-app notification event ───────────────────────────────
         try:

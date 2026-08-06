@@ -33,17 +33,19 @@ class CompanyBase(BaseModel):
 
 class CompanyCreate(CompanyBase):
     """Schema used when registering a new Company tenant."""
-    slug: str = Field(
-        ...,
+    slug: Optional[str] = Field(
+        None,
         min_length=3,
         max_length=100,
         pattern=r"^[a-z0-9]+(?:-[a-z0-9]+)*$",
-        description="URL-safe unique identifier (e.g. acme-corp)",
+        description="URL-safe unique identifier; auto-generated from name when omitted",
     )
 
     @field_validator("slug")
     @classmethod
-    def slug_must_be_lowercase(cls, v: str) -> str:
+    def slug_must_be_lowercase(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not str(v).strip():
+            return None
         return v.lower().strip()
 
 
