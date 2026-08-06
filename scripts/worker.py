@@ -28,7 +28,23 @@ def _stop(*_args):
 
 
 def heartbeat(r):
+    """Refresh worker liveness key (60s TTL). Raises on Redis errors."""
     r.setex("thtwaat:worker:heartbeat", 60, datetime.now(timezone.utc).isoformat())
+
+
+def _connect_redis():
+    from app.config.settings import settings
+    import redis
+
+    url = f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}"
+    client = redis.from_url(
+        url,
+        decode_responses=True,
+        socket_connect_timeout=5,
+        socket_timeout=10,
+    )
+    client.ping()
+    return client, settings.REDIS_HOST, settings.REDIS_PORT
 
 
 def _handle_webhook_failure(payload: Dict[str, Any], exc: Exception) -> None:
@@ -238,17 +254,38 @@ def main():
 
     register_orm_models()
 
-    from app.config.settings import settings
     from app.database.database import SessionLocal
     from app.monitoring.queue import promote_due_jobs
     from app.webhooks.outbox import redrive_stuck_deliveries
-    import redis
 
-    r = redis.from_url(f"redis://{settings.REDIS_HOST}:{settings.REDIS_PORT}", decode_responses=True)
-    logger.info("worker started redis=%s:%s", settings.REDIS_HOST, settings.REDIS_PORT)
+    try:
+        r, host, port = _connect_redis()
+    except Exception as exc:
+        logger.exception("redis_connect_failed: %s", exc)
+        raise SystemExit(1) from exc
+
+    logger.info("worker started redis=%s:%s", host, port)
+    try:
+        heartbeat(r)
+        logger.info("worker heartbeat ok key=thtwaat:worker:heartbeat")
+    except Exception as exc:
+        logger.exception("worker_heartbeat_failed: %s", exc)
+        raise SystemExit(1) from exc
 
     while _RUNNING:
-        heartbeat(r)
+        try:
+            heartbeat(r)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("worker_heartbeat_failed: %s", exc)
+            time.sleep(1)
+            try:
+                r, host, port = _connect_redis()
+                logger.info("worker redis reconnected %s:%s", host, port)
+            except Exception as reconnect_exc:  # noqa: BLE001
+                logger.error("worker_redis_reconnect_failed: %s", reconnect_exc)
+                time.sleep(2)
+                continue
+
         try:
             promoted = promote_due_jobs(limit=50)
             if promoted:
@@ -267,7 +304,13 @@ def main():
         except Exception as exc:  # noqa: BLE001
             logger.warning("outbox_redrive error: %s", exc)
 
-        item = r.blpop("thtwaat:jobs", timeout=5)
+        try:
+            item = r.blpop("thtwaat:jobs", timeout=5)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("worker_blpop_failed: %s", exc)
+            time.sleep(1)
+            continue
+
         if not item:
             continue
         _, raw = item
@@ -281,6 +324,8 @@ def main():
         job_type = payload.get("type")
         try:
             logger.info("job_start type=%s attempt=%s", job_type, payload.get("attempt") or 1)
+            # Refresh liveness while long jobs run (Studio deploy can exceed 60s).
+            heartbeat(r)
             process_job(payload)
             logger.info("job_done type=%s", job_type)
         except Exception as exc:
