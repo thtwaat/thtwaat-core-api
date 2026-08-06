@@ -81,6 +81,9 @@ describe("studioApi architect contract", () => {
     await fakeApi.apiV2(`/studio/projects/${id}/generate/backend`, { method: "POST" });
     await fakeApi.apiV2(`/studio/projects/${id}/backend`);
     await fakeApi.apiV2(`/studio/projects/${id}/backend`, { method: "PUT" });
+    await fakeApi.apiV2(`/studio/projects/${id}/generate/ai`, { method: "POST" });
+    await fakeApi.apiV2(`/studio/projects/${id}/ai`);
+    await fakeApi.apiV2(`/studio/projects/${id}/ai`, { method: "PUT" });
 
     expect(calls.map((c) => c.path)).toEqual([
       `/studio/projects/${id}/analyze?use_ai=true`,
@@ -95,12 +98,14 @@ describe("studioApi architect contract", () => {
       `/studio/projects/${id}/frontend`,
       `/studio/projects/${id}/generate/backend`,
       `/studio/projects/${id}/backend`,
-      `/studio/projects/${id}/backend`
+      `/studio/projects/${id}/backend`,
+      `/studio/projects/${id}/generate/ai`,
+      `/studio/projects/${id}/ai`,
+      `/studio/projects/${id}/ai`
     ]);
-    expect(calls[0].method).toBe("POST");
-    expect(calls[7].method).toBe("POST");
-    expect(calls[9].method).toBe("PUT");
     expect(calls[10].method).toBe("POST");
     expect(calls[12].method).toBe("PUT");
+    expect(calls[13].method).toBe("POST");
+    expect(calls[15].method).toBe("PUT");
   });
 });

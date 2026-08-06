@@ -520,3 +520,157 @@ class StudioBackendGenerateResponse(BaseModel):
 class StudioBackendUpdate(BaseModel):
     manifest: BackendManifest
     status: Optional[str] = None
+
+
+# ── AI Generator (Phase 6) ────────────────────────────────────────────────────
+
+class AiProviderRecommendation(BaseModel):
+    provider: str
+    rank: int = 1
+    score: float = 0.0
+    reason: str = ""
+    capabilities: List[str] = Field(default_factory=list)
+    default_model: str = ""
+    recommended_primary: bool = False
+    platform_ref: str = "app/ai"
+
+
+class AiModelRecommendation(BaseModel):
+    task: str
+    provider: str
+    model: str
+    plan_only: bool = False
+    reason: str = ""
+    fallbacks: List[Dict[str, str]] = Field(default_factory=list)
+
+
+class AiAgentSpec(BaseModel):
+    id: str
+    name: str
+    kind: str = "assistant"  # assistant | rag | workflow
+    reuse: bool = True
+    platform_ref: str = "app/agent_platform"
+    provider: str = "openai"
+    model: str = "gpt-4o-mini"
+    memory: bool = True
+    knowledge: bool = False
+    streaming: bool = True
+    tools: List[str] = Field(default_factory=list)
+    safety: List[str] = Field(default_factory=list)
+    moderation: bool = True
+    lead_capture: bool = False
+    human_handoff: bool = True
+    multi_language: bool = False
+    voice_plan: bool = False
+    vision_plan: bool = False
+    widget: bool = False
+
+
+class AiPromptTemplate(BaseModel):
+    id: str
+    name: str
+    category: str = "system"
+    agent_id: Optional[str] = None
+    template: str
+    variables: List[str] = Field(default_factory=list)
+    reuse: bool = True
+    platform_ref: Optional[str] = None
+
+
+class AiToolSpec(BaseModel):
+    id: str
+    name: str
+    description: str = ""
+    reuse: bool = True
+    platform_ref: Optional[str] = None
+    parameters: Dict[str, str] = Field(default_factory=dict)
+    permissions: List[str] = Field(default_factory=list)
+    http: Optional[Dict[str, str]] = None
+
+
+class AiWorkflowSpec(BaseModel):
+    id: str
+    name: str
+    steps: List[str] = Field(default_factory=list)
+    agent_id: Optional[str] = None
+    reuse: bool = True
+    platform_refs: List[str] = Field(default_factory=list)
+
+
+class AiCostEstimate(BaseModel):
+    currency: str = "USD"
+    provider: str = "openai"
+    monthly_requests: int = 0
+    estimated_input_tokens: int = 0
+    estimated_output_tokens: int = 0
+    estimated_monthly_usd: float = 0.0
+    notes: List[str] = Field(default_factory=list)
+    metering_ref: str = "app/usage"
+    billing_ref: str = "app/payments"
+
+
+class AiSummary(BaseModel):
+    provider_count: int = 0
+    agent_count: int = 0
+    prompt_count: int = 0
+    tool_count: int = 0
+    workflow_count: int = 0
+    model_count: int = 0
+    reuse_percent: float = 0.0
+    estimated_monthly_usd: float = 0.0
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+
+
+class AiManifest(BaseModel):
+    """AI architecture preview — reuses AI Gateway runtime, no app source emission."""
+
+    schema_version: int = 1
+    product_name: str = "Untitled product"
+    industry: str = "general"
+    product_type: str = "saas"
+    runtime: Dict[str, Any] = Field(default_factory=dict)
+    capabilities: Dict[str, Any] = Field(default_factory=dict)
+    providers: List[AiProviderRecommendation] = Field(default_factory=list)
+    models: List[AiModelRecommendation] = Field(default_factory=list)
+    agents: List[AiAgentSpec] = Field(default_factory=list)
+    prompts: List[AiPromptTemplate] = Field(default_factory=list)
+    tools: List[AiToolSpec] = Field(default_factory=list)
+    workflows: List[AiWorkflowSpec] = Field(default_factory=list)
+    knowledge: Dict[str, Any] = Field(default_factory=dict)
+    memory: Dict[str, Any] = Field(default_factory=dict)
+    safety: Dict[str, Any] = Field(default_factory=dict)
+    cost: AiCostEstimate = Field(default_factory=AiCostEstimate)
+    summary: AiSummary = Field(default_factory=AiSummary)
+    traceability: Dict[str, Any] = Field(default_factory=dict)
+    warnings: List[BlueprintWarning] = Field(default_factory=list)
+    note: str = ""
+
+    model_config = {"extra": "allow"}
+
+
+class StudioAiResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    workspace_id: UUID
+    blueprint_version: int
+    build_plan_version: int
+    frontend_version: int
+    backend_version: int
+    version: int
+    is_current: bool
+    status: str = "draft"
+    manifest: AiManifest
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioAiGenerateResponse(BaseModel):
+    project: StudioProjectResponse
+    ai: StudioAiResponse
+
+
+class StudioAiUpdate(BaseModel):
+    manifest: AiManifest
+    status: Optional[str] = None

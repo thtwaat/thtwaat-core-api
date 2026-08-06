@@ -10,6 +10,9 @@ from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
 from app.database.database import get_db
 from app.studio.schemas import (
+    StudioAiGenerateResponse,
+    StudioAiResponse,
+    StudioAiUpdate,
     StudioAnalyzeResponse,
     StudioBackendGenerateResponse,
     StudioBackendResponse,
@@ -270,3 +273,43 @@ def put_backend(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.update_backend(user, project_id, payload)
+
+
+@router.post(
+    "/projects/{project_id}/generate/ai",
+    response_model=StudioAiGenerateResponse,
+    summary="Generate AI architecture manifest (no codegen / no deploy)",
+)
+def generate_ai(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.generate_ai(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/ai",
+    response_model=StudioAiResponse,
+    summary="Get current AI architecture manifest",
+)
+def get_ai(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_ai(user, project_id)
+
+
+@router.put(
+    "/projects/{project_id}/ai",
+    response_model=StudioAiResponse,
+    summary="Save edited AI manifest (edit before approval)",
+)
+def put_ai(
+    project_id: UUID,
+    payload: StudioAiUpdate,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.update_ai(user, project_id, payload)

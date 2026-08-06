@@ -1245,6 +1245,16 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioBackend>(`/studio/projects/${id}/backend`, {
       method: "PUT",
       body
+    }),
+  generateAi: (id: string) =>
+    api.apiV2<import("@/lib/studio").StudioAiGenerateResult>(`/studio/projects/${id}/generate/ai`, {
+      method: "POST"
+    }),
+  getAi: (id: string) => api.apiV2<import("@/lib/studio").StudioAi>(`/studio/projects/${id}/ai`),
+  saveAi: (id: string, body: { manifest: import("@/lib/studio").AiManifest; status?: string }) =>
+    api.apiV2<import("@/lib/studio").StudioAi>(`/studio/projects/${id}/ai`, {
+      method: "PUT",
+      body
     })
 };
 

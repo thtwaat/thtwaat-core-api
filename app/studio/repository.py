@@ -12,6 +12,7 @@ from app.studio.models import (
     StudioProjectBuildPlan,
     StudioProjectFrontend,
     StudioProjectBackend,
+    StudioProjectAi,
 )
 
 
@@ -236,5 +237,44 @@ class StudioRepository:
                 StudioProjectBackend.is_current.is_(True),
             )
             .order_by(StudioProjectBackend.version.desc())
+            .first()
+        )
+
+    def next_ai_version(self, project_id: UUID) -> int:
+        current = (
+            self.db.query(StudioProjectAi.version)
+            .filter(StudioProjectAi.project_id == project_id)
+            .order_by(StudioProjectAi.version.desc())
+            .first()
+        )
+        return int(current[0]) + 1 if current else 1
+
+    def clear_current_ai(self, project_id: UUID) -> None:
+        (
+            self.db.query(StudioProjectAi)
+            .filter(
+                StudioProjectAi.project_id == project_id,
+                StudioProjectAi.is_current.is_(True),
+            )
+            .update({"is_current": False}, synchronize_session=False)
+        )
+
+    def create_ai(self, row: StudioProjectAi) -> StudioProjectAi:
+        self.db.add(row)
+        self.db.commit()
+        self.db.refresh(row)
+        return row
+
+    def get_current_ai(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> Optional[StudioProjectAi]:
+        return (
+            self.db.query(StudioProjectAi)
+            .filter(
+                StudioProjectAi.project_id == project_id,
+                StudioProjectAi.workspace_id == workspace_id,
+                StudioProjectAi.is_current.is_(True),
+            )
+            .order_by(StudioProjectAi.version.desc())
             .first()
         )

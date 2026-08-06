@@ -373,6 +373,106 @@ export type StudioBackendGenerateResult = {
   backend: StudioBackend;
 };
 
+export type AiManifest = {
+  schema_version: number;
+  product_name: string;
+  industry: string;
+  product_type: string;
+  runtime: Record<string, unknown>;
+  capabilities: Record<string, unknown>;
+  providers: Array<{
+    provider: string;
+    rank: number;
+    score: number;
+    reason: string;
+    capabilities: string[];
+    default_model: string;
+    recommended_primary: boolean;
+  }>;
+  models: Array<{
+    task: string;
+    provider: string;
+    model: string;
+    plan_only: boolean;
+    reason: string;
+  }>;
+  agents: Array<{
+    id: string;
+    name: string;
+    kind: string;
+    reuse: boolean;
+    provider: string;
+    model: string;
+    memory: boolean;
+    knowledge: boolean;
+    streaming: boolean;
+    tools: string[];
+    lead_capture: boolean;
+    human_handoff: boolean;
+    multi_language: boolean;
+    voice_plan: boolean;
+    vision_plan: boolean;
+  }>;
+  prompts: Array<{
+    id: string;
+    name: string;
+    category: string;
+    template: string;
+    variables: string[];
+  }>;
+  tools: Array<{
+    id: string;
+    name: string;
+    description: string;
+    reuse: boolean;
+    permissions: string[];
+  }>;
+  workflows: Array<{ id: string; name: string; steps: string[] }>;
+  knowledge: Record<string, unknown>;
+  memory: Record<string, unknown>;
+  safety: Record<string, unknown>;
+  cost: {
+    currency: string;
+    provider: string;
+    monthly_requests: number;
+    estimated_monthly_usd: number;
+    notes: string[];
+  };
+  summary: {
+    provider_count: number;
+    agent_count: number;
+    prompt_count: number;
+    tool_count: number;
+    workflow_count: number;
+    reuse_percent: number;
+    estimated_monthly_usd: number;
+    warnings: BlueprintWarning[];
+  };
+  warnings: BlueprintWarning[];
+  note: string;
+};
+
+export type StudioAi = {
+  id: string;
+  project_id: string;
+  workspace_id: string;
+  blueprint_version: number;
+  build_plan_version: number;
+  frontend_version: number;
+  backend_version: number;
+  version: number;
+  is_current: boolean;
+  status: string;
+  manifest: AiManifest;
+  created_at: string;
+  updated_at: string;
+};
+
+export type StudioAiGenerateResult = {
+  project: StudioProject;
+  ai: StudioAi;
+};
+
 export function moduleKindLabel(kind: ModuleKind | string): string {
   if (kind === "existing_module") return "Existing";
   if (kind === "marketplace_template") return "Marketplace";
@@ -446,6 +546,7 @@ export const STUDIO_TIPS = [
   "Compose Modules maps the blueprint to Auth, Billing, AI, Marketplace — no codegen yet.",
   "Generate Frontend builds a preview manifest that reuses Dashboard, Auth, Billing, Agents, and Admin UI.",
   "Generate Backend builds API/DB/RBAC/queue manifests — reuses platform modules, no source yet.",
+  "Generate AI plans agents, prompts, tools, and providers on the existing AI Gateway — no duplicate runtime.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 

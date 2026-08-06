@@ -6,6 +6,7 @@ import Link from "next/link";
 import { toast } from "sonner";
 import {
   ArrowRight,
+  Bot,
   Boxes,
   Database,
   Eraser,
@@ -35,9 +36,11 @@ import {
   studioStatusLabel,
   studioStatusTone,
   warningTone,
+  type AiManifest,
   type BackendManifest,
   type FrontendManifest,
   type ProductBlueprint,
+  type StudioAi,
   type StudioBackend,
   type StudioBlueprint,
   type StudioBuildPlan,
@@ -132,8 +135,16 @@ export default function StudioPage() {
     retry: false
   });
 
+  const aiQ = useQuery({
+    queryKey: ["studio-ai", selected?.id],
+    queryFn: () => studioApi.getAi(selected!.id),
+    enabled: Boolean(selected?.id),
+    retry: false
+  });
+
   const [frontendDraft, setFrontendDraft] = useState<FrontendManifest | null>(null);
   const [backendDraft, setBackendDraft] = useState<BackendManifest | null>(null);
+  const [aiDraft, setAiDraft] = useState<AiManifest | null>(null);
 
   useEffect(() => {
     if (blueprintQ.data?.blueprint) {
@@ -158,6 +169,14 @@ export default function StudioPage() {
       setBackendDraft(null);
     }
   }, [backendQ.data, backendQ.isError, selected?.id]);
+
+  useEffect(() => {
+    if (aiQ.data?.manifest) {
+      setAiDraft(aiQ.data.manifest);
+    } else if (aiQ.isError) {
+      setAiDraft(null);
+    }
+  }, [aiQ.data, aiQ.isError, selected?.id]);
 
   const createM = useMutation({
     mutationFn: () => studioApi.create({ prompt }),
@@ -303,6 +322,36 @@ export default function StudioPage() {
     onError: (err) => toast.error(err instanceof ApiError ? err.message : "Save backend failed")
   });
 
+  const generateAiM = useMutation({
+    mutationFn: () => {
+      if (!selected?.id) throw new Error("Select a project first");
+      return studioApi.generateAi(selected.id);
+    },
+    onSuccess: (result) => {
+      toast.success(
+        `AI v${result.ai.version} · ${result.ai.manifest.summary.reuse_percent}% reuse · ~$${result.ai.manifest.cost.estimated_monthly_usd}/mo`
+      );
+      setAiDraft(result.ai.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-projects"] });
+      void qc.invalidateQueries({ queryKey: ["studio-ai", result.project.id] });
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError || err instanceof Error ? err.message : "AI generate failed")
+  });
+
+  const saveAiM = useMutation({
+    mutationFn: (status?: string) => {
+      if (!selected?.id || !aiDraft) throw new Error("No AI manifest to save");
+      return studioApi.saveAi(selected.id, { manifest: aiDraft, status });
+    },
+    onSuccess: (row) => {
+      toast.success(`AI saved as v${row.version} (${row.status})`);
+      setAiDraft(row.manifest);
+      void qc.invalidateQueries({ queryKey: ["studio-ai", selected?.id] });
+    },
+    onError: (err) => toast.error(err instanceof ApiError ? err.message : "Save AI failed")
+  });
+
   const deleteM = useMutation({
     mutationFn: (id: string) => studioApi.remove(id),
     onSuccess: (_, id) => {
@@ -317,13 +366,16 @@ export default function StudioPage() {
   const buildPlan: StudioBuildPlan | undefined = buildPlanQ.data;
   const frontendRow: StudioFrontend | undefined = frontendQ.data;
   const backendRow: StudioBackend | undefined = backendQ.data;
+  const aiRow: StudioAi | undefined = aiQ.data;
   const frontend = frontendDraft;
   const backend = backendDraft;
+  const ai = aiDraft;
   const warnings = currentBlueprint?.warnings || [];
   const recommendations = currentBlueprint?.recommendations;
   const composeWarnings = buildPlan?.summary?.warnings || [];
   const frontendWarnings = frontend?.warnings || frontend?.summary?.warnings || [];
   const backendWarnings = backend?.warnings || backend?.summary?.warnings || [];
+  const aiWarnings = ai?.warnings || ai?.summary?.warnings || [];
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -334,15 +386,14 @@ export default function StudioPage() {
       <section className="relative overflow-hidden rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 via-slate-950 to-teal-950 p-6 sm:p-8">
         <div className="pointer-events-none absolute -right-16 -top-16 h-56 w-56 rounded-full bg-teal-500/20 blur-3xl" />
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-300/80">
-          THTWAAT Studio · Phase 5
+          THTWAAT Studio · Phase 6
         </p>
         <h1 className="mt-2 max-w-3xl text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Backend Generator
+          AI Generator
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          Turn approved frontend + build plan into API, database, RBAC, storage, and queue manifests.
-          Reuses Auth, Billing, AI Gateway, Marketplace, Agents, Knowledge — architecture only, no
-          source codegen, no deploy.
+          Plan agents, prompts, tools, providers, and estimated cost on the existing AI Gateway —
+          Agents, Knowledge, Memory, RAG, Widget, Analytics, Billing. No duplicate runtime. No deploy.
         </p>
       </section>
 
@@ -441,6 +492,23 @@ export default function StudioPage() {
                 <>
                   <Server className="mr-2 h-4 w-4" />
                   Generate Backend
+                </>
+              )}
+            </Button>
+            <Button
+              onClick={() => generateAiM.mutate()}
+              disabled={!selected || !backend || generateAiM.isPending}
+              className="bg-fuchsia-700 text-white hover:bg-fuchsia-600"
+            >
+              {generateAiM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating…
+                </>
+              ) : (
+                <>
+                  <Bot className="mr-2 h-4 w-4" />
+                  Generate AI
                 </>
               )}
             </Button>
@@ -1140,6 +1208,162 @@ export default function StudioPage() {
             {backendWarnings.map((w) => (
               <li
                 key={`be-${w.code}-${w.message}`}
+                className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
+              >
+                <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>
+                <span className="text-slate-200">{w.message}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* AI preview */}
+      <section className="mt-6 rounded-3xl border border-slate-800 bg-slate-900/80 p-5 sm:p-6">
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-white">AI architecture</h2>
+            <p className="text-sm text-slate-400">
+              {ai && aiRow
+                ? `v${aiRow.version} · ${aiRow.status} · ${ai.summary.reuse_percent}% reuse · ~$${ai.cost.estimated_monthly_usd}/mo`
+                : "Generate Backend first, then Generate AI for providers/agents/prompts"}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="secondary"
+              disabled={!ai || saveAiM.isPending}
+              onClick={() => saveAiM.mutate("draft")}
+            >
+              <Save className="mr-2 h-4 w-4" />
+              Save draft
+            </Button>
+            <Button
+              className="bg-teal-600 text-white hover:bg-teal-500"
+              disabled={!ai || saveAiM.isPending}
+              onClick={() => saveAiM.mutate("approved")}
+            >
+              Approve AI
+            </Button>
+          </div>
+        </div>
+
+        {!ai ? (
+          <EmptyState
+            title="No AI manifest yet"
+            description="Generate AI after backend to preview providers, agents, prompts, tools, and cost."
+          />
+        ) : (
+          <div className="grid gap-6 xl:grid-cols-2">
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Provider recommendation</h3>
+              <ul className="max-h-56 space-y-2 overflow-y-auto text-sm">
+                {ai.providers.map((p) => (
+                  <li
+                    key={p.provider}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-100">
+                        #{p.rank} {p.provider}
+                        {p.recommended_primary ? " · primary" : ""}
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        {p.default_model} · {p.reason}
+                      </p>
+                    </div>
+                    <Badge tone={p.recommended_primary ? "success" : "neutral"}>{p.score}</Badge>
+                  </li>
+                ))}
+              </ul>
+              <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/60 p-3 text-sm">
+                <p className="text-xs uppercase tracking-wide text-slate-500">Estimated AI cost</p>
+                <p className="mt-1 text-2xl font-semibold text-teal-300">
+                  ${ai.cost.estimated_monthly_usd}
+                  <span className="text-sm font-normal text-slate-500"> / mo</span>
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                  {ai.cost.monthly_requests.toLocaleString()} req · {ai.cost.provider}
+                </p>
+              </div>
+            </div>
+
+            <div>
+              <h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-white">
+                <Bot className="h-4 w-4 text-fuchsia-300" />
+                Agents
+              </h3>
+              <ul className="max-h-72 space-y-2 overflow-y-auto text-sm">
+                {ai.agents.map((a) => (
+                  <li
+                    key={a.id}
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-100">{a.name}</span>
+                      <Badge tone={a.reuse ? "success" : "warn"}>{a.kind}</Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {a.provider}/{a.model}
+                      {a.streaming ? " · stream" : ""}
+                      {a.knowledge ? " · RAG" : ""}
+                      {a.human_handoff ? " · handoff" : ""}
+                      {a.voice_plan ? " · voice(plan)" : ""}
+                      {a.vision_plan ? " · vision(plan)" : ""}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Prompt library</h3>
+              <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+                {ai.prompts.map((p) => (
+                  <li
+                    key={p.id}
+                    className="rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-medium text-slate-100">{p.name}</span>
+                      <Badge tone="neutral">{p.category}</Badge>
+                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-slate-500">{p.template}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-semibold text-white">Tool list</h3>
+              <ul className="max-h-64 space-y-2 overflow-y-auto text-sm">
+                {ai.tools.map((t) => (
+                  <li
+                    key={t.id}
+                    className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2"
+                  >
+                    <div>
+                      <p className="font-medium text-slate-100">{t.name}</p>
+                      <p className="text-xs text-slate-500">{t.description}</p>
+                    </div>
+                    <Badge tone={t.reuse ? "success" : "warn"}>
+                      {t.reuse ? "reuse" : "custom"}
+                    </Badge>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-2 text-xs text-slate-500">
+                Workflows: {ai.workflows.map((w) => w.name).join(" · ") || "—"}
+              </p>
+            </div>
+          </div>
+        )}
+
+        {aiWarnings.length > 0 && (
+          <ul className="mt-4 space-y-2">
+            {aiWarnings.map((w) => (
+              <li
+                key={`ai-${w.code}-${w.message}`}
                 className="flex items-start gap-2 rounded-xl border border-slate-800 bg-slate-950/60 px-3 py-2 text-sm"
               >
                 <Badge tone={warningTone(w.severity)}>{w.severity}</Badge>
