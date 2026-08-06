@@ -1343,6 +1343,7 @@ export const studioApi = {
       provider?: string;
       domain?: string;
       subdomain?: string;
+      domain_mode?: "free_subdomain" | "custom";
       environment?: string;
       sync?: boolean;
       notes?: string;
@@ -1350,7 +1351,7 @@ export const studioApi = {
   ) =>
     api.apiV2<import("@/lib/studio").StudioDeployStartResult>(`/studio/projects/${id}/deploy`, {
       method: "POST",
-      body: body || { provider: "vps", sync: true }
+      body: body || { provider: "vps", domain_mode: "free_subdomain", sync: true }
     }),
   listDeployments: (id: string) =>
     api.apiV2<import("@/lib/studio").StudioDeploymentList>(`/studio/projects/${id}/deployments`),

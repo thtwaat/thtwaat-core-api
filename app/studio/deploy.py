@@ -209,21 +209,43 @@ def run_database_migration(progress: ProgressCallback, db_session=None) -> Dict[
     return info
 
 
-def bind_domain_and_ssl(ctx: DeployContext, progress: ProgressCallback) -> Dict[str, Any]:
-    """Reuse Domain Manager + SslManager — never invent a parallel DNS/SSL path."""
-    hostname = (ctx.domain or ctx.subdomain or "").strip().lower().rstrip(".")
+def bind_domain_and_ssl(
+    ctx: DeployContext,
+    progress: ProgressCallback,
+    *,
+    hostname: str,
+    dns_validated: bool,
+) -> Dict[str, Any]:
+    """Reuse Domain Manager + SslManager. SSL only after DNS validation succeeds."""
     emit(progress, DeployStage.SSL.value, message="SSL / domain via Domain Manager")
     if not hostname:
         return {
             "status": "platform",
             "note": "No custom domain — using platform hostnames",
             "renewal": "ssl.auto_renew",
+            "ssl_enabled": False,
         }
+    if not dns_validated:
+        emit(
+            progress,
+            DeployStage.SSL.value,
+            message="SSL deferred — waiting for DNS validation",
+            hostname=hostname,
+        )
+        return {
+            "status": "waiting_for_dns",
+            "domain": hostname,
+            "ssl_enabled": False,
+            "note": "SSL is only issued after DNS validation succeeds",
+            "renewal": "ssl.auto_renew",
+        }
+
     db = ctx.db_session
     if db is None:
         return {
             "status": "pending_dns",
             "domain": hostname,
+            "ssl_enabled": False,
             "note": "Add hostname in Domains, verify DNS, then request SSL",
             "renewal": "ssl.auto_renew",
         }
@@ -240,13 +262,14 @@ def bind_domain_and_ssl(ctx: DeployContext, progress: ProgressCallback) -> Dict[
                 DomainCreate(hostname=hostname, verification_method="TXT"),
                 actor,
             )
-            ssl_info = {
+            ssl_info: Dict[str, Any] = {
                 "status": "pending_verification",
                 "domain_id": str(created.id),
                 "hostname": created.hostname,
                 "dns_records": list(created.dns_records or []),
                 "ssl_status": created.ssl_status,
-                "note": "DNS verification required — then Domains → Request SSL",
+                "ssl_enabled": False,
+                "note": "Domain registered in Domain Manager — complete DNS verify before SSL",
                 "renewal": "ssl.auto_renew",
             }
         else:
@@ -257,22 +280,30 @@ def bind_domain_and_ssl(ctx: DeployContext, progress: ProgressCallback) -> Dict[
                 "hostname": resp.hostname,
                 "ssl_status": resp.ssl_status,
                 "ssl_expires_at": resp.ssl_expires_at.isoformat() if resp.ssl_expires_at else None,
-                "dns_records": [r.model_dump() if hasattr(r, "model_dump") else r for r in (resp.dns_records or [])],
+                "dns_records": [
+                    r.model_dump() if hasattr(r, "model_dump") else r
+                    for r in (resp.dns_records or [])
+                ],
+                "ssl_enabled": False,
                 "renewal": "ssl.auto_renew",
             }
-            # Best-effort SSL request when verified / live without active cert
             status_val = str(resp.status or "").lower()
             ssl_val = str(resp.ssl_status or "").upper()
+            # Only request SSL after DNS validation / verified domain
             if status_val in {"verified", "live", "active"} and ssl_val not in {"ACTIVE", "ISSUED"}:
                 try:
                     issued = svc.request_ssl(resp.id, ctx.workspace_id, actor)
                     ssl_info["ssl_request"] = {
-                        "ssl_status": getattr(issued, "ssl_status", None) or getattr(issued, "status", None),
+                        "ssl_status": getattr(issued, "ssl_status", None)
+                        or getattr(issued, "status", None),
                         "message": getattr(issued, "message", None),
                     }
                     ssl_info["status"] = ssl_info["ssl_request"].get("ssl_status") or ssl_info["status"]
+                    ssl_info["ssl_enabled"] = True
                 except Exception as exc:  # noqa: BLE001
                     ssl_info["ssl_request_error"] = str(exc)
+            elif ssl_val in {"ACTIVE", "ISSUED"}:
+                ssl_info["ssl_enabled"] = True
         emit(progress, DeployStage.SSL.value, message="Domain Manager bound", hostname=hostname)
         return ssl_info
     except Exception as exc:  # noqa: BLE001
@@ -281,6 +312,7 @@ def bind_domain_and_ssl(ctx: DeployContext, progress: ProgressCallback) -> Dict[
             "status": "error",
             "domain": hostname,
             "error": str(exc),
+            "ssl_enabled": False,
             "note": "Configure via Domains UI — deploy continues",
             "renewal": "ssl.auto_renew",
         }
@@ -296,6 +328,7 @@ DEPLOY_STAGES = (
     "database_migration",
     "health_check",
     "ssl",
+    "waiting_for_domain",
     "completed",
     "failed",
     "rollback",
@@ -329,6 +362,7 @@ class DeployStage(str, enum.Enum):
     DATABASE_MIGRATION = "database_migration"
     HEALTH_CHECK = "health_check"
     SSL = "ssl"
+    WAITING_FOR_DOMAIN = "waiting_for_domain"
     COMPLETED = "completed"
     FAILED = "failed"
     ROLLBACK = "rollback"
@@ -387,6 +421,7 @@ class DeployContext:
     artifact_sha256: Optional[str]
     domain: Optional[str] = None
     subdomain: Optional[str] = None
+    domain_mode: str = "free_subdomain"
     environment: str = "production"
     env_overrides: Dict[str, str] = field(default_factory=dict)
     public_api_base: str = ""
@@ -410,6 +445,11 @@ class ProviderResult:
     package_path: Optional[str] = None
     error: Optional[str] = None
     notes: List[str] = field(default_factory=list)
+    status: Optional[str] = None  # override e.g. waiting_for_domain
+    stage: Optional[str] = None
+    domain: Optional[str] = None
+    subdomain: Optional[str] = None
+    domain_validation: Dict[str, Any] = field(default_factory=dict)
 
 
 class DeployProvider(Protocol):
@@ -598,31 +638,88 @@ class VpsDockerProvider:
         self.label = "Docker Compose" if provider_id == "docker" else "Current VPS"
 
     def deploy(self, ctx: DeployContext, progress: ProgressCallback) -> ProviderResult:
+        from app.studio.domain_validation import (
+            DOMAIN_NOT_REGISTERED,
+            resolve_deploy_hostname,
+        )
+
         emit(progress, DeployStage.VALIDATING.value, message="Validating approved source build")
         if not ctx.artifact_path.is_file():
             return ProviderResult(ok=False, live=False, error="Missing source artifact")
+
+        emit(progress, DeployStage.VALIDATING.value, message="Validating deployment domain")
+        hostname, mode, validation = resolve_deploy_hostname(
+            domain_mode=ctx.domain_mode or "free_subdomain",
+            custom_domain=ctx.domain or ctx.subdomain,
+            project_id=ctx.project_id,
+            project_title=ctx.project_title,
+        )
+        domain_payload = validation.to_dict()
+        emit(
+            progress,
+            DeployStage.VALIDATING.value,
+            message=validation.message,
+            domain=hostname,
+            domain_mode=mode,
+            nxdomain=validation.nxdomain,
+            reachable=validation.reachable,
+        )
+
+        # Custom domain NXDOMAIN — block LIVE, keep waiting for domain
+        if mode == "custom" and (validation.nxdomain or not validation.registered):
+            emit(
+                progress,
+                DeployStage.WAITING_FOR_DOMAIN.value,
+                message=DOMAIN_NOT_REGISTERED,
+                domain=hostname,
+            )
+            suggested = next(
+                (o["hostname"] for o in validation.options if o["id"] == "free_subdomain"),
+                "",
+            )
+            return ProviderResult(
+                ok=True,
+                live=False,
+                status=DeployStage.WAITING_FOR_DOMAIN.value,
+                stage=DeployStage.WAITING_FOR_DOMAIN.value,
+                domain=hostname or None,
+                subdomain=suggested or None,
+                domain_validation=domain_payload,
+                urls={},
+                health={"domain": domain_payload},
+                ssl={
+                    "status": "blocked",
+                    "ssl_enabled": False,
+                    "note": "SSL only after DNS validation succeeds",
+                },
+                package_path=str(ctx.output_dir) if ctx.output_dir else None,
+                error=DOMAIN_NOT_REGISTERED,
+                instructions=[
+                    DOMAIN_NOT_REGISTERED,
+                    f"Option 1: Use free subdomain {suggested}" if suggested else "Option 1: Use a free *.thtwaat.app subdomain",
+                    "Option 2: Connect an existing custom domain that is already registered in DNS",
+                ],
+                notes=["Deployment not LIVE until a reachable domain is configured"],
+            )
 
         emit(progress, DeployStage.UPLOADING.value, message="Copying ZIP to platform storage")
         source = prepare_workspace(ctx, progress)
         emit(progress, DeployStage.BUILDING.value, message="Building Image / compose bundle refs")
         bundle = package_compose_bundle(ctx, source, progress)
+        # Reflect resolved hostname into context for env packaging
+        if mode == "free_subdomain":
+            ctx.subdomain = hostname
+            ctx.domain = None
+        else:
+            ctx.domain = hostname
         env_path = build_env_package(ctx, source, progress)
 
         stack_info = ensure_platform_stack(progress)
         emit(progress, DeployStage.DEPLOYING.value, message="Injecting env + activating overlay")
         marker = ctx.output_dir / "DEPLOYED.json"
         slug = _slug(ctx.project_title)
-        app_base = ctx.public_app_base or "https://app.localhost"
         api_base = ctx.public_api_base or "https://api.localhost"
-        if ctx.domain:
-            app_base = f"https://{ctx.domain}"
-            api_base = (
-                f"https://api.{ctx.domain}"
-                if not ctx.domain.startswith("api.")
-                else f"https://{ctx.domain}"
-            )
-        elif ctx.subdomain:
-            app_base = f"https://{ctx.subdomain}"
+        app_base = f"https://{hostname}" if hostname else (ctx.public_app_base or "https://app.localhost")
         urls = {
             "website": app_base,
             "dashboard": f"{app_base.rstrip('/')}/app/dashboard",
@@ -640,6 +737,9 @@ class VpsDockerProvider:
                     "commit": ctx.commit_sha or ctx.artifact_sha256,
                     "builder": ctx.builder,
                     "environment": ctx.environment,
+                    "domain": hostname,
+                    "domain_mode": mode,
+                    "domain_validation": domain_payload,
                     "urls": urls,
                     "bundle": str(bundle),
                     "env_encrypted": str(env_path),
@@ -658,12 +758,14 @@ class VpsDockerProvider:
         migration = run_database_migration(progress, ctx.db_session)
 
         emit(progress, DeployStage.HEALTH_CHECK.value, message="Verifying API/Frontend/Redis/DB/Worker/Scheduler/AI")
+        # Probe platform API; only probe product hostname when DNS is reachable
         health = run_platform_health(
             ctx.db_session,
             api_base=api_base if api_base.startswith("http") else "",
-            app_base=app_base if app_base.startswith("http") else "",
+            app_base=app_base if validation.reachable else "",
         )
         health["migration"] = migration
+        health["domain"] = domain_payload
         health["stack"] = {"ok": True, **{k: v for k, v in stack_info.items() if k != "actions"}}
         critical = [
             k
@@ -675,6 +777,9 @@ class VpsDockerProvider:
                 ok=False,
                 live=False,
                 health=health,
+                domain=hostname,
+                subdomain=hostname if mode == "free_subdomain" else None,
+                domain_validation=domain_payload,
                 error=f"Health check failed: {', '.join(critical)}",
                 package_path=str(ctx.output_dir),
             )
@@ -686,24 +791,62 @@ class VpsDockerProvider:
         if advisories:
             health["advisories"] = advisories
 
-        ssl_info = bind_domain_and_ssl(ctx, progress)
+        dns_ok = bool(validation.reachable and validation.registered)
+        ssl_info = bind_domain_and_ssl(
+            ctx, progress, hostname=hostname, dns_validated=dns_ok
+        )
+
+        if not dns_ok:
+            emit(
+                progress,
+                DeployStage.WAITING_FOR_DOMAIN.value,
+                message="Waiting for Domain — hostname not reachable yet",
+                domain=hostname,
+            )
+            return ProviderResult(
+                ok=True,
+                live=False,
+                status=DeployStage.WAITING_FOR_DOMAIN.value,
+                stage=DeployStage.WAITING_FOR_DOMAIN.value,
+                domain=hostname,
+                subdomain=hostname if mode == "free_subdomain" else None,
+                domain_validation=domain_payload,
+                urls=urls,
+                health=health,
+                ssl=ssl_info,
+                package_path=str(ctx.output_dir),
+                instructions=[
+                    f"Assigned hostname: {hostname}",
+                    "Deployment status: Waiting for Domain until DNS is reachable.",
+                    "SSL will be enabled only after DNS validation succeeds.",
+                    "Option: switch to a free *.thtwaat.app subdomain or connect a registered custom domain.",
+                    f"Bundle: {bundle}",
+                ],
+                notes=["Not LIVE until domain is reachable"],
+            )
 
         return ProviderResult(
             ok=True,
             live=True,
+            status=DeployStage.COMPLETED.value,
+            stage=DeployStage.COMPLETED.value,
+            domain=hostname,
+            subdomain=hostname if mode == "free_subdomain" else None,
+            domain_validation=domain_payload,
             urls=urls,
             health=health,
             ssl=ssl_info,
             package_path=str(ctx.output_dir),
             instructions=[
                 "Deployed as platform overlay — reused docker-compose.prod.yml / worker / scheduler.",
+                f"Domain {hostname} validated — SSL enabled only after DNS verification.",
                 "Secrets encrypted at rest (.env.production.enc); masked copy for audit.",
-                "Custom domain / SSL via Domain Manager (dns verify → request SSL → auto renew).",
                 f"Bundle: {bundle}",
             ],
             notes=[
                 "Reused deploy health + Domains + SSL + Redis job queue",
                 f"Environment: {ctx.environment}",
+                f"Domain mode: {mode}",
             ],
         )
 
@@ -835,18 +978,34 @@ def run_deploy(
                 "commit_sha": ctx.commit_sha or ctx.artifact_sha256,
                 "builder": ctx.builder,
                 "build_version": ctx.build_version,
+                "domain": result.domain,
+                "subdomain": result.subdomain,
+                "domain_validation": result.domain_validation,
             }
-        emit(
-            on_progress,
-            DeployStage.COMPLETED.value,
-            message="Deployment completed" if result.live else "Planning package completed",
-            live=result.live,
+
+        final_status = result.status or (
+            DeployStage.COMPLETED.value if result.live else DeployStage.COMPLETED.value
         )
+        final_stage = result.stage or final_status
+        if final_status == DeployStage.WAITING_FOR_DOMAIN.value:
+            emit(
+                on_progress,
+                DeployStage.WAITING_FOR_DOMAIN.value,
+                message=result.error or "Waiting for Domain",
+                live=False,
+            )
+        else:
+            emit(
+                on_progress,
+                DeployStage.COMPLETED.value,
+                message="Deployment completed" if result.live else "Planning package completed",
+                live=result.live,
+            )
         return {
             "ok": True,
-            "status": "completed",
-            "stage": DeployStage.COMPLETED.value,
-            "live": result.live,
+            "status": final_status,
+            "stage": final_stage,
+            "live": bool(result.live),
             "urls": result.urls,
             "instructions": result.instructions,
             "health": result.health,
@@ -860,6 +1019,10 @@ def run_deploy(
             "commit_sha": ctx.commit_sha or ctx.artifact_sha256,
             "builder": ctx.builder,
             "build_version": ctx.build_version,
+            "domain": result.domain,
+            "subdomain": result.subdomain,
+            "domain_validation": result.domain_validation,
+            "error": result.error,
         }
     except Exception as exc:  # noqa: BLE001
         logger.exception("deploy_failed")

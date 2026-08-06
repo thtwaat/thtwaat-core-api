@@ -735,6 +735,15 @@ export type StudioDeployment = {
   build_version?: number | null;
   commit_sha?: string | null;
   builder?: string | null;
+  free_subdomain?: string | null;
+  domain_validation?: {
+    hostname?: string;
+    registered?: boolean;
+    reachable?: boolean;
+    nxdomain?: boolean;
+    message?: string;
+    options?: Array<{ id: string; label: string; hostname: string }>;
+  } | null;
   created_at: string;
   updated_at: string;
 };

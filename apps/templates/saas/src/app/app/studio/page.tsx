@@ -539,6 +539,9 @@ export default function StudioPage() {
 
   const [deployProvider, setDeployProvider] = useState("vps");
   const [deployDomain, setDeployDomain] = useState("");
+  const [deployDomainMode, setDeployDomainMode] = useState<"free_subdomain" | "custom">(
+    "free_subdomain"
+  );
   const [deployEnv, setDeployEnv] = useState("production");
   const [showDeployLogs, setShowDeployLogs] = useState(false);
   const [liveLogLines, setLiveLogLines] = useState<string[]>([]);
@@ -554,17 +557,24 @@ export default function StudioPage() {
       if (!selected?.id) throw new Error("Select a project first");
       return studioApi.deploy(selected.id, {
         provider: deployProvider,
-        domain: deployDomain || undefined,
+        domain_mode: deployDomainMode,
+        domain: deployDomainMode === "custom" ? deployDomain || undefined : undefined,
         environment: deployEnv,
         sync: true
       });
     },
     onSuccess: (result) => {
-      toast.success(
-        result.deployment.live
-          ? `Live deploy v${result.deployment.version} · ${result.deployment.provider}`
-          : `Deploy package v${result.deployment.version} · ${result.note}`
-      );
+      if (result.deployment.status === "waiting_for_domain") {
+        toast.message(result.deployment.error || "Waiting for Domain", {
+          description: "Deployment is not LIVE until DNS is reachable."
+        });
+      } else {
+        toast.success(
+          result.deployment.live
+            ? `Live deploy v${result.deployment.version} · ${result.deployment.provider}`
+            : `Deploy package v${result.deployment.version} · ${result.note}`
+        );
+      }
       setShowDeployLogs(true);
       void qc.invalidateQueries({ queryKey: ["studio-deployments", result.project.id] });
     },
@@ -2171,7 +2181,7 @@ export default function StudioPage() {
             <h2 className="text-lg font-semibold text-white">Deployment Center</h2>
             <p className="text-sm text-slate-400">
               {currentDeploy
-                ? `v${currentDeploy.version} · ${currentDeploy.provider} · ${currentDeploy.status}/${currentDeploy.stage}${currentDeploy.live ? " · LIVE" : ""}`
+                ? `v${currentDeploy.version} · ${currentDeploy.provider} · ${currentDeploy.status}/${currentDeploy.stage}${currentDeploy.live ? " · LIVE" : currentDeploy.status === "waiting_for_domain" ? " · Waiting for Domain" : ""}`
                 : "Requires completed source build — Deploy never regenerates code"}
             </p>
           </div>
@@ -2286,37 +2296,76 @@ export default function StudioPage() {
               ))}
             </select>
           </label>
-          <label className="block space-y-1">
+          <label className="block space-y-1 sm:col-span-2 lg:col-span-1">
             <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
               Domain
             </span>
-            <select
-              value={deployDomain}
-              onChange={(e) => setDeployDomain(e.target.value)}
-              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-            >
-              <option value="">Platform default</option>
-              {(domainsQ.data || []).map((d) => (
-                <option key={d.id} value={d.hostname}>
-                  {d.hostname} · {d.ssl_status || d.status}
-                </option>
-              ))}
-            </select>
-            <input
-              value={deployDomain}
-              onChange={(e) => setDeployDomain(e.target.value)}
-              placeholder="or type custom domain"
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
-            />
+            <div className="space-y-2 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm">
+              <label className="flex items-start gap-2 text-slate-200">
+                <input
+                  type="radio"
+                  name="deploy-domain-mode"
+                  checked={deployDomainMode === "free_subdomain"}
+                  onChange={() => setDeployDomainMode("free_subdomain")}
+                  className="mt-1"
+                />
+                <span>
+                  Use a free *.thtwaat.app subdomain
+                  <span className="mt-0.5 block text-xs text-slate-500">
+                    {currentDeploy?.free_subdomain ||
+                      (selected
+                        ? `Auto: ${selected.title
+                            .toLowerCase()
+                            .replace(/[^a-z0-9]+/g, "-")
+                            .slice(0, 28)}.thtwaat.app`
+                        : "Allocated per project")}
+                  </span>
+                </span>
+              </label>
+              <label className="flex items-start gap-2 text-slate-200">
+                <input
+                  type="radio"
+                  name="deploy-domain-mode"
+                  checked={deployDomainMode === "custom"}
+                  onChange={() => setDeployDomainMode("custom")}
+                  className="mt-1"
+                />
+                <span>Connect an existing custom domain</span>
+              </label>
+              {deployDomainMode === "custom" && (
+                <>
+                  <select
+                    value={deployDomain}
+                    onChange={(e) => setDeployDomain(e.target.value)}
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                  >
+                    <option value="">Select from Domain Manager</option>
+                    {(domainsQ.data || []).map((d) => (
+                      <option key={d.id} value={d.hostname}>
+                        {d.hostname} · {d.ssl_status || d.status}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={deployDomain}
+                    onChange={(e) => setDeployDomain(e.target.value)}
+                    placeholder="or type registered custom domain"
+                    className="w-full rounded-lg border border-slate-700 bg-slate-900 px-2 py-1.5 text-slate-100"
+                  />
+                </>
+              )}
+            </div>
           </label>
           <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">SSL</p>
             <p className="mt-1 text-slate-200">
-              {currentDeploy?.ssl?.status
-                ? String(currentDeploy.ssl.status)
-                : deployDomain
-                  ? "Will bind via Domain Manager"
-                  : "Platform TLS"}
+              {currentDeploy?.ssl?.ssl_enabled
+                ? String(currentDeploy.ssl.status || "enabled")
+                : currentDeploy?.status === "waiting_for_domain"
+                  ? "Deferred until DNS validation"
+                  : deployDomainMode === "custom"
+                    ? "Enabled only after DNS validation"
+                    : "After free subdomain DNS is reachable"}
             </p>
           </div>
           <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
@@ -2373,6 +2422,21 @@ export default function StudioPage() {
               )}
               {currentDeploy.error && (
                 <p className="mt-2 text-sm text-rose-300">{currentDeploy.error}</p>
+              )}
+              {currentDeploy.status === "waiting_for_domain" && (
+                <div className="mt-3 rounded-xl border border-amber-700/50 bg-amber-950/40 p-3 text-sm text-amber-100">
+                  <p className="font-medium">
+                    {currentDeploy.error || "This domain is not registered."}
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-4 text-amber-100/80">
+                    <li>Use a free *.thtwaat.app subdomain</li>
+                    <li>Connect an existing custom domain that already resolves in DNS</li>
+                  </ul>
+                  <p className="mt-2 text-xs text-amber-200/70">
+                    SSL stays disabled until DNS validation succeeds. Status remains Waiting for
+                    Domain until the hostname is reachable.
+                  </p>
+                </div>
               )}
             </div>
             <div>

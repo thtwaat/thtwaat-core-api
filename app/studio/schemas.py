@@ -985,6 +985,10 @@ class StudioDeployRequest(BaseModel):
     provider: str = "vps"
     domain: Optional[str] = Field(None, max_length=255)
     subdomain: Optional[str] = Field(None, max_length=255)
+    domain_mode: str = Field(
+        default="free_subdomain",
+        description="free_subdomain | custom",
+    )
     environment: str = "production"
     sync: bool = False
     notes: Optional[str] = None
@@ -1025,6 +1029,8 @@ class StudioDeploymentResponse(BaseModel):
     build_version: Optional[int] = None
     commit_sha: Optional[str] = None
     builder: Optional[str] = None
+    free_subdomain: Optional[str] = None
+    domain_validation: Optional[Dict[str, Any]] = None
     created_at: datetime
     updated_at: datetime
 

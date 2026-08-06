@@ -1396,6 +1396,18 @@ class StudioService:
         meta = row.health if isinstance(row.health, dict) else {}
         commit = meta.get("commit_sha") or commit
         builder = meta.get("builder") or builder
+        from app.studio.domain_validation import allocate_free_subdomain
+
+        project = (
+            self.db.query(StudioProject).filter(StudioProject.id == row.project_id).first()
+        )
+        free_host = allocate_free_subdomain(
+            project_id=row.project_id,
+            project_title=(project.title if project else "app"),
+        )
+        domain_validation = None
+        if isinstance(row.health, dict) and isinstance(row.health.get("domain"), dict):
+            domain_validation = row.health.get("domain")
         return StudioDeploymentResponse(
             id=row.id,
             project_id=row.project_id,
@@ -1425,6 +1437,8 @@ class StudioService:
             build_version=build.version if build else meta.get("build_version"),
             commit_sha=commit,
             builder=builder,
+            free_subdomain=row.subdomain or free_host,
+            domain_validation=domain_validation,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
@@ -1518,6 +1532,19 @@ class StudioService:
 
         self.repo.clear_current_deployments(project.id)
         version = self.repo.next_deployment_version(project.id)
+        from app.studio.domain_validation import allocate_free_subdomain
+
+        domain_mode = (payload.domain_mode or "free_subdomain").strip().lower().replace("-", "_")
+        if domain_mode not in {"free_subdomain", "custom"}:
+            domain_mode = "free_subdomain"
+        free_host = allocate_free_subdomain(
+            project_id=project.id, project_title=project.title or "app"
+        )
+        custom_domain = (payload.domain or "").strip() or None
+        subdomain = (payload.subdomain or "").strip() or None
+        if domain_mode == "free_subdomain":
+            subdomain = free_host
+            custom_domain = None
         row = StudioProjectDeployment(
             project_id=project.id,
             workspace_id=project.workspace_id,
@@ -1528,8 +1555,8 @@ class StudioService:
             provider=provider,
             status="queued",
             stage="queued",
-            domain=(payload.domain or "").strip() or None,
-            subdomain=(payload.subdomain or "").strip() or None,
+            domain=custom_domain,
+            subdomain=subdomain,
             environment=(payload.environment or "production").strip() or "production",
             live=False,
             urls={},
@@ -1537,6 +1564,7 @@ class StudioService:
                 "commit_sha": build.artifact_sha256,
                 "builder": str(user.email) if getattr(user, "email", None) else str(user.id),
                 "build_version": build.version,
+                "domain_mode": domain_mode,
             },
             ssl={},
             instructions=[],
@@ -1627,7 +1655,7 @@ class StudioService:
 
         def on_progress(stage: str, payload: dict) -> None:
             row.stage = stage
-            if stage in {"failed", "completed", "rollback"}:
+            if stage in {"failed", "completed", "rollback", "waiting_for_domain"}:
                 row.status = stage
             elif stage == "queued":
                 row.status = "queued"
@@ -1653,6 +1681,7 @@ class StudioService:
             builder = str(row.created_by)
         meta = row.health if isinstance(row.health, dict) else {}
         builder = meta.get("builder") or builder
+        domain_mode = str(meta.get("domain_mode") or "free_subdomain")
 
         ctx = DeployContext(
             project_id=project.id,
@@ -1666,6 +1695,7 @@ class StudioService:
             artifact_sha256=build.artifact_sha256,
             domain=row.domain,
             subdomain=row.subdomain,
+            domain_mode=domain_mode,
             environment=row.environment or "production",
             public_api_base=getattr(settings, "PUBLIC_API_BASE_URL", "") or "",
             public_app_base=getattr(settings, "PUBLIC_APP_BASE_URL", "") or "",
@@ -1681,10 +1711,17 @@ class StudioService:
         row.stage = result.get("stage") or row.stage
         row.live = bool(result.get("live"))
         row.urls = result.get("urls") or {}
+        if result.get("domain") is not None:
+            row.domain = result.get("domain")
+        if result.get("subdomain") is not None:
+            row.subdomain = result.get("subdomain")
         health = dict(result.get("health") or {})
         health["commit_sha"] = result.get("commit_sha") or build.artifact_sha256
         health["builder"] = result.get("builder") or builder
         health["build_version"] = result.get("build_version") or build.version
+        health["domain_mode"] = domain_mode
+        if result.get("domain_validation"):
+            health["domain"] = result["domain_validation"]
         row.health = health
         row.ssl = result.get("ssl") or {}
         row.instructions = result.get("instructions") or []
