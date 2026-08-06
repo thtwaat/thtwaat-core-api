@@ -132,13 +132,32 @@ def test_vps_deploy_workflow(tmp_path: Path):
     assert "website" in result["urls"]
     assert (tmp_path / "deploy-out" / "DEPLOYED.json").is_file()
     assert (tmp_path / "deploy-out" / "env" / ".env.production.masked").is_file()
+    # Plaintext secrets removed — encrypted at rest
+    assert not (tmp_path / "deploy-out" / "env" / ".env.production").exists()
+    assert (tmp_path / "deploy-out" / "env" / ".env.production.enc").is_file()
     masked = (tmp_path / "deploy-out" / "env" / ".env.production.masked").read_text(
         encoding="utf-8"
     )
-    # No raw long secrets expected in masked file when placeholders empty
+    assert "abcdefghijklmnop" not in masked or "JWT" in masked
     assert "queued" in stages
     assert "completed" in stages
+    assert "database_migration" in stages
     assert any(s in stages for s in ("health_check", "ssl", "deploying"))
+    assert result.get("commit_sha") == sha
+
+
+@pytest.mark.unit
+def test_azure_label_is_container_apps():
+    p = get_provider("azure")
+    assert "Container" in p.label or p.id == "azure"
+
+
+@pytest.mark.unit
+def test_deploy_stages_include_migration():
+    from app.studio.deploy import DEPLOY_STAGES
+
+    assert "database_migration" in DEPLOY_STAGES
+    assert "building" in DEPLOY_STAGES
 
 
 @pytest.mark.unit

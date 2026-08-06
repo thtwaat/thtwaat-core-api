@@ -91,6 +91,44 @@ def _handle_webhook_failure(payload: Dict[str, Any], exc: Exception) -> None:
         db.close()
 
 
+def _handle_studio_job_failure(payload: Dict[str, Any], exc: Exception) -> None:
+    """Retry studio.deploy / studio.build with backoff, then dead-letter."""
+    from app.monitoring.queue import dead_letter, enqueue_delayed
+
+    attempt = int(payload.get("attempt") or 1)
+    max_attempts = int(payload.get("max_attempts") or 4)
+    timeout_seconds = int(payload.get("timeout_seconds") or 900)
+    reason = str(exc)
+    if "timeout" in reason.lower() or attempt >= max_attempts:
+        dead_letter(
+            payload,
+            reason=f"studio_job attempt={attempt}/{max_attempts} timeout={timeout_seconds}s: {reason}",
+        )
+        logger.error(
+            "studio_job_dead type=%s id=%s attempt=%s reason=%s",
+            payload.get("type"),
+            payload.get("deployment_id") or payload.get("build_id"),
+            attempt,
+            reason,
+        )
+        return
+
+    delay = min(2.0 ** attempt, 120.0)
+    ready_at = time.time() + delay
+    retry_payload = dict(payload)
+    retry_payload["attempt"] = attempt + 1
+    retry_payload["last_error"] = reason
+    enqueue_delayed(retry_payload, ready_at=ready_at)
+    logger.warning(
+        "studio_job_retry type=%s attempt=%s next=%s delay=%.1fs reason=%s",
+        payload.get("type"),
+        attempt,
+        attempt + 1,
+        delay,
+        reason,
+    )
+
+
 def process_job(payload: dict) -> None:
     from app.database.database import SessionLocal
 
@@ -166,7 +204,11 @@ def process_job(payload: dict) -> None:
             deployment_id = payload.get("deployment_id")
             if not deployment_id:
                 raise ValueError("studio.deploy missing deployment_id")
+            timeout_seconds = int(payload.get("timeout_seconds") or 900)
+            started = time.time()
             StudioService(db).run_deploy(UUID(str(deployment_id)))
+            if time.time() - started > timeout_seconds:
+                raise TimeoutError(f"studio.deploy exceeded {timeout_seconds}s")
         elif job_type == "agent.cleanup":
             from uuid import UUID
 
@@ -248,6 +290,12 @@ def main():
                     _handle_webhook_failure(payload, exc)
                 except Exception as inner:  # noqa: BLE001
                     logger.exception("webhook_retry_handler_failed: %s", inner)
+                    r.rpush("thtwaat:jobs:dead", raw)
+            elif job_type in {"studio.deploy", "studio.build"}:
+                try:
+                    _handle_studio_job_failure(payload, exc)
+                except Exception as inner:  # noqa: BLE001
+                    logger.exception("studio_retry_handler_failed: %s", inner)
                     r.rpush("thtwaat:jobs:dead", raw)
             else:
                 r.rpush("thtwaat:jobs:dead", raw)

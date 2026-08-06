@@ -1358,10 +1358,12 @@ export const studioApi = {
     api.apiV2<import("@/lib/studio").StudioDeployment>(
       `/studio/projects/${id}/deployments/${deploymentId}`
     ),
+  deploymentStreamUrl: (id: string, deploymentId: string) =>
+    `/api/v2/studio/projects/${id}/deployments/${deploymentId}/stream`,
   rollback: (id: string, body?: { deployment_id?: string; sync?: boolean }) =>
     api.apiV2<import("@/lib/studio").StudioRollbackResult>(`/studio/projects/${id}/rollback`, {
       method: "POST",
-      body: body || {}
+      body: body || { sync: true }
     })
 };
 

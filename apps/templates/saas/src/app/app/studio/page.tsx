@@ -26,9 +26,9 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { ApiError, getAccessToken } from "@/lib/api";
-import { apiPaths } from "@/lib/config";
+import { apiPaths, site } from "@/lib/config";
 import { canDeleteStudioProjects } from "@/lib/permissions";
-import { studioApi } from "@/lib/services";
+import { domainsApi, studioApi } from "@/lib/services";
 import {
   EMPTY_BLUEPRINT,
   STUDIO_PROMPT_PLACEHOLDER,
@@ -539,6 +539,15 @@ export default function StudioPage() {
 
   const [deployProvider, setDeployProvider] = useState("vps");
   const [deployDomain, setDeployDomain] = useState("");
+  const [deployEnv, setDeployEnv] = useState("production");
+  const [showDeployLogs, setShowDeployLogs] = useState(false);
+  const [liveLogLines, setLiveLogLines] = useState<string[]>([]);
+
+  const domainsQ = useQuery({
+    queryKey: ["domains"],
+    queryFn: () => domainsApi.list(),
+    staleTime: 60_000
+  });
 
   const deployM = useMutation({
     mutationFn: () => {
@@ -546,6 +555,7 @@ export default function StudioPage() {
       return studioApi.deploy(selected.id, {
         provider: deployProvider,
         domain: deployDomain || undefined,
+        environment: deployEnv,
         sync: true
       });
     },
@@ -555,6 +565,7 @@ export default function StudioPage() {
           ? `Live deploy v${result.deployment.version} · ${result.deployment.provider}`
           : `Deploy package v${result.deployment.version} · ${result.note}`
       );
+      setShowDeployLogs(true);
       void qc.invalidateQueries({ queryKey: ["studio-deployments", result.project.id] });
     },
     onError: (err) =>
@@ -564,10 +575,11 @@ export default function StudioPage() {
   const rollbackM = useMutation({
     mutationFn: () => {
       if (!selected?.id) throw new Error("Select a project first");
-      return studioApi.rollback(selected.id, {});
+      return studioApi.rollback(selected.id, { sync: true });
     },
     onSuccess: (result) => {
       toast.success(result.note || "Rollback complete");
+      setShowDeployLogs(true);
       void qc.invalidateQueries({ queryKey: ["studio-deployments", result.project.id] });
     },
     onError: (err) =>
@@ -608,6 +620,36 @@ export default function StudioPage() {
   const deployments = deploymentsQ.data?.items || [];
   const currentDeploy: StudioDeployment | undefined =
     deployments.find((d) => d.id === deploymentsQ.data?.current_id) || deployments[0];
+
+  useEffect(() => {
+    if (!showDeployLogs || !selected?.id || !currentDeploy?.id) return;
+    if (!["queued", "deploying"].includes(currentDeploy.status)) return;
+    const token = getAccessToken();
+    let es: EventSource | null = null;
+    try {
+      const streamPath = studioApi.deploymentStreamUrl(selected.id, currentDeploy.id);
+      const qs = token ? `?access_token=${encodeURIComponent(token)}` : "";
+      es = new EventSource(`${site.apiUrl}${streamPath}${qs}`);
+      es.onmessage = (ev) => {
+        try {
+          const data = JSON.parse(ev.data);
+          const line = `[${data.event || data.stage || "log"}] ${data.message || ""}`;
+          setLiveLogLines((prev) => [...prev.slice(-200), line]);
+        } catch {
+          setLiveLogLines((prev) => [...prev.slice(-200), ev.data]);
+        }
+        void qc.invalidateQueries({ queryKey: ["studio-deployments", selected.id] });
+      };
+      es.onerror = () => {
+        es?.close();
+      };
+    } catch {
+      /* polling remains via deploymentsQ refetchInterval */
+    }
+    return () => {
+      es?.close();
+    };
+  }, [showDeployLogs, selected?.id, currentDeploy?.id, currentDeploy?.status, qc]);
 
   function patchDraft(partial: Partial<ProductBlueprint>) {
     setDraft((prev) => ({ ...prev, ...partial }));
@@ -2134,10 +2176,81 @@ export default function StudioPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
+            <Button
+              className="bg-cyan-600 text-white hover:bg-cyan-500"
+              disabled={!selected || build?.status !== "completed" || deployM.isPending || !canDelete}
+              onClick={() => deployM.mutate()}
+              title={!canDelete ? "Owners and admins only" : undefined}
+            >
+              {deployM.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deploying…
+                </>
+              ) : (
+                "Deploy"
+              )}
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!currentDeploy || deployM.isPending || !canDelete}
+              onClick={() => deployM.mutate()}
+            >
+              Redeploy
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={deployments.length < 2 || rollbackM.isPending || !canDelete}
+              onClick={() => rollbackM.mutate()}
+            >
+              Rollback
+            </Button>
+            <Button
+              variant="secondary"
+              disabled={!currentDeploy}
+              onClick={() => {
+                setShowDeployLogs(true);
+                setLiveLogLines(
+                  (currentDeploy?.logs || []).map(
+                    (log) => `[${String(log.event || "log")}] ${String(log.message || "")}`
+                  )
+                );
+              }}
+            >
+              View Logs
+            </Button>
+            {currentDeploy?.urls?.website && (
+              <a
+                href={currentDeploy.urls.website}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(buttonVariants({ variant: "secondary" }), "inline-flex")}
+              >
+                Open Website
+              </a>
+            )}
+            {currentDeploy?.urls?.dashboard && (
+              <a
+                href={currentDeploy.urls.dashboard}
+                target="_blank"
+                rel="noreferrer"
+                className={cn(buttonVariants({ variant: "secondary" }), "inline-flex")}
+              >
+                Open Dashboard
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Deployment Target
+            </span>
             <select
               value={deployProvider}
               onChange={(e) => setDeployProvider(e.target.value)}
-              className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
             >
               {[
                 "vps",
@@ -2152,48 +2265,84 @@ export default function StudioPage() {
                 "kubernetes"
               ].map((p) => (
                 <option key={p} value={p}>
-                  {p}
+                  {p === "vps" ? "Current VPS" : p === "docker" ? "Docker Compose" : p === "azure" ? "Azure Container Apps" : p}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Environment
+            </span>
+            <select
+              value={deployEnv}
+              onChange={(e) => setDeployEnv(e.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            >
+              {["production", "staging", "preview"].map((e) => (
+                <option key={e} value={e}>
+                  {e}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+              Domain
+            </span>
+            <select
+              value={deployDomain}
+              onChange={(e) => setDeployDomain(e.target.value)}
+              className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+            >
+              <option value="">Platform default</option>
+              {(domainsQ.data || []).map((d) => (
+                <option key={d.id} value={d.hostname}>
+                  {d.hostname} · {d.ssl_status || d.status}
                 </option>
               ))}
             </select>
             <input
               value={deployDomain}
               onChange={(e) => setDeployDomain(e.target.value)}
-              placeholder="custom domain (optional)"
-              className="w-48 rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
+              placeholder="or type custom domain"
+              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100"
             />
-            <Button
-              className="bg-cyan-600 text-white hover:bg-cyan-500"
-              disabled={
-                !selected ||
-                build?.status !== "completed" ||
-                deployM.isPending
-              }
-              onClick={() => deployM.mutate()}
-            >
-              {deployM.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Deploying…
-                </>
-              ) : (
-                "Deploy"
-              )}
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={!currentDeploy || deployM.isPending}
-              onClick={() => deployM.mutate()}
-            >
-              Redeploy
-            </Button>
-            <Button
-              variant="secondary"
-              disabled={deployments.length < 2 || rollbackM.isPending}
-              onClick={() => rollbackM.mutate()}
-            >
-              Rollback
-            </Button>
+          </label>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">SSL</p>
+            <p className="mt-1 text-slate-200">
+              {currentDeploy?.ssl?.status
+                ? String(currentDeploy.ssl.status)
+                : deployDomain
+                  ? "Will bind via Domain Manager"
+                  : "Platform TLS"}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Build Version</p>
+            <p className="mt-1 text-slate-200">
+              {currentDeploy?.build_version != null
+                ? `build v${currentDeploy.build_version}`
+                : build?.version != null
+                  ? `build v${build.version}`
+                  : "—"}
+              {currentDeploy?.commit_sha
+                ? ` · ${String(currentDeploy.commit_sha).slice(0, 12)}`
+                : ""}
+            </p>
+          </div>
+          <div className="rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2 text-sm">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Health</p>
+            <p className="mt-1 text-slate-200">
+              {currentDeploy?.health
+                ? Object.entries(currentDeploy.health)
+                    .filter(([, v]) => v && typeof v === "object" && "ok" in (v as object))
+                    .map(([k, v]) => `${k}:${(v as { ok?: boolean }).ok === false ? "fail" : "ok"}`)
+                    .slice(0, 4)
+                    .join(" · ") || "—"
+                : "—"}
+            </p>
           </div>
         </div>
 
@@ -2205,31 +2354,23 @@ export default function StudioPage() {
         ) : (
           <div className="grid gap-6 xl:grid-cols-2">
             <div>
-              <h3 className="mb-2 text-sm font-semibold text-white">Open</h3>
-              <div className="flex flex-wrap gap-2">
-                {Object.entries(currentDeploy.urls || {}).map(([key, url]) => (
-                  <a
-                    key={key}
-                    href={url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className={cn(buttonVariants({ variant: "secondary" }), "inline-flex capitalize")}
-                  >
-                    {key}
-                  </a>
-                ))}
-                {Object.keys(currentDeploy.urls || {}).length === 0 && (
-                  <p className="text-sm text-slate-500">No live URLs (planning provider)</p>
-                )}
-              </div>
-              <h3 className="mb-2 mt-4 text-sm font-semibold text-white">Logs</h3>
-              <ul className="max-h-48 space-y-1 overflow-y-auto font-mono text-xs text-slate-400">
-                {(currentDeploy.logs || []).slice(-30).map((log, idx) => (
-                  <li key={`${log.ts || idx}-${idx}`}>
-                    [{String(log.event || "log")}] {String(log.message || "")}
-                  </li>
-                ))}
-              </ul>
+              {(showDeployLogs || (currentDeploy.logs || []).length > 0) && (
+                <>
+                  <h3 className="mb-2 text-sm font-semibold text-white">Live Logs</h3>
+                  <ul className="max-h-56 space-y-1 overflow-y-auto rounded-xl border border-slate-800 bg-black/40 p-3 font-mono text-xs text-slate-400">
+                    {(liveLogLines.length
+                      ? liveLogLines
+                      : (currentDeploy.logs || []).map(
+                          (log) => `[${String(log.event || "log")}] ${String(log.message || "")}`
+                        )
+                    )
+                      .slice(-80)
+                      .map((line, idx) => (
+                        <li key={`${idx}-${line.slice(0, 24)}`}>{line}</li>
+                      ))}
+                  </ul>
+                </>
+              )}
               {currentDeploy.error && (
                 <p className="mt-2 text-sm text-rose-300">{currentDeploy.error}</p>
               )}
@@ -2250,6 +2391,8 @@ export default function StudioPage() {
                       <p className="text-xs text-slate-500">
                         {d.stage} · {d.duration_ms}ms
                         {d.live ? " · live" : ""}
+                        {d.builder ? ` · ${d.builder}` : ""}
+                        {d.commit_sha ? ` · ${String(d.commit_sha).slice(0, 8)}` : ""}
                       </p>
                     </div>
                     <Badge

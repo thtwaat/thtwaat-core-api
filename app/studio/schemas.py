@@ -1022,6 +1022,9 @@ class StudioDeploymentResponse(BaseModel):
     retryable: bool = False
     rollback_of: Optional[UUID] = None
     created_by: Optional[UUID] = None
+    build_version: Optional[int] = None
+    commit_sha: Optional[str] = None
+    builder: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 

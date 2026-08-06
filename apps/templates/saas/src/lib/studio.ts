@@ -731,6 +731,10 @@ export type StudioDeployment = {
   error?: string | null;
   retryable: boolean;
   rollback_of?: string | null;
+  created_by?: string | null;
+  build_version?: number | null;
+  commit_sha?: string | null;
+  builder?: string | null;
   created_at: string;
   updated_at: string;
 };

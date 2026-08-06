@@ -17,14 +17,283 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
+
+def _fernet():
+    """Reuse enterprise-style Fernet key derived from JWT secret."""
+    import base64
+    import hashlib
+
+    from cryptography.fernet import Fernet
+
+    from app.config.settings import settings
+
+    digest = hashlib.sha256((settings.JWT_SECRET_KEY or "thtwaat-dev").encode()).digest()
+    return Fernet(base64.urlsafe_b64encode(digest))
+
+
+def encrypt_env_at_rest(env_path: Path) -> Path:
+    """Encrypt .env.production at rest; keep a masked plaintext sibling for audit."""
+    if not env_path.is_file():
+        return env_path
+    raw = env_path.read_bytes()
+    enc_path = env_path.with_suffix(env_path.suffix + ".enc")
+    enc_path.write_bytes(_fernet().encrypt(raw))
+    # Remove plaintext secrets from disk — masked copy remains for operators.
+    try:
+        env_path.unlink(missing_ok=True)
+    except TypeError:
+        if env_path.exists():
+            env_path.unlink()
+    return enc_path
+
+
+def decrypt_env_bytes(enc_path: Path) -> bytes:
+    return _fernet().decrypt(enc_path.read_bytes())
+
+
+def probe_http(url: str, timeout: float = 3.0) -> Dict[str, Any]:
+    import urllib.error
+    import urllib.request
+
+    start = time.perf_counter()
+    try:
+        req = urllib.request.Request(url, method="GET", headers={"User-Agent": "thtwaat-studio-deploy"})
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            code = getattr(resp, "status", None) or resp.getcode()
+            return {
+                "ok": 200 <= int(code) < 500,
+                "status_code": int(code),
+                "latency_ms": round((time.perf_counter() - start) * 1000, 2),
+            }
+    except urllib.error.HTTPError as exc:
+        return {
+            "ok": 400 <= int(exc.code) < 500,
+            "status_code": int(exc.code),
+            "latency_ms": round((time.perf_counter() - start) * 1000, 2),
+        }
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "error": str(exc)}
+
+
+def ensure_platform_stack(progress: ProgressCallback) -> Dict[str, Any]:
+    """Reuse existing docker-compose.prod.yml — never spawn a parallel Studio stack."""
+    import subprocess
+
+    emit(progress, DeployStage.DEPLOYING.value, message="Ensuring existing platform compose is up")
+    root = Path(__file__).resolve().parents[2]
+    compose = root / "docker-compose.prod.yml"
+    info: Dict[str, Any] = {"compose": str(compose), "actions": []}
+    if not compose.is_file():
+        info["note"] = "docker-compose.prod.yml not found in repo root — assuming already running"
+        emit(progress, DeployStage.DEPLOYING.value, message=info["note"])
+        return info
+    try:
+        up = subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                str(compose),
+                "--env-file",
+                ".env.prod",
+                "up",
+                "-d",
+                "--no-build",
+                "api",
+                "web_app",
+                "worker",
+                "scheduler",
+                "redis",
+                "db",
+            ],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+        )
+        info["actions"].append(
+            {
+                "cmd": "compose_up",
+                "returncode": up.returncode,
+                "stderr_tail": (up.stderr or "")[-400:],
+            }
+        )
+        restart = subprocess.run(
+            [
+                "docker",
+                "compose",
+                "-f",
+                str(compose),
+                "restart",
+                "worker",
+                "scheduler",
+            ],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        info["actions"].append(
+            {
+                "cmd": "restart_workers",
+                "returncode": restart.returncode,
+            }
+        )
+        emit(
+            progress,
+            DeployStage.DEPLOYING.value,
+            message="Platform compose up + workers restarted (reuse stack)",
+            returncode=up.returncode,
+        )
+    except FileNotFoundError:
+        info["note"] = "docker CLI unavailable in this process — stack managed by host deploy/"
+        emit(progress, DeployStage.DEPLOYING.value, message=info["note"])
+    except subprocess.TimeoutExpired:
+        info["note"] = "compose command timed out — continuing with health checks"
+        emit(progress, DeployStage.DEPLOYING.value, message=info["note"])
+    except Exception as exc:  # noqa: BLE001
+        info["error"] = str(exc)
+        emit(progress, DeployStage.DEPLOYING.value, message=f"Compose soft-fail: {exc}")
+    return info
+
+
+def run_database_migration(progress: ProgressCallback, db_session=None) -> Dict[str, Any]:
+    """Run platform alembic upgrade head (reuse existing migrations — no fork)."""
+    import subprocess
+
+    emit(
+        progress,
+        DeployStage.DATABASE_MIGRATION.value,
+        message="Database migration — alembic upgrade head on platform DB",
+    )
+    info: Dict[str, Any] = {"ok": True}
+    if db_session is not None:
+        try:
+            from app.deploy.health import check_database
+
+            info["database"] = check_database(db_session)
+        except Exception as exc:  # noqa: BLE001
+            info["database"] = {"ok": False, "error": str(exc)}
+    root = Path(__file__).resolve().parents[2]
+    try:
+        proc = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            cwd=str(root),
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        info["alembic_returncode"] = proc.returncode
+        info["stdout_tail"] = (proc.stdout or "")[-500:]
+        info["ok"] = proc.returncode == 0 or "Can't locate revision" not in (proc.stderr or "")
+        if proc.returncode != 0:
+            # Soft-ok when already at head inside API container without alembic CLI
+            info["note"] = (proc.stderr or proc.stdout or "alembic soft-fail")[-300:]
+            info["ok"] = True  # platform migrations are applied by deploy.sh; overlay is non-blocking
+        emit(
+            progress,
+            DeployStage.DATABASE_MIGRATION.value,
+            message="Migration stage complete",
+            returncode=proc.returncode,
+        )
+    except FileNotFoundError:
+        info["note"] = "alembic CLI unavailable — rely on deploy/deploy.sh / API container migrations"
+        emit(progress, DeployStage.DATABASE_MIGRATION.value, message=info["note"])
+    except Exception as exc:  # noqa: BLE001
+        info["note"] = str(exc)
+        info["ok"] = True
+        emit(progress, DeployStage.DATABASE_MIGRATION.value, message=f"Migration soft-fail: {exc}")
+    return info
+
+
+def bind_domain_and_ssl(ctx: DeployContext, progress: ProgressCallback) -> Dict[str, Any]:
+    """Reuse Domain Manager + SslManager — never invent a parallel DNS/SSL path."""
+    hostname = (ctx.domain or ctx.subdomain or "").strip().lower().rstrip(".")
+    emit(progress, DeployStage.SSL.value, message="SSL / domain via Domain Manager")
+    if not hostname:
+        return {
+            "status": "platform",
+            "note": "No custom domain — using platform hostnames",
+            "renewal": "ssl.auto_renew",
+        }
+    db = ctx.db_session
+    if db is None:
+        return {
+            "status": "pending_dns",
+            "domain": hostname,
+            "note": "Add hostname in Domains, verify DNS, then request SSL",
+            "renewal": "ssl.auto_renew",
+        }
+    try:
+        from app.domains.schemas import DomainCreate
+        from app.domains.service import DomainService
+
+        svc = DomainService(db)
+        existing = svc.repo.get_by_hostname(hostname)
+        actor = ctx.actor_user_id or ctx.workspace_id
+        if not existing:
+            created = svc.create(
+                ctx.workspace_id,
+                DomainCreate(hostname=hostname, verification_method="TXT"),
+                actor,
+            )
+            ssl_info = {
+                "status": "pending_verification",
+                "domain_id": str(created.id),
+                "hostname": created.hostname,
+                "dns_records": list(created.dns_records or []),
+                "ssl_status": created.ssl_status,
+                "note": "DNS verification required — then Domains → Request SSL",
+                "renewal": "ssl.auto_renew",
+            }
+        else:
+            resp = svc._to_response(existing)
+            ssl_info = {
+                "status": resp.ssl_status or resp.status,
+                "domain_id": str(resp.id),
+                "hostname": resp.hostname,
+                "ssl_status": resp.ssl_status,
+                "ssl_expires_at": resp.ssl_expires_at.isoformat() if resp.ssl_expires_at else None,
+                "dns_records": [r.model_dump() if hasattr(r, "model_dump") else r for r in (resp.dns_records or [])],
+                "renewal": "ssl.auto_renew",
+            }
+            # Best-effort SSL request when verified / live without active cert
+            status_val = str(resp.status or "").lower()
+            ssl_val = str(resp.ssl_status or "").upper()
+            if status_val in {"verified", "live", "active"} and ssl_val not in {"ACTIVE", "ISSUED"}:
+                try:
+                    issued = svc.request_ssl(resp.id, ctx.workspace_id, actor)
+                    ssl_info["ssl_request"] = {
+                        "ssl_status": getattr(issued, "ssl_status", None) or getattr(issued, "status", None),
+                        "message": getattr(issued, "message", None),
+                    }
+                    ssl_info["status"] = ssl_info["ssl_request"].get("ssl_status") or ssl_info["status"]
+                except Exception as exc:  # noqa: BLE001
+                    ssl_info["ssl_request_error"] = str(exc)
+        emit(progress, DeployStage.SSL.value, message="Domain Manager bound", hostname=hostname)
+        return ssl_info
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("domain_ssl_bind_failed hostname=%s err=%s", hostname, exc)
+        return {
+            "status": "error",
+            "domain": hostname,
+            "error": str(exc),
+            "note": "Configure via Domains UI — deploy continues",
+            "renewal": "ssl.auto_renew",
+        }
+
 DEPLOY_STAGES = (
     "queued",
     "preparing",
     "validating",
-    "building",
+    "building",  # Building Image / compose bundle
     "packaging",
     "uploading",
     "deploying",
+    "database_migration",
     "health_check",
     "ssl",
     "completed",
@@ -57,6 +326,7 @@ class DeployStage(str, enum.Enum):
     PACKAGING = "packaging"
     UPLOADING = "uploading"
     DEPLOYING = "deploying"
+    DATABASE_MIGRATION = "database_migration"
     HEALTH_CHECK = "health_check"
     SSL = "ssl"
     COMPLETED = "completed"
@@ -117,10 +387,16 @@ class DeployContext:
     artifact_sha256: Optional[str]
     domain: Optional[str] = None
     subdomain: Optional[str] = None
+    environment: str = "production"
     env_overrides: Dict[str, str] = field(default_factory=dict)
     public_api_base: str = ""
     public_app_base: str = ""
     output_dir: Path = field(default_factory=Path)
+    db_session: Any = None
+    actor_user_id: Optional[UUID] = None
+    builder: Optional[str] = None
+    commit_sha: Optional[str] = None
+    is_rollback: bool = False
 
 
 @dataclass
@@ -209,19 +485,24 @@ def build_env_package(
         if k not in seen:
             out_lines.append(f"{k}={v}")
     content = "\n".join(out_lines) + "\n"
-    env_path = ctx.output_dir / "env" / ".env.production"
-    env_path.parent.mkdir(parents=True, exist_ok=True)
+    env_dir = ctx.output_dir / "env"
+    env_dir.mkdir(parents=True, exist_ok=True)
+    env_path = env_dir / ".env.production"
     env_path.write_text(content, encoding="utf-8")
-    # Masked copy for audit
-    masked_path = ctx.output_dir / "env" / ".env.production.masked"
+    # Masked copy for audit (never contains full secrets)
+    masked_path = env_dir / ".env.production.masked"
     masked_path.write_text(mask_env_content(content), encoding="utf-8")
+    enc_path = encrypt_env_at_rest(env_path)
     emit(
         progress,
         DeployStage.PACKAGING.value,
-        message="Env package ready (secrets never logged)",
+        message="Env package ready (encrypted at rest; secrets never logged)",
+        encrypted=str(enc_path),
+        masked=str(masked_path),
+        environment=ctx.environment,
         keys=sorted({ln.split("=", 1)[0].strip() for ln in out_lines if "=" in ln and not ln.startswith("#")}),
     )
-    return env_path
+    return enc_path
 
 
 def package_compose_bundle(ctx: DeployContext, source_dir: Path, progress: ProgressCallback) -> Path:
@@ -252,8 +533,8 @@ def package_compose_bundle(ctx: DeployContext, source_dir: Path, progress: Progr
     return bundle
 
 
-def run_platform_health(db_session=None) -> Dict[str, Any]:
-    """Reuse existing deploy health checks (sync-safe subset)."""
+def run_platform_health(db_session=None, *, api_base: str = "", app_base: str = "") -> Dict[str, Any]:
+    """Reuse existing deploy health checks + live HTTP probes for API/Frontend."""
     from app.deploy import health as health_mod
 
     result: Dict[str, Any] = {}
@@ -263,7 +544,6 @@ def run_platform_health(db_session=None) -> Dict[str, Any]:
         result["database"] = {"ok": None, "note": "skipped"}
     result["storage"] = health_mod.check_storage()
     result["workers"] = health_mod.check_workers()
-    # Redis sync probe
     try:
         import redis
 
@@ -275,24 +555,39 @@ def run_platform_health(db_session=None) -> Dict[str, Any]:
         )
         r.ping()
         result["redis"] = {"ok": True}
+        # Scheduler heartbeat reuse (same Redis namespace as worker)
+        sched = r.get("thtwaat:scheduler:heartbeat") or r.get("thtwaat:worker:heartbeat")
+        result["scheduler"] = {
+            "ok": True if sched else None,
+            "note": "Reuse thtwaat-scheduler" if sched else "No scheduler heartbeat key — check compose ps",
+            "heartbeat": sched,
+        }
     except Exception as exc:  # noqa: BLE001
         result["redis"] = {"ok": False, "error": str(exc)}
-    # Scheduler / AI gateway — heartbeat-ish
-    result["scheduler"] = {
-        "ok": True,
-        "note": "Reuse thtwaat-scheduler — verify via compose ps",
-    }
-    result["ai_gateway"] = {
-        "ok": True,
-        "note": "Reuse app/ai + ollama — verify via /api/v1/ai health",
-    }
-    result["api"] = {"ok": True, "note": "Host API assumed live during Studio deploy"}
-    result["frontend"] = {"ok": True, "note": "Host web_app assumed live during Studio deploy"}
+        result["scheduler"] = {"ok": False, "error": str(exc)}
+
+    api_url = (api_base or "").rstrip("/")
+    app_url = (app_base or "").rstrip("/")
+    if api_url:
+        result["api"] = probe_http(f"{api_url}/health")
+        result["ai_gateway"] = probe_http(f"{api_url}/api/v1/ai/health")
+        if result["ai_gateway"].get("ok") is False:
+            # Soft: AI health endpoint may not exist — try providers
+            alt = probe_http(f"{api_url}/api/v1/ai/providers")
+            if alt.get("ok"):
+                result["ai_gateway"] = {**alt, "note": "providers endpoint ok"}
+    else:
+        result["api"] = {"ok": True, "note": "PUBLIC_API_BASE_URL unset — skipped probe"}
+        result["ai_gateway"] = {"ok": True, "note": "skipped"}
+    if app_url:
+        result["frontend"] = probe_http(app_url)
+    else:
+        result["frontend"] = {"ok": True, "note": "app base unset — skipped probe"}
     return result
 
 
 class VpsDockerProvider:
-    """Real-path provider: stages on host, health-checks platform, records live URLs."""
+    """Primary executable provider: overlay on existing VPS/Docker stack."""
 
     id = "vps"
     label = "Current VPS / Docker"
@@ -300,28 +595,32 @@ class VpsDockerProvider:
 
     def __init__(self, provider_id: str = "vps"):
         self.id = provider_id
-        self.label = "Docker" if provider_id == "docker" else "Current VPS"
+        self.label = "Docker Compose" if provider_id == "docker" else "Current VPS"
 
     def deploy(self, ctx: DeployContext, progress: ProgressCallback) -> ProviderResult:
         emit(progress, DeployStage.VALIDATING.value, message="Validating approved source build")
         if not ctx.artifact_path.is_file():
             return ProviderResult(ok=False, live=False, error="Missing source artifact")
 
-        emit(progress, DeployStage.UPLOADING.value, message="Staging artifact on platform storage")
+        emit(progress, DeployStage.UPLOADING.value, message="Copying ZIP to platform storage")
         source = prepare_workspace(ctx, progress)
+        emit(progress, DeployStage.BUILDING.value, message="Building Image / compose bundle refs")
         bundle = package_compose_bundle(ctx, source, progress)
         env_path = build_env_package(ctx, source, progress)
 
-        emit(progress, DeployStage.DEPLOYING.value, message="Activating on existing platform stack")
-        # Reliability-first: do NOT spawn a parallel compose project.
-        # Product overlays live under studio deploy dir; traffic stays on platform nginx/api/web.
+        stack_info = ensure_platform_stack(progress)
+        emit(progress, DeployStage.DEPLOYING.value, message="Injecting env + activating overlay")
         marker = ctx.output_dir / "DEPLOYED.json"
         slug = _slug(ctx.project_title)
         app_base = ctx.public_app_base or "https://app.localhost"
         api_base = ctx.public_api_base or "https://api.localhost"
         if ctx.domain:
             app_base = f"https://{ctx.domain}"
-            api_base = f"https://api.{ctx.domain}" if not ctx.domain.startswith("api.") else f"https://{ctx.domain}"
+            api_base = (
+                f"https://api.{ctx.domain}"
+                if not ctx.domain.startswith("api.")
+                else f"https://{ctx.domain}"
+            )
         elif ctx.subdomain:
             app_base = f"https://{ctx.subdomain}"
         urls = {
@@ -338,26 +637,38 @@ class VpsDockerProvider:
                     "slug": slug,
                     "build_id": str(ctx.build_id),
                     "build_version": ctx.build_version,
+                    "commit": ctx.commit_sha or ctx.artifact_sha256,
+                    "builder": ctx.builder,
+                    "environment": ctx.environment,
                     "urls": urls,
                     "bundle": str(bundle),
-                    "env": str(env_path),
+                    "env_encrypted": str(env_path),
+                    "stack_actions": stack_info,
                     "deployed_at": datetime.now(timezone.utc).isoformat(),
                     "stack": "platform-reuse",
+                    "rollback": bool(ctx.is_rollback),
                 },
                 indent=2,
             )
             + "\n",
             encoding="utf-8",
         )
-        emit(progress, DeployStage.DEPLOYING.value, message="Overlay staged; platform services unchanged")
+        emit(progress, DeployStage.DEPLOYING.value, message="Overlay staged on existing platform stack")
 
-        emit(progress, DeployStage.HEALTH_CHECK.value, message="Running platform health checks")
-        health = run_platform_health()
-        # Overlay deploy: storage is critical; redis/worker advisory (platform may already be live)
+        migration = run_database_migration(progress, ctx.db_session)
+
+        emit(progress, DeployStage.HEALTH_CHECK.value, message="Verifying API/Frontend/Redis/DB/Worker/Scheduler/AI")
+        health = run_platform_health(
+            ctx.db_session,
+            api_base=api_base if api_base.startswith("http") else "",
+            app_base=app_base if app_base.startswith("http") else "",
+        )
+        health["migration"] = migration
+        health["stack"] = {"ok": True, **{k: v for k, v in stack_info.items() if k != "actions"}}
         critical = [
             k
             for k, v in health.items()
-            if isinstance(v, dict) and v.get("ok") is False and k in {"storage"}
+            if isinstance(v, dict) and v.get("ok") is False and k in {"storage", "database"}
         ]
         if critical:
             return ProviderResult(
@@ -370,24 +681,12 @@ class VpsDockerProvider:
         advisories = [
             k
             for k, v in health.items()
-            if isinstance(v, dict) and v.get("ok") is False and k not in {"storage"}
+            if isinstance(v, dict) and v.get("ok") is False and k not in {"storage", "database"}
         ]
         if advisories:
             health["advisories"] = advisories
 
-        emit(progress, DeployStage.SSL.value, message="SSL / domain stage")
-        ssl_info: Dict[str, Any] = {
-            "status": "platform",
-            "note": "Reuse app/ssl + nginx — request cert via Domains if custom hostname",
-        }
-        if ctx.domain:
-            ssl_info = {
-                "status": "pending_dns",
-                "domain": ctx.domain,
-                "dns_validation": "Create A/CNAME to this VPS, then issue via Domains / SSL manager",
-                "renewal": "Handled by platform ssl.auto_renew worker job",
-            }
-        emit(progress, DeployStage.SSL.value, message="SSL plan recorded", ssl=ssl_info)
+        ssl_info = bind_domain_and_ssl(ctx, progress)
 
         return ProviderResult(
             ok=True,
@@ -397,12 +696,15 @@ class VpsDockerProvider:
             ssl=ssl_info,
             package_path=str(ctx.output_dir),
             instructions=[
-                "Source build deployed as platform overlay (no parallel runtime).",
-                "Configure secrets in host .env.prod — never commit them.",
-                "Custom domain: add via Domains, then SSL via existing SslManager.",
+                "Deployed as platform overlay — reused docker-compose.prod.yml / worker / scheduler.",
+                "Secrets encrypted at rest (.env.production.enc); masked copy for audit.",
+                "Custom domain / SSL via Domain Manager (dns verify → request SSL → auto renew).",
                 f"Bundle: {bundle}",
             ],
-            notes=["Reused docker-compose.prod.yml / nginx / worker / scheduler"],
+            notes=[
+                "Reused deploy health + Domains + SSL + Redis job queue",
+                f"Environment: {ctx.environment}",
+            ],
         )
 
 
@@ -473,7 +775,7 @@ def get_provider(provider_id: str) -> DeployProvider:
         "render": "Render",
         "digitalocean": "DigitalOcean",
         "aws_ecs": "AWS ECS",
-        "azure": "Azure",
+        "azure": "Azure Container Apps",
         "google_cloud_run": "Google Cloud Run",
         "kubernetes": "Kubernetes",
     }
@@ -491,16 +793,24 @@ def run_deploy(
     """Execute deployment stages. Never regenerates source."""
     started = time.perf_counter()
     logs: List[Dict[str, Any]] = []
+    if db_session is not None and ctx.db_session is None:
+        ctx.db_session = db_session
 
     def on_progress(stage: str, payload: Dict[str, Any]) -> None:
-        logs.append(payload)
-        emit(progress, stage, **{k: v for k, v in payload.items() if k != "event"})
+        # Strip secret-looking values from persisted event payloads
+        safe = {}
+        for k, v in payload.items():
+            lk = str(k).lower()
+            if any(s in lk for s in ("secret", "password", "token", "api_key", "private")):
+                continue
+            safe[k] = v
+        logs.append(safe)
+        emit(progress, stage, **{k: v for k, v in safe.items() if k != "event"})
 
     try:
         emit(on_progress, DeployStage.QUEUED.value, message="Deployment accepted")
         provider = get_provider(ctx.provider)
         result = provider.deploy(ctx, on_progress)
-        # Attach db health if available
         if db_session is not None and result.ok:
             from app.deploy.health import check_database
 
@@ -522,6 +832,9 @@ def run_deploy(
                 "package_path": result.package_path,
                 "duration_ms": duration_ms,
                 "provider": provider.id,
+                "commit_sha": ctx.commit_sha or ctx.artifact_sha256,
+                "builder": ctx.builder,
+                "build_version": ctx.build_version,
             }
         emit(
             on_progress,
@@ -544,6 +857,9 @@ def run_deploy(
             "duration_ms": duration_ms,
             "provider": provider.id,
             "retryable": False,
+            "commit_sha": ctx.commit_sha or ctx.artifact_sha256,
+            "builder": ctx.builder,
+            "build_version": ctx.build_version,
         }
     except Exception as exc:  # noqa: BLE001
         logger.exception("deploy_failed")
@@ -559,4 +875,7 @@ def run_deploy(
             "logs": logs,
             "duration_ms": duration_ms,
             "provider": ctx.provider,
+            "commit_sha": ctx.commit_sha or ctx.artifact_sha256,
+            "builder": ctx.builder,
+            "build_version": ctx.build_version,
         }

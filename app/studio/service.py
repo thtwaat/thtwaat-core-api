@@ -1,6 +1,7 @@
 """Studio service — prompts, blueprints, and module compose / build plans."""
 from __future__ import annotations
 
+import logging
 from typing import List, Optional, Tuple
 from uuid import UUID
 
@@ -14,6 +15,8 @@ from app.studio.architect import (
     build_recommendations,
     validate_blueprint,
 )
+
+logger = logging.getLogger(__name__)
 from app.studio.composer import compose_blueprint
 from app.studio.frontend_generator import generate_frontend_manifest
 from app.studio.backend_generator import generate_backend_manifest
@@ -1382,6 +1385,17 @@ class StudioService:
         return result
 
     def _deployment_response(self, row: StudioProjectDeployment) -> StudioDeploymentResponse:
+        build = self.repo.get_build(row.build_id) if row.build_id else None
+        builder = None
+        if row.created_by:
+            builder = str(row.created_by)
+        commit = None
+        if build and build.artifact_sha256:
+            commit = build.artifact_sha256
+        # Prefer values recorded on last deploy result inside health meta
+        meta = row.health if isinstance(row.health, dict) else {}
+        commit = meta.get("commit_sha") or commit
+        builder = meta.get("builder") or builder
         return StudioDeploymentResponse(
             id=row.id,
             project_id=row.project_id,
@@ -1408,9 +1422,45 @@ class StudioService:
             retryable=bool(row.retryable),
             rollback_of=row.rollback_of,
             created_by=row.created_by,
+            build_version=build.version if build else meta.get("build_version"),
+            commit_sha=commit,
+            builder=builder,
             created_at=row.created_at,
             updated_at=row.updated_at,
         )
+
+    def _require_deploy_manager(self, user: UserProfileResponse) -> None:
+        if not can_manage_company_users(user):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only company owners and admins can deploy or rollback",
+            )
+
+    def _audit_deploy(
+        self,
+        *,
+        company_id: UUID,
+        actor_id: Optional[UUID],
+        action: str,
+        resource_id: str,
+        metadata: Optional[dict] = None,
+    ) -> None:
+        try:
+            from app.enterprise.models import AuditSeverity
+            from app.enterprise.service import EnterpriseService
+
+            EnterpriseService(self.db).audit(
+                company_id,
+                actor_id,
+                action=action,
+                resource_type="studio_deployment",
+                resource_id=resource_id,
+                severity=AuditSeverity.INFO,
+                metadata=metadata or {},
+                commit=True,
+            )
+        except Exception:  # noqa: BLE001
+            logger.warning("studio_deploy_audit_failed action=%s", action)
 
     def _require_deployable_build(self, project: StudioProject) -> StudioProjectBuild:
         approval = self.repo.get_latest_approval(project.id, project.workspace_id)
@@ -1441,6 +1491,7 @@ class StudioService:
         payload: Optional[StudioDeployRequest] = None,
     ) -> StudioDeployStartResponse:
         """Deploy an approved source build — never regenerates source."""
+        self._require_deploy_manager(user)
         project = self.get(user, project_id)
         build = self._require_deployable_build(project)
         approval = self.repo.get_latest_approval(project.id, project.workspace_id)
@@ -1482,7 +1533,11 @@ class StudioService:
             environment=(payload.environment or "production").strip() or "production",
             live=False,
             urls={},
-            health={},
+            health={
+                "commit_sha": build.artifact_sha256,
+                "builder": str(user.email) if getattr(user, "email", None) else str(user.id),
+                "build_version": build.version,
+            },
             ssl={},
             instructions=[],
             logs=[],
@@ -1491,6 +1546,18 @@ class StudioService:
         saved = self.repo.create_deployment(row)
         publish_deploy_event(
             saved.id, "queued", {"deployment_id": str(saved.id), "provider": provider}
+        )
+        self._audit_deploy(
+            company_id=project.workspace_id,
+            actor_id=UUID(str(user.id)) if getattr(user, "id", None) else None,
+            action="studio.deploy.start",
+            resource_id=str(saved.id),
+            metadata={
+                "project_id": str(project.id),
+                "provider": provider,
+                "build_id": str(build.id),
+                "environment": saved.environment,
+            },
         )
 
         enqueued = False
@@ -1511,6 +1578,8 @@ class StudioService:
                         "workspace_id": str(project.workspace_id),
                         "company_id": str(project.workspace_id),
                         "user_id": str(user.id) if getattr(user, "id", None) else None,
+                        "attempt": 1,
+                        "timeout_seconds": 900,
                     }
                 )
                 enqueued = True
@@ -1566,11 +1635,24 @@ class StudioService:
                 row.status = "deploying"
             logs = list(row.logs or [])
             # Never persist secret values
-            safe = {k: v for k, v in payload.items() if k.lower() not in {"secret", "password", "token"}}
+            safe = {
+                k: v
+                for k, v in payload.items()
+                if not any(
+                    s in str(k).lower()
+                    for s in ("secret", "password", "token", "api_key", "private")
+                )
+            }
             logs.append(safe)
             row.logs = logs[-300:]
             self.repo.save_deployment(row)
             publish_deploy_event(row.id, stage, safe)
+
+        builder = None
+        if row.created_by:
+            builder = str(row.created_by)
+        meta = row.health if isinstance(row.health, dict) else {}
+        builder = meta.get("builder") or builder
 
         ctx = DeployContext(
             project_id=project.id,
@@ -1584,16 +1666,26 @@ class StudioService:
             artifact_sha256=build.artifact_sha256,
             domain=row.domain,
             subdomain=row.subdomain,
+            environment=row.environment or "production",
             public_api_base=getattr(settings, "PUBLIC_API_BASE_URL", "") or "",
-            public_app_base="",
+            public_app_base=getattr(settings, "PUBLIC_APP_BASE_URL", "") or "",
             output_dir=output,
+            db_session=self.db,
+            actor_user_id=row.created_by,
+            builder=builder,
+            commit_sha=build.artifact_sha256,
+            is_rollback=bool(row.rollback_of),
         )
         result = run_deploy(ctx, progress=on_progress, db_session=self.db)
         row.status = result.get("status") or row.status
         row.stage = result.get("stage") or row.stage
         row.live = bool(result.get("live"))
         row.urls = result.get("urls") or {}
-        row.health = result.get("health") or {}
+        health = dict(result.get("health") or {})
+        health["commit_sha"] = result.get("commit_sha") or build.artifact_sha256
+        health["builder"] = result.get("builder") or builder
+        health["build_version"] = result.get("build_version") or build.version
+        row.health = health
         row.ssl = result.get("ssl") or {}
         row.instructions = result.get("instructions") or []
         row.logs = result.get("logs") or row.logs
@@ -1603,7 +1695,23 @@ class StudioService:
         row.retryable = bool(result.get("retryable"))
         if result.get("provider"):
             row.provider = result["provider"]
-        return self.repo.save_deployment(row)
+        saved = self.repo.save_deployment(row)
+        self._audit_deploy(
+            company_id=project.workspace_id,
+            actor_id=row.created_by,
+            action="studio.deploy.completed"
+            if result.get("ok")
+            else "studio.deploy.failed",
+            resource_id=str(row.id),
+            metadata={
+                "status": row.status,
+                "stage": row.stage,
+                "live": row.live,
+                "duration_ms": row.duration_ms,
+                "error": row.error,
+            },
+        )
+        return saved
 
     def list_deployments(
         self, user: UserProfileResponse, project_id: UUID
@@ -1632,7 +1740,8 @@ class StudioService:
         project_id: UUID,
         payload: Optional[StudioRollbackRequest] = None,
     ) -> StudioRollbackResponse:
-        """One-click rollback to a previous successful deployment (history only / reactivate)."""
+        """One-click rollback — re-activates previous completed build on the live stack."""
+        self._require_deploy_manager(user)
         project = self.get(user, project_id)
         payload = payload or StudioRollbackRequest()
         rows = self.repo.list_deployments(project.id, project.workspace_id)
@@ -1642,7 +1751,6 @@ class StudioService:
             if not target or target.project_id != project.id:
                 raise HTTPException(status_code=404, detail="Rollback target not found")
         else:
-            # previous completed successful (not current)
             for r in rows:
                 if r.is_current:
                     continue
@@ -1653,6 +1761,11 @@ class StudioService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="No previous completed deployment to rollback to",
+            )
+        if not target.build_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Rollback target has no build artifact",
             )
         current = self.repo.get_current_deployment(project.id, project.workspace_id)
         self.repo.clear_current_deployments(project.id)
@@ -1665,28 +1778,34 @@ class StudioService:
             version=version,
             is_current=True,
             provider=target.provider,
-            status="completed",
+            status="queued",
             stage="rollback",
             domain=target.domain,
             subdomain=target.subdomain,
             environment=target.environment,
-            live=bool(target.live),
-            urls=dict(target.urls or {}),
-            health=dict(target.health or {}),
-            ssl=dict(target.ssl or {}),
+            live=False,
+            urls={},
+            health={
+                "commit_sha": (target.health or {}).get("commit_sha"),
+                "builder": str(user.email) if getattr(user, "email", None) else str(user.id),
+                "build_version": (target.health or {}).get("build_version"),
+                "rollback_from": str(target.id),
+            },
+            ssl={},
             instructions=list(target.instructions or [])
-            + [f"Rollback restored deployment v{target.version}"],
+            + [f"Rollback restoring deployment v{target.version}"],
             logs=[
                 {
                     "event": "rollback",
-                    "message": f"Restored from deployment {target.id}",
+                    "message": f"Restoring from deployment {target.id} (v{target.version})",
                     "from_version": target.version,
                 }
             ],
-            package_path=target.package_path,
+            package_path=None,
             duration_ms=0,
             rollback_of=current.id if current else target.id,
             created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+            retryable=True,
         )
         saved = self.repo.create_deployment(row)
         publish_deploy_event(
@@ -1694,6 +1813,39 @@ class StudioService:
             "rollback",
             {"restored_from": str(target.id), "version": version},
         )
+        self._audit_deploy(
+            company_id=project.workspace_id,
+            actor_id=UUID(str(user.id)) if getattr(user, "id", None) else None,
+            action="studio.deploy.rollback",
+            resource_id=str(saved.id),
+            metadata={"restored_from": str(target.id), "from_version": target.version},
+        )
+
+        # Re-run executable deploy path against previous build artifact
+        if payload.sync:
+            self.run_deploy(saved.id)
+            saved = self.repo.get_deployment(saved.id) or saved
+        else:
+            try:
+                from app.monitoring.queue import enqueue
+
+                enqueue(
+                    {
+                        "type": "studio.deploy",
+                        "deployment_id": str(saved.id),
+                        "project_id": str(project.id),
+                        "workspace_id": str(project.workspace_id),
+                        "company_id": str(project.workspace_id),
+                        "user_id": str(user.id) if getattr(user, "id", None) else None,
+                        "attempt": 1,
+                        "timeout_seconds": 900,
+                        "rollback": True,
+                    }
+                )
+            except Exception:  # noqa: BLE001
+                self.run_deploy(saved.id)
+                saved = self.repo.get_deployment(saved.id) or saved
+
         return StudioRollbackResponse(
             project=StudioProjectResponse.model_validate(project),
             deployment=self._deployment_response(saved),
