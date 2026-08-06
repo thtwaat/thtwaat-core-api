@@ -1,4 +1,4 @@
-"""Deterministic + AI Gateway product architect (no code generation)."""
+"""Production AI Product Architect — AI Gateway first, heuristic fallback only."""
 from __future__ import annotations
 
 import json
@@ -15,14 +15,65 @@ from app.studio.schemas import (
 
 logger = logging.getLogger(__name__)
 
-ARCHITECT_SYSTEM = """You are THTWAAT Product Architect.
-Return ONLY valid JSON for a product blueprint with these keys:
-industry, product_type, target_users (array), pages (array), dashboard_modules (array),
-backend_modules (array), database_tables (array), roles (array), permissions (array),
-authentication (object), billing (object), payments (object), ai_features (array),
-knowledge (object), workflows (array), integrations (array), deployment (object),
-marketplace_category (string), estimated_complexity (string), estimated_build_time (string).
-Do not generate code. Do not wrap in markdown."""
+ARCHITECT_SYSTEM = """You are THTWAAT Product Architect, a senior SaaS systems designer.
+Analyze the product idea and return ONLY one JSON object (no markdown fences, no prose).
+
+Required keys (use exactly these names):
+- industry (string): e.g. healthcare, restaurant, crm, education, ecommerce, finance, saas, real_estate, legal, hospitality, logistics, hr
+- product_type (string): saas | website | landing | crm | ecommerce | helpdesk | marketplace
+- target_users (string array)
+- pages (string array): concrete UI screens (Landing, Login, Admin, …)
+- dashboard_modules (string array)
+- backend_modules (string array): Auth, Users, RBAC, Billing, AI Gateway, Knowledge, Jobs, Storage, …
+- database_tables (string array): snake_case table names
+- roles (string array)
+- permissions (string array): resource:action style
+- authentication (object): methods[], mfa (bool), rbac (bool), jwt (bool), oauth_providers[]
+- billing (object): enabled (bool), plans[], metering (bool), trials (bool)
+- payments (object): providers[], currencies[], region_pricing (bool)
+- ai_features (string array): chat, rag, memory, streaming, tools, vision, voice, appointment_assistant, …
+- knowledge (object): enabled (bool), rag (bool), packs[]
+- workflows (string array): business processes
+- integrations (string array): stripe, razorpay, email, sms, webhooks, storage, calendar, …
+- deployment (object): targets[], ssl (bool), healthchecks (bool), workers (bool), monitoring (bool), regions[]
+- marketplace_category (string)
+- estimated_complexity (string): low | medium | high
+- estimated_build_time (string)
+
+Rules:
+1. Infer industry accurately from domain language (hospital→healthcare, clinic→healthcare, POS→retail, etc.).
+2. Include Admin when a multi-tenant SaaS/dashboard is implied.
+3. Include Auth/JWT/RBAC for any app with users.
+4. Include billing+payments when SaaS, subscriptions, invoices, or monetization is implied.
+5. Include AI features only when the prompt asks for AI/chat/RAG/voice/vision/agents.
+6. Prefer snake_case for database_tables.
+7. Do NOT generate application source code.
+8. Prefer THTWAAT platform primitives: Agents, Knowledge, Billing, Marketplace, Domains, Widgets.
+"""
+
+PROVIDER_DEFAULT_MODELS: Dict[str, str] = {
+    "openai": "gpt-4o-mini",
+    "gemini": "gemini-1.5-flash",
+    "anthropic": "claude-3-5-haiku-latest",
+    "claude": "claude-3-5-haiku-latest",
+    "openrouter": "openai/gpt-4o-mini",
+    "ollama": "llama3.2",
+}
+
+REQUIRED_BLUEPRINT_KEYS = (
+    "industry",
+    "product_type",
+    "pages",
+    "backend_modules",
+    "database_tables",
+    "roles",
+    "authentication",
+    "billing",
+    "ai_features",
+    "integrations",
+    "deployment",
+    "workflows",
+)
 
 
 def _uniq(items: List[str]) -> List[str]:
@@ -40,8 +91,94 @@ def _uniq(items: List[str]) -> List[str]:
     return out
 
 
+def _as_str_list(value: Any) -> List[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return _uniq([p.strip() for p in re.split(r"[\n,;]", value) if p.strip()])
+    if isinstance(value, list):
+        return _uniq([str(x).strip() for x in value if str(x).strip()])
+    return []
+
+
+def _as_obj(value: Any) -> Dict[str, Any]:
+    return dict(value) if isinstance(value, dict) else {}
+
+
+def normalize_ai_blueprint(raw: Dict[str, Any]) -> ProductBlueprint:
+    """Normalize AI JSON into ProductBlueprint without injecting heuristic domain content."""
+    auth = _as_obj(raw.get("authentication"))
+    billing = _as_obj(raw.get("billing"))
+    payments = _as_obj(raw.get("payments"))
+    knowledge = _as_obj(raw.get("knowledge"))
+    deployment = _as_obj(raw.get("deployment"))
+
+    if "jwt" not in auth:
+        auth["jwt"] = True
+    if "rbac" not in auth:
+        auth["rbac"] = True
+    if "methods" not in auth or not auth.get("methods"):
+        auth["methods"] = ["email_password"]
+    if "enabled" not in billing:
+        billing["enabled"] = bool(billing.get("plans") or billing.get("metering"))
+    if "enabled" not in knowledge:
+        knowledge["enabled"] = bool(knowledge.get("rag") or knowledge.get("packs"))
+    if "targets" not in deployment or not deployment.get("targets"):
+        deployment["targets"] = ["docker", "compose"]
+    if "ssl" not in deployment:
+        deployment["ssl"] = True
+
+    data = {
+        "industry": str(raw.get("industry") or "general").strip().lower() or "general",
+        "product_type": str(raw.get("product_type") or "saas").strip().lower() or "saas",
+        "target_users": _as_str_list(raw.get("target_users")),
+        "pages": _as_str_list(raw.get("pages")),
+        "dashboard_modules": _as_str_list(raw.get("dashboard_modules")),
+        "backend_modules": _as_str_list(raw.get("backend_modules")),
+        "database_tables": _as_str_list(raw.get("database_tables")),
+        "roles": _as_str_list(raw.get("roles")),
+        "permissions": _as_str_list(raw.get("permissions")),
+        "authentication": auth,
+        "billing": billing,
+        "payments": payments,
+        "ai_features": _as_str_list(raw.get("ai_features")),
+        "knowledge": knowledge,
+        "workflows": _as_str_list(raw.get("workflows")),
+        "integrations": _as_str_list(raw.get("integrations")),
+        "deployment": deployment,
+        "marketplace_category": str(
+            raw.get("marketplace_category") or raw.get("product_type") or "saas"
+        )
+        .strip()
+        .lower()
+        or "saas",
+        "estimated_complexity": str(raw.get("estimated_complexity") or "medium").strip().lower(),
+        "estimated_build_time": str(raw.get("estimated_build_time") or "2-4 weeks").strip(),
+    }
+    return ProductBlueprint.model_validate(data)
+
+
+def ai_blueprint_is_usable(blueprint: ProductBlueprint) -> bool:
+    """Reject empty/near-empty AI payloads so we can fall back cleanly."""
+    score = (
+        len(blueprint.pages)
+        + len(blueprint.database_tables)
+        + len(blueprint.backend_modules)
+        + len(blueprint.roles)
+        + len(blueprint.workflows)
+        + len(blueprint.integrations)
+    )
+    if score < 6:
+        return False
+    if not (blueprint.industry or "").strip():
+        return False
+    if not blueprint.pages and not blueprint.database_tables:
+        return False
+    return True
+
+
 def build_heuristic_blueprint(prompt: str) -> ProductBlueprint:
-    """Reuse Product Generator analyzer signals — no duplicate industry detection."""
+    """Offline/fallback architect only — used when AI Gateway fails."""
     analysis = analyze_prompt(prompt)
     industry = analysis.industry or "general"
     product_type = analysis.product_type or "saas"
@@ -134,7 +271,6 @@ def build_heuristic_blueprint(prompt: str) -> ProductBlueprint:
         complexity = "medium"
 
     build_time = {"low": "1-2 weeks", "medium": "2-4 weeks", "high": "4-8 weeks"}[complexity]
-
     category = analysis.category or product_type or "saas"
 
     return ProductBlueprint(
@@ -145,8 +281,8 @@ def build_heuristic_blueprint(prompt: str) -> ProductBlueprint:
                 "Business owners",
                 "Admins",
                 "Staff",
-                *([ "Patients", "Doctors"] if industry == "healthcare" else []),
-                *([ "Sales team"] if industry == "crm" else []),
+                *(["Patients", "Doctors"] if industry == "healthcare" else []),
+                *(["Sales team"] if industry == "crm" else []),
             ]
         ),
         pages=_uniq(pages),
@@ -178,18 +314,18 @@ def build_heuristic_blueprint(prompt: str) -> ProductBlueprint:
         },
         workflows=_uniq(
             [
-                *([ "appointment_booking"] if "booking" in features or "appointment" in text else []),
-                *([ "lead_capture"] if "leads" in features else []),
-                *([ "human_handoff"] if "ai_chat" in features else []),
+                *(["appointment_booking"] if "booking" in features or "appointment" in text else []),
+                *(["lead_capture"] if "leads" in features else []),
+                *(["human_handoff"] if "ai_chat" in features else []),
                 "user_onboarding",
             ]
         ),
         integrations=_uniq(
             [
-                *([ "stripe", "razorpay"] if "payments" in features or "billing" in text else []),
-                *([ "email"] if True else []),
-                *([ "webhooks"] if "webhook" in text else ["webhooks"]),
-                *([ "storage"] if True else []),
+                *(["stripe", "razorpay"] if "payments" in features or "billing" in text else []),
+                "email",
+                "webhooks",
+                "storage",
             ]
         ),
         deployment={
@@ -209,40 +345,77 @@ def validate_blueprint(blueprint: ProductBlueprint) -> List[BlueprintWarning]:
     warnings: List[BlueprintWarning] = []
     pages_l = {p.lower() for p in blueprint.pages}
     modules_l = {m.lower() for m in blueprint.backend_modules}
+    tables_l = {t.lower() for t in blueprint.database_tables}
+    roles_l = {r.lower() for r in blueprint.roles}
     ai = [a.lower() for a in blueprint.ai_features]
     auth = blueprint.authentication or {}
     billing = blueprint.billing or {}
+    payments = blueprint.payments or {}
     deployment = blueprint.deployment or {}
     integrations_l = {i.lower() for i in blueprint.integrations}
+    workflows = [w.lower() for w in blueprint.workflows]
+    knowledge = blueprint.knowledge or {}
+    product_type = (blueprint.product_type or "").lower()
+    industry = (blueprint.industry or "").lower()
 
-    if not auth.get("jwt") and "auth" not in modules_l and "authentication" not in modules_l:
+    auth_ok = bool(auth.get("jwt") or auth.get("rbac") or auth.get("methods")) or (
+        "auth" in modules_l or "authentication" in modules_l
+    )
+    if not auth_ok:
         warnings.append(
             BlueprintWarning(
                 code="missing_auth",
                 severity="error",
-                message="Authentication / JWT is missing from the blueprint.",
+                message="Authentication / JWT / RBAC is missing from the blueprint.",
                 field="authentication",
             )
         )
-    if not billing.get("enabled") and "billing" not in modules_l:
+
+    saas_like = product_type in {"saas", "crm", "marketplace", "helpdesk"} or "subscription" in " ".join(
+        workflows
+    )
+    billing_ok = bool(billing.get("enabled")) or "billing" in modules_l or "payments" in modules_l
+    if saas_like and not billing_ok:
         warnings.append(
             BlueprintWarning(
                 code="missing_billing",
                 severity="warn",
-                message="Billing is not enabled — add plans/metering for SaaS monetization.",
+                message="SaaS-style product without billing/metering — enable plans and payments.",
                 field="billing",
             )
         )
-    if "admin" not in pages_l and "admin" not in {r.lower() for r in blueprint.roles}:
+
+    if not payments.get("providers") and billing_ok:
+        warnings.append(
+            BlueprintWarning(
+                code="missing_payment_providers",
+                severity="warn",
+                message="Billing is enabled but no payment providers (Stripe/Razorpay) are listed.",
+                field="payments",
+            )
+        )
+
+    if "admin" not in pages_l and "admin" not in roles_l and "company_owner" not in roles_l:
         warnings.append(
             BlueprintWarning(
                 code="missing_admin",
                 severity="warn",
-                message="No Admin page or admin role detected.",
+                message="No Admin page or admin/owner role detected.",
                 field="pages",
             )
         )
-    if not ai:
+
+    prompt_implies_ai = bool(ai) or bool(knowledge.get("enabled") or knowledge.get("rag"))
+    if not ai and industry in {"healthcare", "crm", "saas"} and "chat" in " ".join(pages_l):
+        warnings.append(
+            BlueprintWarning(
+                code="missing_ai",
+                severity="info",
+                message="Consider AI chat/RAG features for this product category.",
+                field="ai_features",
+            )
+        )
+    elif not ai and not prompt_implies_ai:
         warnings.append(
             BlueprintWarning(
                 code="missing_ai",
@@ -251,6 +424,7 @@ def validate_blueprint(blueprint: ProductBlueprint) -> List[BlueprintWarning]:
                 field="ai_features",
             )
         )
+
     if "storage" not in modules_l and "storage" not in integrations_l:
         warnings.append(
             BlueprintWarning(
@@ -260,7 +434,9 @@ def validate_blueprint(blueprint: ProductBlueprint) -> List[BlueprintWarning]:
                 field="backend_modules",
             )
         )
-    if not deployment.get("targets") and not deployment.get("ssl"):
+
+    deploy_ok = bool(deployment.get("targets")) or bool(deployment.get("ssl"))
+    if not deploy_ok:
         warnings.append(
             BlueprintWarning(
                 code="missing_deployment",
@@ -269,36 +445,125 @@ def validate_blueprint(blueprint: ProductBlueprint) -> List[BlueprintWarning]:
                 field="deployment",
             )
         )
+    elif not deployment.get("monitoring"):
+        warnings.append(
+            BlueprintWarning(
+                code="missing_monitoring",
+                severity="info",
+                message="Enable monitoring/healthchecks for production readiness.",
+                field="deployment",
+            )
+        )
+
+    if not blueprint.pages:
+        warnings.append(
+            BlueprintWarning(
+                code="missing_pages",
+                severity="error",
+                message="No pages detected — add at least Landing/Login/Dashboard.",
+                field="pages",
+            )
+        )
+    if not blueprint.database_tables:
+        warnings.append(
+            BlueprintWarning(
+                code="missing_database",
+                severity="error",
+                message="No database tables detected.",
+                field="database_tables",
+            )
+        )
+    if not blueprint.workflows:
+        warnings.append(
+            BlueprintWarning(
+                code="missing_workflows",
+                severity="info",
+                message="No workflows listed — capture core business processes.",
+                field="workflows",
+            )
+        )
+    if "users" not in tables_l and "user" not in tables_l:
+        warnings.append(
+            BlueprintWarning(
+                code="missing_users_table",
+                severity="warn",
+                message="Consider a users table for authentication and tenancy.",
+                field="database_tables",
+            )
+        )
+    if ai and not (knowledge.get("enabled") or knowledge.get("rag") or "knowledge" in modules_l):
+        if "rag" in ai or "memory" in ai:
+            warnings.append(
+                BlueprintWarning(
+                    code="missing_knowledge",
+                    severity="info",
+                    message="AI RAG/memory without Knowledge module — enable knowledge packs.",
+                    field="knowledge",
+                )
+            )
     return warnings
 
 
 def build_recommendations(blueprint: ProductBlueprint) -> BlueprintRecommendations:
     cat = (blueprint.marketplace_category or blueprint.product_type or "saas").lower()
     industry = (blueprint.industry or "general").lower()
-    templates = [f"{cat}-starter", f"{industry}-website", "saas-dashboard"]
-    assets = [f"marketplace/{cat}", "marketplace/billing-kit"]
-    agents = []
-    if blueprint.ai_features:
+    ai = [a.lower() for a in blueprint.ai_features]
+    integrations = list(blueprint.integrations or [])
+    integrations_l = {i.lower() for i in integrations}
+
+    templates = _uniq(
+        [
+            f"{cat}-starter",
+            f"{industry}-website",
+            f"{industry}-saas",
+            "saas-dashboard",
+            *(["crm-pipeline"] if industry == "crm" or cat == "crm" else []),
+            *(["healthcare-clinic"] if industry == "healthcare" else []),
+        ]
+    )
+    assets = _uniq(
+        [
+            f"marketplace/{cat}",
+            "marketplace/billing-kit",
+            *(["marketplace/booking-kit"] if any("book" in w.lower() for w in blueprint.workflows) else []),
+            *(["marketplace/ai-widget"] if ai else []),
+        ]
+    )
+
+    agents: List[str] = []
+    if ai:
         agents.append(f"{industry}-assistant")
-        if "appointment_assistant" in blueprint.ai_features:
+        if "appointment_assistant" in ai or any("appoint" in w.lower() for w in blueprint.workflows):
             agents.append("booking-agent")
-        if "chat" in blueprint.ai_features:
+        if "chat" in ai:
             agents.append("support-chat-agent")
+        if "rag" in ai:
+            agents.append("knowledge-rag-agent")
+        if "voice" in ai:
+            agents.append("voice-agent")
     else:
         agents.append("generic-support-agent")
-    packs = []
-    if (blueprint.knowledge or {}).get("enabled"):
-        packs.extend([f"{industry}-faq", "onboarding-docs"])
-    integrations = list(blueprint.integrations or [])
-    for must in ("stripe", "razorpay", "email", "webhooks"):
-        if must not in {i.lower() for i in integrations}:
+
+    packs: List[str] = []
+    knowledge = blueprint.knowledge or {}
+    if knowledge.get("enabled") or knowledge.get("rag") or "rag" in ai:
+        packs.extend([f"{industry}-faq", "onboarding-docs", "policy-handbook"])
+        packs.extend(_as_str_list(knowledge.get("packs")))
+
+    for must in ("email", "webhooks", "storage"):
+        if must not in integrations_l:
             integrations.append(must)
+    if (blueprint.billing or {}).get("enabled"):
+        for pay in ("stripe", "razorpay"):
+            if pay not in integrations_l:
+                integrations.append(pay)
+
     return BlueprintRecommendations(
-        templates=_uniq(templates)[:6],
-        marketplace_assets=_uniq(assets)[:6],
-        agents=_uniq(agents)[:6],
-        knowledge_packs=_uniq(packs)[:6],
-        integrations=_uniq(integrations)[:8],
+        templates=templates[:8],
+        marketplace_assets=assets[:8],
+        agents=_uniq(agents)[:8],
+        knowledge_packs=_uniq(packs)[:8],
+        integrations=_uniq(integrations)[:10],
     )
 
 
@@ -324,21 +589,54 @@ def _extract_json(text: str) -> Optional[Dict[str, Any]]:
     return None
 
 
-def merge_blueprint(base: ProductBlueprint, overlay: Dict[str, Any]) -> ProductBlueprint:
-    data = base.model_dump()
-    for key, value in overlay.items():
-        if key not in data:
-            data[key] = value
-            continue
-        if isinstance(value, list) and isinstance(data[key], list):
-            data[key] = _uniq([str(x) for x in data[key]] + [str(x) for x in value])
-        elif isinstance(value, dict) and isinstance(data[key], dict):
-            merged = dict(data[key])
-            merged.update(value)
-            data[key] = merged
-        elif value not in (None, "", []):
-            data[key] = value
-    return ProductBlueprint.model_validate(data)
+def _resolve_provider_model(db, company_id) -> Tuple[str, str]:
+    from app.ai.gateway_workspace import get_or_create_workspace_settings
+    from app.config.settings import settings
+
+    ws = get_or_create_workspace_settings(db, company_id)
+    provider = (ws.default_provider or settings.AI_PROVIDER or "openai").strip().lower()
+    model = PROVIDER_DEFAULT_MODELS.get(provider, "gpt-4o-mini")
+    return provider, model
+
+
+async def _generate_ai_blueprint(
+    *,
+    prompt: str,
+    company_id,
+    user_id,
+    db,
+) -> ProductBlueprint:
+    from app.ai.schema import GenerateRequest
+    from app.ai.service import AIService
+
+    provider, model = _resolve_provider_model(db, company_id)
+    svc = AIService(db)
+    user_prompt = (
+        f"{ARCHITECT_SYSTEM}\n\n"
+        f"Product idea to blueprint:\n\"\"\"\n{prompt.strip()}\n\"\"\"\n\n"
+        "Return the JSON object now."
+    )
+    result = await svc.generate(
+        company_id=company_id,
+        user_id=user_id,
+        payload=GenerateRequest(
+            prompt=user_prompt,
+            provider=provider,
+            model=model,
+            temperature=0.15,
+            max_tokens=3500,
+        ),
+    )
+    parsed = _extract_json(result.content)
+    if not parsed:
+        raise ValueError("AI Gateway returned non-JSON blueprint content")
+    missing = [k for k in REQUIRED_BLUEPRINT_KEYS if k not in parsed]
+    if len(missing) > 6:
+        raise ValueError(f"AI blueprint missing too many keys: {missing}")
+    blueprint = normalize_ai_blueprint(parsed)
+    if not ai_blueprint_is_usable(blueprint):
+        raise ValueError("AI blueprint too sparse to accept")
+    return blueprint
 
 
 async def architect_blueprint(
@@ -349,34 +647,23 @@ async def architect_blueprint(
     db,
     use_ai: bool = True,
 ) -> Tuple[ProductBlueprint, str]:
-    """Build blueprint via heuristic, optionally enrich with AI Gateway."""
-    base = build_heuristic_blueprint(prompt)
-    if not use_ai:
-        return base, "heuristic"
+    """AI Gateway first. Heuristic only if AI is disabled or fails. Never merge/overwrite AI."""
+    if use_ai:
+        try:
+            blueprint = await _generate_ai_blueprint(
+                prompt=prompt,
+                company_id=company_id,
+                user_id=user_id,
+                db=db,
+            )
+            logger.info(
+                "studio_architect_ai_ok industry=%s pages=%s tables=%s",
+                blueprint.industry,
+                len(blueprint.pages),
+                len(blueprint.database_tables),
+            )
+            return blueprint, "ai_gateway"
+        except Exception as exc:
+            logger.warning("studio_architect_ai_failed fallback=heuristic err=%s", exc)
 
-    try:
-        from app.ai.schema import GenerateRequest
-        from app.ai.service import AIService
-        from app.config.settings import settings
-
-        model = getattr(settings, "AI_DEFAULT_MODEL", None) or "gpt-4o-mini"
-        provider = getattr(settings, "AI_PROVIDER", None) or "openai"
-        svc = AIService(db)
-        result = await svc.generate(
-            company_id=company_id,
-            user_id=user_id,
-            payload=GenerateRequest(
-                prompt=f"{ARCHITECT_SYSTEM}\n\nProduct idea:\n{prompt}",
-                provider=provider,
-                model=model,
-                temperature=0.2,
-                max_tokens=2500,
-            ),
-        )
-        parsed = _extract_json(result.content)
-        if parsed:
-            return merge_blueprint(base, parsed), "ai_gateway"
-    except Exception as exc:
-        logger.info("Studio architect AI enrichment skipped: %s", exc)
-
-    return base, "heuristic"
+    return build_heuristic_blueprint(prompt), "heuristic"

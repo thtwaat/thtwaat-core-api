@@ -149,7 +149,7 @@ export const STUDIO_PROMPT_PLACEHOLDER =
 export const STUDIO_TIPS = [
   "Describe industry, users, and must-have modules in one paragraph.",
   "Mention AI features (chat, RAG, booking) if you need an agent.",
-  "Generate Blueprint analyzes via AI Gateway (with heuristic fallback).",
+  "Generate Blueprint uses the AI Gateway first; heuristic only if AI fails.",
   "Edit pages/tables/roles, then save — each save creates a new version."
 ];
 

@@ -93,7 +93,7 @@ def delete_project(
 )
 async def analyze_project(
     project_id: UUID,
-    use_ai: bool = Query(True, description="Try AI Gateway enrichment; falls back to heuristic"),
+    use_ai: bool = Query(True, description="AI Gateway first; heuristic fallback only if AI fails"),
     user: UserProfileResponse = Depends(get_current_user),
     service: StudioService = Depends(get_studio_service),
 ):

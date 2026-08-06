@@ -201,8 +201,8 @@ export default function StudioPage() {
           AI Product Architect
         </h1>
         <p className="mt-3 max-w-2xl text-sm text-slate-300">
-          Turn a natural-language idea into an editable Product Blueprint. No frontend/backend code
-          is generated yet — reuses AI Gateway, Marketplace signals, Agents, and Knowledge.
+          AI Gateway builds a production blueprint (industry, pages, tables, modules, AI, billing,
+          auth, workflows, deployment). Heuristic fallback only if AI fails — never merged over AI.
         </p>
       </section>
 
