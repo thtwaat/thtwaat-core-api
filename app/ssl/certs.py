@@ -18,8 +18,29 @@ from app.config.settings import settings
 logger = logging.getLogger(__name__)
 
 
+def _is_production_environment() -> bool:
+    app_env = getattr(settings, "app_env", None)
+    if isinstance(app_env, str):
+        app_env = app_env.strip().lower()
+    else:
+        app_env = ""
+
+    hardened = getattr(settings, "is_hardened_env", False)
+    if isinstance(hardened, bool):
+        hardened_value = hardened
+    elif isinstance(hardened, str):
+        hardened_value = hardened.strip().lower() in {"1", "true", "yes", "on"}
+    else:
+        hardened_value = False
+
+    return hardened_value or app_env in {"production", "prod", "staging"}
+
+
 def certs_root() -> Path:
-    root = Path(getattr(settings, "SSL_CERTS_DIR", "nginx/ssl/domains"))
+    if _is_production_environment():
+        root = Path("/etc/nginx/ssl/domains")
+    else:
+        root = Path(getattr(settings, "SSL_CERTS_DIR", "nginx/ssl/domains"))
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -81,6 +102,8 @@ def run_certbot_http01(hostname: str, email: Optional[str] = None) -> Tuple[bool
     """
     email = email or getattr(settings, "SSL_ACME_EMAIL", None) or "ops@thtwaat.com"
     staging = getattr(settings, "SSL_ACME_STAGING", True)
+    if _is_production_environment():
+        staging = False
     webroot = str(webroot_path())
     cmd = [
         "certbot",
@@ -147,6 +170,16 @@ def issue_certificate(hostname: str, *, wildcard: bool = False) -> Tuple[bool, s
         serial = secrets.token_hex(8)
         expires = datetime.now(timezone.utc) + timedelta(days=90)
         return True, msg, cert, key, serial, expires
+
+    if _is_production_environment():
+        return (
+            False,
+            "Production deployments must request a Let's Encrypt certificate after DNS verification. Set SSL_MODE=certbot and ensure the hostname resolves.",
+            None,
+            None,
+            None,
+            None,
+        )
 
     # Default: simulate (dev / one-click lab)
     cert, key, serial, expires = issue_self_signed(hostname)

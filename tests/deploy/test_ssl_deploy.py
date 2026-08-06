@@ -40,6 +40,19 @@ def test_issue_certificate_simulate(tmp_path, monkeypatch):
     assert cert and cert.exists()
 
 
+def test_issue_certificate_rejects_self_signed_in_production(monkeypatch):
+    monkeypatch.setattr("app.config.settings.settings.app_env", "production", raising=False)
+    monkeypatch.setattr("app.config.settings.settings.SSL_MODE", "simulate", raising=False)
+    with patch("app.ssl.certs.settings") as s:
+        s.SSL_MODE = "simulate"
+        s.app_env = "production"
+        s.is_hardened_env = True
+        ok, msg, cert, key, serial, expires = issue_certificate("tailor.thtwaat.com")
+    assert ok is False
+    assert "production" in msg.lower()
+    assert cert is None
+
+
 def test_generate_vhost(tmp_path, monkeypatch):
     conf = tmp_path / "conf"
     conf.mkdir(parents=True, exist_ok=True)

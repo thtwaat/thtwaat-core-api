@@ -566,12 +566,14 @@ class DomainService:
     ) -> DomainResponse:
         """Ops compatibility — delegates to SSL Manager activate path."""
         from app.ssl.manager import SslManager
-        from app.ssl.certs import issue_self_signed
+        from app.ssl.certs import issue_certificate
 
         domain = self.repo.get_for_company(domain_id, company_id)
         if not domain:
             raise HTTPException(status_code=404, detail="Domain not found")
-        cert, key, serial, exp = issue_self_signed(domain.hostname)
+        ok, msg, cert, key, serial, exp = issue_certificate(domain.hostname)
+        if not ok:
+            raise HTTPException(status_code=502, detail={"error": "ssl_issuance_failed", "message": msg})
         if expires_at:
             exp = expires_at
         SslManager(self.db)._activate(
