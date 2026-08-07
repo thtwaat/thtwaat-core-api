@@ -6,13 +6,16 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
+import yaml
 
 from app.domains.models import SslStatus
-from app.ssl.certs import issue_self_signed, issue_certificate
+from app.ssl.certs import certs_root, issue_self_signed, issue_certificate
 from app.ssl.nginx_gen import generate_vhost, conf_dir
 from app.ssl.manager import SslManager, normalize_ssl_status
 from app.deploy.health import check_storage, check_ai_providers
 from app.deploy.metrics import snapshot, incr_requests
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_normalize_ssl_status_legacy():
@@ -51,6 +54,44 @@ def test_issue_certificate_rejects_self_signed_in_production(monkeypatch):
     assert ok is False
     assert "production" in msg.lower()
     assert cert is None
+
+
+def test_certs_root_uses_configured_dir_in_production(tmp_path, monkeypatch):
+    """Regression: certs_root() must never hardcode nginx's own /etc/nginx/ssl
+    path — api/worker containers mount the shared volume at SSL_CERTS_DIR's
+    path instead, so hardcoding nginx's path silently orphans issued certs
+    (see docker-compose.prod.yml volume mounts)."""
+    configured = tmp_path / "app_view_of_ssl_dir"
+    with patch("app.ssl.certs.settings") as s:
+        s.app_env = "production"
+        s.is_hardened_env = True
+        s.SSL_CERTS_DIR = str(configured)
+        root = certs_root()
+    assert root == configured
+    assert root != Path("/etc/nginx/ssl/domains")
+
+
+def test_prod_compose_defaults_ssl_mode_to_certbot():
+    """Regression: docker-compose.prod.yml is production-only. If ops forgets
+    to set SSL_MODE explicitly, it must default to certbot, not simulate —
+    otherwise issue_certificate() always rejects issuance in production
+    (app/ssl/certs.py _is_production_environment guard) and certbot never runs."""
+    compose_path = REPO_ROOT / "docker-compose.prod.yml"
+    compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    for service_name in ("api", "worker"):
+        ssl_mode = compose["services"][service_name]["environment"]["SSL_MODE"]
+        assert ssl_mode == "${SSL_MODE:-certbot}", (
+            f"{service_name} service SSL_MODE default regressed to: {ssl_mode}"
+        )
+
+
+def test_prod_image_installs_certbot():
+    """Regression: run_certbot_http01() shells out to the certbot binary from
+    the api/worker container (built from the root Dockerfile). Without the
+    package installed, issuance fails with FileNotFoundError even once
+    SSL_MODE=certbot is reached."""
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text(encoding="utf-8")
+    assert "certbot" in dockerfile
 
 
 def test_generate_vhost(tmp_path, monkeypatch):

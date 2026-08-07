@@ -93,7 +93,9 @@ services:
       APP_ENV: production
       # Ops must set CORS_ORIGINS in .env.prod to explicit origins (never *).
       # Settings refuse startup if CORS_ORIGINS contains * under APP_ENV=production.
-      SSL_MODE: ${SSL_MODE:-simulate}
+      # This compose file is production-only — default to real Let's Encrypt
+      # issuance; simulate must be an explicit opt-in, never the silent default.
+      SSL_MODE: ${SSL_MODE:-certbot}
       REDIS_HOST: redis
       DB_HOST: db
       PYTHONPATH: /app
@@ -158,7 +160,7 @@ services:
     environment:
       REDIS_HOST: redis
       DB_HOST: db
-      SSL_MODE: ${SSL_MODE:-simulate}
+      SSL_MODE: ${SSL_MODE:-certbot}
       OLLAMA_URL: http://ollama:11434
       PYTHONPATH: /app
     volumes:

@@ -37,10 +37,12 @@ def _is_production_environment() -> bool:
 
 
 def certs_root() -> Path:
-    if _is_production_environment():
-        root = Path("/etc/nginx/ssl/domains")
-    else:
-        root = Path(getattr(settings, "SSL_CERTS_DIR", "nginx/ssl/domains"))
+    # NOTE: this runs inside the api/worker containers, which mount the shared
+    # ssl volume at SSL_CERTS_DIR's path (./nginx/ssl -> /app/nginx/ssl in prod),
+    # not at nginx's own /etc/nginx/ssl. generate_vhost() remaps the path for
+    # nginx's consumption via NGINX_CERT_CONTAINER_PREFIX — don't hardcode
+    # nginx's absolute path here or issued certs never reach the shared volume.
+    root = Path(getattr(settings, "SSL_CERTS_DIR", "nginx/ssl/domains"))
     root.mkdir(parents=True, exist_ok=True)
     return root
 
