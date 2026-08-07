@@ -777,6 +777,16 @@ class MarketplaceService:
 
     # ── Install flow ──────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _is_free_template(template: MarketplaceTemplate) -> bool:
+        pricing_tier = (
+            template.pricing_tier.value
+            if hasattr(template, "pricing_tier") and hasattr(template.pricing_tier, "value")
+            else getattr(template, "pricing_tier", None)
+        )
+        tier = (pricing_tier or "free").lower()
+        return tier == "free"
+
     def install(
         self,
         company_id: UUID,
@@ -803,7 +813,18 @@ class MarketplaceService:
             .first()
         )
 
-        self.usage.check_quota(company_id, UsageDimension.TEMPLATES_PUBLISHED)
+        if not self._is_free_template(template):
+            try:
+                self.usage.check_quota(company_id, UsageDimension.TEMPLATES_PUBLISHED)
+            except HTTPException as exc:
+                detail = exc.detail if isinstance(exc.detail, dict) else {}
+                if isinstance(detail, dict):
+                    detail = dict(detail)
+                    detail["message"] = (
+                        "This paid template requires a higher plan to install. Upgrade your workspace to continue."
+                    )
+                    raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=detail) from exc
+                raise
 
         version = None
         if payload.version:
@@ -879,13 +900,14 @@ class MarketplaceService:
             raise
 
         template.install_count = int(template.install_count or 0) + 1
-        self.usage.record(
-            company_id,
-            UsageDimension.TEMPLATES_PUBLISHED,
-            1,
-            source="marketplace_install",
-            metadata={"template_id": str(template.id), "slug": template.slug},
-        )
+        if not self._is_free_template(template):
+            self.usage.record(
+                company_id,
+                UsageDimension.TEMPLATES_PUBLISHED,
+                1,
+                source="marketplace_install",
+                metadata={"template_id": str(template.id), "slug": template.slug},
+            )
         self.repo.commit()
         self.db.refresh(install)
         return self._install_response(install, template, issued_api_key=issued_key)

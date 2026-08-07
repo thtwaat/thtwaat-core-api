@@ -9,11 +9,11 @@ from app.marketplace.seed import seed_marketplace_templates
 from app.usage.service import UsageService
 
 
-def _auth(client, role: str = "admin"):
+def _auth(client, role: str = "company_owner"):
     company_slug = f"mkt-{uuid.uuid4().hex[:8]}"
     company_resp = client.post(
         "/api/v1/companies/",
-        json={"name": "Marketplace Co", "slug": company_slug},
+        json={"name": f"Marketplace Co {company_slug}", "slug": company_slug},
     )
     assert company_resp.status_code in (200, 201), company_resp.text
     company_id = company_resp.json()["id"]
@@ -39,8 +39,8 @@ def _auth(client, role: str = "admin"):
     return {"Authorization": f"Bearer {token}"}, company_id
 
 
-def _enable_templates(db_session, company_id: str):
-    UsageService(db_session).apply_plan_limits(uuid.UUID(company_id), "starter", emit_upgraded=False)
+def _enable_templates(db_session, company_id: str, plan: str = "starter"):
+    UsageService(db_session).apply_plan_limits(uuid.UUID(company_id), plan, emit_upgraded=False)
 
 
 def _seed(db_session):
@@ -154,6 +154,50 @@ def test_install_connect_publish_flow(client, db_session):
         assert published.status_code == 200, published.text
         assert published.json()["status"] == "published"
         assert published.json()["published_at"] is not None
+
+
+def test_free_templates_install_for_free_plan_users(client, db_session):
+    headers, company_id = _auth(client)
+    _enable_templates(db_session, company_id, plan="free")
+    _seed(db_session)
+
+    install = client.post(
+        "/api/v1/marketplace/templates/ai-website-starter/install",
+        json={"create_api_key": False},
+        headers=headers,
+    )
+    assert install.status_code == 201, install.text
+    assert install.json()["status"] == "ready"
+
+
+def test_paid_templates_still_require_quota_for_free_plan_users(client, db_session):
+    headers, company_id = _auth(client)
+    _enable_templates(db_session, company_id, plan="free")
+    _seed(db_session)
+
+    install = client.post(
+        "/api/v1/marketplace/templates/marketing-ad-copy/install",
+        json={"create_api_key": False},
+        headers=headers,
+    )
+    assert install.status_code == 429, install.text
+    detail = install.json()
+    assert detail["error"] == "quota_exceeded"
+    assert "Upgrade" in detail["message"]
+
+
+def test_paid_templates_still_install_when_plan_allows_it(client, db_session):
+    headers, company_id = _auth(client)
+    _enable_templates(db_session, company_id, plan="starter")
+    _seed(db_session)
+
+    install = client.post(
+        "/api/v1/marketplace/templates/marketing-ad-copy/install",
+        json={"create_api_key": False},
+        headers=headers,
+    )
+    assert install.status_code == 201, install.text
+    assert install.json()["status"] == "ready"
 
 
 def test_version_update_and_rollback(client, db_session):
