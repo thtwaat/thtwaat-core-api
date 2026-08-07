@@ -85,6 +85,31 @@ def test_prod_compose_defaults_ssl_mode_to_certbot():
         )
 
 
+def test_prod_compose_configures_shared_ssl_certs_dir():
+    """Regression: api and worker must explicitly set SSL_CERTS_DIR to the
+    same path, and that path must live under their shared ./nginx/ssl mount
+    (docker-compose.prod.yml) so the string-based remap in generate_vhost()
+    (app/ssl/nginx_gen.py, "nginx/ssl/" substring swap) can retarget it to
+    nginx's own /etc/nginx/ssl mount of the identical host directory."""
+    compose_path = REPO_ROOT / "docker-compose.prod.yml"
+    compose = yaml.safe_load(compose_path.read_text(encoding="utf-8"))
+    services = compose["services"]
+
+    api_dir = services["api"]["environment"]["SSL_CERTS_DIR"]
+    worker_dir = services["worker"]["environment"]["SSL_CERTS_DIR"]
+    assert api_dir == worker_dir, "api/worker SSL_CERTS_DIR must match — they share one cert volume"
+    assert "nginx/ssl/" in api_dir, "SSL_CERTS_DIR must fall under the shared ./nginx/ssl mount"
+
+    api_mount = next(
+        v for v in services["api"]["volumes"] if v.split(":")[0] == "./nginx/ssl"
+    )
+    api_mount_target = api_mount.split(":")[1]
+    assert api_dir.startswith(api_mount_target), (
+        f"SSL_CERTS_DIR ({api_dir}) must live under the api container's own "
+        f"./nginx/ssl mount point ({api_mount_target}), not nginx's absolute path"
+    )
+
+
 def test_prod_image_installs_certbot():
     """Regression: run_certbot_http01() shells out to the certbot binary from
     the api/worker container (built from the root Dockerfile). Without the

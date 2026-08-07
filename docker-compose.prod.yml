@@ -96,6 +96,10 @@ services:
       # This compose file is production-only — default to real Let's Encrypt
       # issuance; simulate must be an explicit opt-in, never the silent default.
       SSL_MODE: ${SSL_MODE:-certbot}
+      # Must match the ./nginx/ssl volume mount below (api/worker see it at
+      # /app/nginx/ssl; nginx itself sees the same host dir at /etc/nginx/ssl —
+      # generate_vhost() remaps between the two via NGINX_CERT_CONTAINER_PREFIX).
+      SSL_CERTS_DIR: /app/nginx/ssl/domains
       REDIS_HOST: redis
       DB_HOST: db
       PYTHONPATH: /app
@@ -161,6 +165,7 @@ services:
       REDIS_HOST: redis
       DB_HOST: db
       SSL_MODE: ${SSL_MODE:-certbot}
+      SSL_CERTS_DIR: /app/nginx/ssl/domains
       OLLAMA_URL: http://ollama:11434
       PYTHONPATH: /app
     volumes:
