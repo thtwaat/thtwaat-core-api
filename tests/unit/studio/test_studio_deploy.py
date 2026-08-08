@@ -202,8 +202,13 @@ def test_vps_deploy_workflow(tmp_path: Path):
             "frontend": {"ok": True},
         },
     ), patch(
-        "app.studio.deploy.bind_domain_and_ssl",
-        return_value={"ssl_enabled": True, "ssl_status": "PLATFORM_WILDCARD", "status": "platform_wildcard"},
+        # Free subdomains go through bind_free_subdomain now (real Domain
+        # Manager + SslManager provisioning, no fabricated "always active"
+        # status) — mock it as already-active to exercise the completed/live
+        # path, same as this test did before the fake PLATFORM_WILDCARD
+        # shortcut was removed.
+        "app.studio.deploy.bind_free_subdomain",
+        return_value={"ssl_enabled": True, "ssl_status": "ACTIVE", "status": "LIVE"},
     ):
         ctx = DeployContext(
             project_id=pid,
@@ -234,6 +239,57 @@ def test_vps_deploy_workflow(tmp_path: Path):
     assert "database_migration" in stages
     assert any(s in stages for s in ("health_check", "ssl", "deploying"))
     assert result.get("commit_sha") == sha
+
+
+def test_free_subdomain_deploy_is_provisioning_ssl_not_fake_live(tmp_path: Path):
+    """Regression: a free *.thtwaat.app subdomain must not be reported LIVE
+    before a certificate has actually been issued. Guards against the old
+    bind_domain_and_ssl override that unconditionally forced
+    ssl_status=PLATFORM_WILDCARD / ssl_ok=True on first deploy."""
+    artifact, sha, _ = _make_artifact(tmp_path)
+    pid = uuid4()
+    free = allocate_free_subdomain(project_id=pid, project_title="Demo App")
+    with patch(
+        "app.studio.domain_validation.resolve_deploy_hostname",
+        return_value=(free, "free_subdomain", _reachable(free)),
+    ), patch(
+        "app.studio.deploy.ensure_platform_stack",
+        return_value={"ok": True, "note": "test stack", "actions": []},
+    ), patch(
+        "app.studio.deploy.run_platform_health",
+        return_value={
+            "api": {"ok": True, "status_code": 200},
+            "database": {"ok": True},
+            "storage": {"ok": True},
+            "redis": {"ok": True},
+            "workers": {"ok": True},
+            "ai_gateway": {"ok": True},
+            "frontend": {"ok": True},
+        },
+    ):
+        # No db_session on the context -> bind_free_subdomain takes its
+        # "not provisioned yet" branch, exactly like a fresh deploy before
+        # the scheduler/worker have had a chance to issue anything.
+        ctx = DeployContext(
+            project_id=pid,
+            deployment_id=uuid4(),
+            workspace_id=uuid4(),
+            project_title="Demo App",
+            provider="vps",
+            build_id=uuid4(),
+            build_version=1,
+            artifact_path=artifact,
+            artifact_sha256=sha,
+            domain_mode="free_subdomain",
+            output_dir=tmp_path / "deploy-out",
+            public_api_base="https://api.example.com",
+            public_app_base="https://app.example.com",
+        )
+        result = run_deploy(ctx, progress=lambda *_a, **_k: None)
+    assert result["ok"] is True
+    assert result["live"] is False
+    assert result["status"] == "provisioning_ssl"
+    assert result["ssl"]["ssl_enabled"] is False
 
 
 @pytest.mark.unit

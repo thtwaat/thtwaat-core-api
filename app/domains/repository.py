@@ -72,6 +72,28 @@ class DomainRepository:
         )
         self.db.commit()
 
+    def list_active_for_progress(self) -> List[CompanyDomain]:
+        """Platform-wide (all companies) domains still moving toward LIVE.
+
+        Used by the scheduler to drive automatic DNS verification and SSL
+        issuance — mirrors list_cors_origins() in being an all-tenant scan.
+        """
+        return (
+            self.db.query(CompanyDomain)
+            .filter(
+                CompanyDomain.status.in_(
+                    [
+                        DomainStatus.PENDING,
+                        DomainStatus.DNS_PENDING,
+                        DomainStatus.VERIFIED,
+                        DomainStatus.SSL_PENDING,
+                    ]
+                )
+            )
+            .order_by(CompanyDomain.updated_at.asc())
+            .all()
+        )
+
     def list_cors_origins(self) -> List[str]:
         rows = (
             self.db.query(CompanyDomain.cors_origin)

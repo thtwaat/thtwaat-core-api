@@ -33,6 +33,7 @@ def enqueue(r, job: dict) -> None:
 def tick(r):
     from app.database.database import SessionLocal
     from app.ssl.manager import SslManager
+    from app.domains.repository import DomainRepository
     from app.deploy.backup import run_full_backup
     from app.config.settings import settings
 
@@ -51,6 +52,18 @@ def tick(r):
                 "company_id": str(d.company_id),
             })
             logger.info("enqueued ssl.renew hostname=%s", d.hostname)
+
+        # Vercel-style domain automation: sweep every domain still moving
+        # toward LIVE (free *.thtwaat.app subdomains and customer custom
+        # domains alike) and let the worker advance it one step.
+        progressing = DomainRepository(db).list_active_for_progress()
+        for d in progressing:
+            enqueue(r, {
+                "type": "domain.auto_progress",
+                "domain_id": str(d.id),
+            })
+        if progressing:
+            logger.info("enqueued domain.auto_progress count=%s", len(progressing))
 
         # Daily backup marker
         hour = datetime.now(timezone.utc).hour

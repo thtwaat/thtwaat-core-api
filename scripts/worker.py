@@ -107,6 +107,48 @@ def _handle_webhook_failure(payload: Dict[str, Any], exc: Exception) -> None:
         db.close()
 
 
+def _handle_domain_job_failure(payload: Dict[str, Any], exc: Exception) -> None:
+    """Retry domain.auto_progress with backoff, then dead-letter.
+
+    Only for unexpected errors (certbot/DNS-resolver/DB exceptions) — a
+    domain simply not being ready yet (DNS not propagated, SSL still
+    pending) is not an exception here; it's picked up again by the next
+    scheduler sweep instead of being retried through this path.
+    """
+    from app.monitoring.queue import dead_letter, enqueue_delayed
+
+    attempt = int(payload.get("attempt") or 1)
+    max_attempts = int(payload.get("max_attempts") or 6)
+    reason = str(exc)
+    if attempt >= max_attempts:
+        dead_letter(
+            payload,
+            reason=f"domain_auto_progress attempt={attempt}/{max_attempts}: {reason}",
+        )
+        logger.error(
+            "domain_auto_progress_dead domain_id=%s attempt=%s reason=%s",
+            payload.get("domain_id"),
+            attempt,
+            reason,
+        )
+        return
+
+    delay = min(2.0 ** attempt, 300.0)
+    ready_at = time.time() + delay
+    retry_payload = dict(payload)
+    retry_payload["attempt"] = attempt + 1
+    retry_payload["last_error"] = reason
+    enqueue_delayed(retry_payload, ready_at=ready_at)
+    logger.warning(
+        "domain_auto_progress_retry domain_id=%s attempt=%s next=%s delay=%.1fs reason=%s",
+        payload.get("domain_id"),
+        attempt,
+        attempt + 1,
+        delay,
+        reason,
+    )
+
+
 def _handle_studio_job_failure(payload: Dict[str, Any], exc: Exception) -> None:
     """Retry studio.deploy / studio.build with backoff, then dead-letter."""
     from app.monitoring.queue import dead_letter, enqueue_delayed
@@ -172,6 +214,14 @@ def process_job(payload: dict) -> None:
             from app.ssl.nginx_gen import reload_nginx
 
             reload_nginx()
+        elif job_type == "domain.auto_progress":
+            from uuid import UUID
+            from app.domains.service import DomainService
+
+            domain_id = payload.get("domain_id")
+            if not domain_id:
+                raise ValueError("domain.auto_progress missing domain_id")
+            DomainService(db).progress(UUID(str(domain_id)))
         elif job_type == "webhook.dispatch":
             from app.webhooks.delivery import deliver_webhook, new_delivery_id
             from app.webhooks.outbox import ack_from_job_payload
@@ -345,6 +395,12 @@ def main():
                     _handle_studio_job_failure(payload, exc)
                 except Exception as inner:  # noqa: BLE001
                     logger.exception("studio_retry_handler_failed: %s", inner)
+                    r.rpush("thtwaat:jobs:dead", raw)
+            elif job_type == "domain.auto_progress":
+                try:
+                    _handle_domain_job_failure(payload, exc)
+                except Exception as inner:  # noqa: BLE001
+                    logger.exception("domain_retry_handler_failed: %s", inner)
                     r.rpush("thtwaat:jobs:dead", raw)
             else:
                 r.rpush("thtwaat:jobs:dead", raw)

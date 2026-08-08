@@ -323,6 +323,74 @@ class DomainService:
         })
         return self._to_response(domain)
 
+    def create_free_subdomain(
+        self, company_id: UUID, hostname: str, user_id: UUID
+    ) -> DomainResponse:
+        """Provision a platform-owned *.thtwaat.app subdomain — always free.
+
+        Unlike create(), ownership is never in question (THTWAAT owns the
+        zone), so the row is created already VERIFIED/SSL_PENDING instead of
+        PENDING, and it deliberately skips the DOMAINS usage-quota check that
+        gates customer-added custom domains: a company's plan limit on
+        custom domains must never block their free per-project subdomain.
+        Progression to LIVE is enqueued immediately and also picked up by
+        the next scheduler sweep if the queue is unavailable.
+        """
+        hostname = hostname.strip().lower().rstrip(".")
+        existing = self.repo.get_by_hostname(hostname)
+        if existing:
+            if existing.company_id != company_id:
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="Domain hostname already registered",
+                )
+            return self._to_response(existing)
+
+        token = generate_verification_token()
+        now = datetime.now(timezone.utc)
+        domain = CompanyDomain(
+            company_id=company_id,
+            hostname=hostname,
+            status=DomainStatus.SSL_PENDING,
+            verification_method=DomainVerificationMethod.TXT,
+            verification_token=token,
+            verified_at=now,
+            last_checked_at=now,
+            dns_records=[],
+            ssl_status=SslStatus.PENDING.value,
+            cors_origin=f"https://{hostname}",
+        )
+        domain = self.repo.create(domain)
+        invalidate_cors_cache()
+
+        _audit(
+            "free_subdomain_created",
+            domain_id=domain.id,
+            company_id=company_id,
+            user_id=user_id,
+            hostname=hostname,
+        )
+        self._emit_webhook(company_id, "domain.created", {
+            "domain_id": str(domain.id),
+            "hostname": hostname,
+            "status": domain.status.value,
+            "free_subdomain": True,
+        })
+
+        try:
+            from app.monitoring.queue import enqueue
+
+            enqueue({
+                "type": "domain.auto_progress",
+                "domain_id": str(domain.id),
+            })
+        except Exception as exc:
+            logger.warning(
+                "free_subdomain_enqueue_failed domain_id=%s err=%s", domain.id, exc
+            )
+
+        return self._to_response(domain)
+
     def list(self, company_id: UUID) -> List[DomainResponse]:
         return [self._to_response(d) for d in self.repo.list_for_company(company_id)]
 
@@ -404,7 +472,17 @@ class DomainService:
             return True, "CNAME record verified"
         return False, f"CNAME for {domain.hostname} must point to {expected_cname}"
 
-    def verify(self, domain_id: UUID, company_id: UUID, user_id: UUID) -> DomainVerifyResponse:
+    def verify(
+        self, domain_id: UUID, company_id: UUID, user_id: UUID, *, auto: bool = False
+    ) -> DomainVerifyResponse:
+        """Check DNS ownership records.
+
+        auto=True is used by the background scheduler/worker (see progress()):
+        a missed check just leaves the domain at DNS_PENDING for the next
+        sweep, since DNS propagation can legitimately take hours. auto=False
+        (the manual "Verify" action) still fails fast to FAILED so a human
+        gets immediate feedback that what they published is wrong.
+        """
         domain = self.repo.get_for_company(domain_id, company_id)
         if not domain:
             raise HTTPException(status_code=404, detail="Domain not found")
@@ -455,6 +533,28 @@ class DomainService:
                 dns_records=list(domain.dns_records or []),
             )
 
+        if auto:
+            # Not yet propagated — leave it eligible for the next scheduler sweep
+            # instead of terminally failing on a single missed check.
+            domain.status = DomainStatus.DNS_PENDING
+            domain.failure_reason = message
+            self.repo.save(domain)
+            _audit(
+                "domain_verify_pending",
+                domain_id=domain.id,
+                company_id=company_id,
+                reason=message,
+            )
+            return DomainVerifyResponse(
+                id=domain.id,
+                hostname=domain.hostname,
+                status=domain.status.value,
+                verified=False,
+                message=message,
+                dns_records=list(domain.dns_records or []),
+                failure_reason=message,
+            )
+
         domain.status = DomainStatus.FAILED
         domain.failure_reason = message
         self.repo.save(domain)
@@ -492,6 +592,31 @@ class DomainService:
         domain.failure_reason = None
         self.repo.save(domain)
         return self.verify(domain_id, company_id, user_id)
+
+    def progress(self, domain_id: UUID) -> DomainResponse:
+        """Advance a domain one step toward LIVE — the scheduler/worker's
+        single entry point for the domain.auto_progress job.
+
+        Dispatches to the existing verify()/request_ssl() based on the
+        domain's current status; does nothing for domains already LIVE or
+        FAILED. Runs as a background/system action (no authenticated user),
+        so it uses the domain's own company_id as the audit actor — the
+        same convention scripts/scheduler.py already uses for ssl.renew.
+        """
+        domain = self.repo.get_by_id(domain_id)
+        if not domain:
+            raise HTTPException(status_code=404, detail="Domain not found")
+
+        company_id = domain.company_id
+        actor = company_id
+        status_val = domain.status.value if hasattr(domain.status, "value") else str(domain.status)
+
+        if status_val in (DomainStatus.PENDING.value, DomainStatus.DNS_PENDING.value):
+            self.verify(domain_id, company_id, actor, auto=True)
+        elif status_val in (DomainStatus.VERIFIED.value, DomainStatus.SSL_PENDING.value):
+            self.request_ssl(domain_id, company_id, actor)
+
+        return self.get(domain_id, company_id)
 
     def request_ssl(self, domain_id: UUID, company_id: UUID, user_id: UUID) -> SslRequestResponse:
         from app.ssl.manager import SslManager

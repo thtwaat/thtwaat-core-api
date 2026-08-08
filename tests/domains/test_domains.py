@@ -18,11 +18,11 @@ from app.domains.cors import DynamicCORSMiddleware
 from app.usage.service import UsageService
 
 
-def _auth(client, role: str = "admin"):
+def _auth(client, role: str = "company_owner"):
     company_slug = f"dom-{uuid.uuid4().hex[:8]}"
     company_resp = client.post(
         "/api/v1/companies/",
-        json={"name": "Domain Co", "slug": company_slug},
+        json={"name": f"Domain Co {company_slug}", "slug": company_slug},
     )
     assert company_resp.status_code in (200, 201), company_resp.text
     company_id = company_resp.json()["id"]
@@ -188,6 +188,221 @@ def test_domain_verify_failure(client, db_session):
     assert retry.json()["verified"] is True
 
 
+def test_verify_auto_mode_stays_pending_instead_of_failing(client, db_session):
+    """Background sweeps (auto=True) must not burn a domain to FAILED on a
+    single missed DNS check — only the manual Verify action does that."""
+    headers, company_id = _auth(client)
+    _enable_domains(db_session, company_id)
+
+    create = client.post(
+        "/api/v1/domains/",
+        json={"hostname": f"pending.{uuid.uuid4().hex[:6]}.example.com"},
+        headers=headers,
+    )
+    domain_id = create.json()["id"]
+    svc = DomainService(db_session)
+
+    with patch.object(DomainService, "_verify_dns", lambda self, domain: (False, "not yet")):
+        result = svc.verify(uuid.UUID(domain_id), uuid.UUID(company_id), uuid.UUID(company_id), auto=True)
+
+    assert result.verified is False
+    assert result.status == "DNS_PENDING"
+
+    manual = client.get(f"/api/v1/domains/{domain_id}", headers=headers)
+    assert manual.json()["status"] == "DNS_PENDING"
+
+
+# ── Vercel-style domain automation ────────────────────────────────────────────
+
+def test_create_free_subdomain_is_pre_verified_and_free(client, db_session):
+    headers, company_id = _auth(client)
+    # Deliberately do NOT enable a paid plan / domain quota — free subdomains
+    # must not be gated by the customer-domain usage meter.
+    svc = DomainService(db_session)
+    hostname = f"myapp-{uuid.uuid4().hex[:8]}.thtwaat.app"
+
+    with patch("app.monitoring.queue.enqueue") as mock_enqueue:
+        resp = svc.create_free_subdomain(uuid.UUID(company_id), hostname, uuid.UUID(company_id))
+
+    assert resp.status == "SSL_PENDING"
+    assert resp.ssl_status == "PENDING"
+    assert resp.verified_at is not None
+    assert resp.dns_records == []
+    mock_enqueue.assert_called_once()
+    enqueued = mock_enqueue.call_args[0][0]
+    assert enqueued["type"] == "domain.auto_progress"
+    assert enqueued["domain_id"] == str(resp.id)
+
+
+def test_create_free_subdomain_idempotent_for_same_company(db_session):
+    from app.companies.model import Company, CompanyPlan, CompanyStatus
+
+    company = Company(
+        name=f"Free Sub Co {uuid.uuid4().hex[:6]}",
+        slug=f"free-sub-{uuid.uuid4().hex[:8]}",
+        plan=CompanyPlan.FREE,
+        status=CompanyStatus.ACTIVE,
+    )
+    db_session.add(company)
+    db_session.commit()
+    db_session.refresh(company)
+
+    svc = DomainService(db_session)
+    hostname = f"redeploy-{uuid.uuid4().hex[:8]}.thtwaat.app"
+    with patch("app.monitoring.queue.enqueue"):
+        first = svc.create_free_subdomain(company.id, hostname, company.id)
+        second = svc.create_free_subdomain(company.id, hostname, company.id)
+    assert first.id == second.id
+
+
+def test_progress_dispatches_verify_then_request_ssl(db_session):
+    from app.companies.model import Company, CompanyPlan, CompanyStatus
+    from app.domains.models import CompanyDomain, DomainVerificationMethod, SslStatus
+    from app.domains.service import generate_verification_token
+
+    company = Company(
+        name=f"Progress Co {uuid.uuid4().hex[:6]}",
+        slug=f"progress-{uuid.uuid4().hex[:8]}",
+        plan=CompanyPlan.STARTER,
+        status=CompanyStatus.ACTIVE,
+    )
+    db_session.add(company)
+    db_session.commit()
+    db_session.refresh(company)
+
+    hostname = f"progress-{uuid.uuid4().hex[:8]}.example.com"
+    domain = CompanyDomain(
+        company_id=company.id,
+        hostname=hostname,
+        status=DomainStatus.PENDING,
+        verification_method=DomainVerificationMethod.TXT,
+        verification_token=generate_verification_token(),
+        dns_records=[],
+        ssl_status=SslStatus.NONE.value,
+        cors_origin=f"https://{hostname}",
+    )
+    db_session.add(domain)
+    db_session.commit()
+    db_session.refresh(domain)
+
+    svc = DomainService(db_session)
+
+    # Step 1: PENDING -> verify() is called (auto) -> DNS not ready -> stays DNS_PENDING
+    with patch.object(DomainService, "_verify_dns", lambda self, d: (False, "not yet")):
+        result = svc.progress(domain.id)
+    assert result.status == "DNS_PENDING"
+
+    # Step 2: DNS becomes valid -> verify() promotes to SSL_PENDING
+    with patch.object(DomainService, "_verify_dns", lambda self, d: (True, "ok")):
+        result = svc.progress(domain.id)
+    assert result.status == "SSL_PENDING"
+
+    # Step 3: SSL_PENDING -> request_ssl() is called. Fake SslManager.request
+    # the same way it would on success: mutate the row and return its dict
+    # shape (mocking it as a plain return_value would skip the real DB
+    # write _activate() performs, and the assertion below would fail for
+    # the wrong reason).
+    def _fake_ssl_request(self, domain_id, company_id, user_id, **kwargs):
+        d = self.repo.get_by_id(domain_id)
+        d.status = DomainStatus.LIVE
+        d.ssl_status = SslStatus.ACTIVE.value
+        self.repo.save(d)
+        return {"hostname": d.hostname, "ssl_status": "ACTIVE", "domain_status": "LIVE", "message": "issued"}
+
+    with patch("app.ssl.manager.SslManager.request", new=_fake_ssl_request):
+        result = svc.progress(domain.id)
+    assert result.status == "LIVE"
+
+
+def test_progress_noop_when_already_live(db_session):
+    from app.companies.model import Company, CompanyPlan, CompanyStatus
+    from app.domains.models import CompanyDomain, DomainVerificationMethod, SslStatus
+    from app.domains.service import generate_verification_token
+
+    company = Company(
+        name=f"Live Co {uuid.uuid4().hex[:6]}",
+        slug=f"live-{uuid.uuid4().hex[:8]}",
+        plan=CompanyPlan.STARTER,
+        status=CompanyStatus.ACTIVE,
+    )
+    db_session.add(company)
+    db_session.commit()
+    db_session.refresh(company)
+
+    hostname = f"live-{uuid.uuid4().hex[:8]}.example.com"
+    domain = CompanyDomain(
+        company_id=company.id,
+        hostname=hostname,
+        status=DomainStatus.LIVE,
+        verification_method=DomainVerificationMethod.TXT,
+        verification_token=generate_verification_token(),
+        dns_records=[],
+        ssl_status=SslStatus.ACTIVE.value,
+        cors_origin=f"https://{hostname}",
+    )
+    db_session.add(domain)
+    db_session.commit()
+    db_session.refresh(domain)
+
+    svc = DomainService(db_session)
+    with patch.object(DomainService, "verify") as mock_verify, patch.object(
+        DomainService, "request_ssl"
+    ) as mock_request_ssl:
+        result = svc.progress(domain.id)
+
+    mock_verify.assert_not_called()
+    mock_request_ssl.assert_not_called()
+    assert result.status == "LIVE"
+
+
+def test_list_active_for_progress_scans_all_companies(db_session):
+    from app.companies.model import Company, CompanyPlan, CompanyStatus
+    from app.domains.models import CompanyDomain, DomainVerificationMethod, SslStatus
+    from app.domains.repository import DomainRepository
+    from app.domains.service import generate_verification_token
+
+    repo = DomainRepository(db_session)
+    created_ids = []
+    for label, st in (
+        ("pending", DomainStatus.PENDING),
+        ("sslpending", DomainStatus.SSL_PENDING),
+        ("live", DomainStatus.LIVE),
+        ("failed", DomainStatus.FAILED),
+    ):
+        company = Company(
+            name=f"Scan {label} {uuid.uuid4().hex[:6]}",
+            slug=f"scan-{label}-{uuid.uuid4().hex[:8]}",
+            plan=CompanyPlan.STARTER,
+            status=CompanyStatus.ACTIVE,
+        )
+        db_session.add(company)
+        db_session.commit()
+        db_session.refresh(company)
+
+        hostname = f"{label}-{uuid.uuid4().hex[:8]}.example.com"
+        domain = CompanyDomain(
+            company_id=company.id,
+            hostname=hostname,
+            status=st,
+            verification_method=DomainVerificationMethod.TXT,
+            verification_token=generate_verification_token(),
+            dns_records=[],
+            ssl_status=SslStatus.NONE.value,
+            cors_origin=f"https://{hostname}",
+        )
+        db_session.add(domain)
+        db_session.commit()
+        db_session.refresh(domain)
+        created_ids.append((label, domain.id))
+
+    scanned_ids = {d.id for d in repo.list_active_for_progress()}
+    by_label = dict(created_ids)
+    assert by_label["pending"] in scanned_ids
+    assert by_label["sslpending"] in scanned_ids
+    assert by_label["live"] not in scanned_ids
+    assert by_label["failed"] not in scanned_ids
+
+
 # ── Permissions / isolation ───────────────────────────────────────────────────
 
 def test_viewer_cannot_create_domain(client, db_session):
@@ -304,3 +519,94 @@ def test_dashboard_endpoint(client, db_session):
     body = resp.json()
     assert body["domains_used"] >= 1
     assert "add_domain" in body["instructions"]
+
+
+# ── Scheduler / worker wiring ──────────────────────────────────────────────────
+
+def test_worker_dispatches_domain_auto_progress():
+    from unittest.mock import MagicMock
+
+    from scripts.worker import process_job
+
+    mock_db = MagicMock()
+    domain_id = str(uuid.uuid4())
+    with patch("app.database.database.SessionLocal", return_value=mock_db):
+        with patch("app.domains.service.DomainService.progress") as mock_progress:
+            process_job({"type": "domain.auto_progress", "domain_id": domain_id})
+    mock_progress.assert_called_once()
+    assert str(mock_progress.call_args[0][0]) == domain_id
+    mock_db.close.assert_called()
+
+
+def test_worker_domain_job_retries_with_backoff_then_dead_letters():
+    from scripts.worker import _handle_domain_job_failure
+
+    payload = {"type": "domain.auto_progress", "domain_id": str(uuid.uuid4()), "attempt": 1}
+    with patch("app.monitoring.queue.enqueue_delayed") as mock_delay, patch(
+        "app.monitoring.queue.dead_letter"
+    ) as mock_dead:
+        _handle_domain_job_failure(payload, RuntimeError("certbot boom"))
+    mock_delay.assert_called_once()
+    mock_dead.assert_not_called()
+    retried = mock_delay.call_args[0][0]
+    assert retried["attempt"] == 2
+
+    # Exhaust attempts -> dead-letter instead of retrying again
+    with patch("app.monitoring.queue.enqueue_delayed") as mock_delay2, patch(
+        "app.monitoring.queue.dead_letter"
+    ) as mock_dead2:
+        _handle_domain_job_failure(
+            {**payload, "attempt": 6, "max_attempts": 6}, RuntimeError("still failing")
+        )
+    mock_dead2.assert_called_once()
+    mock_delay2.assert_not_called()
+
+
+def test_scheduler_tick_enqueues_domain_auto_progress(db_session):
+    from unittest.mock import MagicMock
+
+    from app.companies.model import Company, CompanyPlan, CompanyStatus
+    from app.domains.models import CompanyDomain, DomainVerificationMethod, SslStatus
+    from app.domains.service import generate_verification_token
+    from scripts.scheduler import tick
+
+    company = Company(
+        name=f"Tick Co {uuid.uuid4().hex[:6]}",
+        slug=f"tick-{uuid.uuid4().hex[:8]}",
+        plan=CompanyPlan.STARTER,
+        status=CompanyStatus.ACTIVE,
+    )
+    db_session.add(company)
+    db_session.commit()
+    db_session.refresh(company)
+
+    hostname = f"tick-{uuid.uuid4().hex[:8]}.example.com"
+    domain = CompanyDomain(
+        company_id=company.id,
+        hostname=hostname,
+        status=DomainStatus.SSL_PENDING,
+        verification_method=DomainVerificationMethod.TXT,
+        verification_token=generate_verification_token(),
+        verified_at=None,
+        dns_records=[],
+        ssl_status=SslStatus.PENDING.value,
+        cors_origin=f"https://{hostname}",
+    )
+    db_session.add(domain)
+    db_session.commit()
+    db_session.refresh(domain)
+
+    fake_redis = MagicMock()
+    fake_redis.get.return_value = "1"  # short-circuit backup/alert/retention/purge one-offs
+
+    with patch("app.database.database.SessionLocal", return_value=db_session):
+        with patch("app.ssl.manager.SslManager.mark_expired", return_value=0), patch(
+            "app.ssl.manager.SslManager.check_expiring", return_value=[]
+        ):
+            tick(fake_redis)
+
+    enqueued_types = [
+        __import__("json").loads(call.args[1])["type"]
+        for call in fake_redis.rpush.call_args_list
+    ]
+    assert "domain.auto_progress" in enqueued_types

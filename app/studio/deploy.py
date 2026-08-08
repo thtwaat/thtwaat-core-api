@@ -406,6 +406,79 @@ def bind_domain_and_ssl(
             "renewal": "ssl.auto_renew",
         }
 
+
+def bind_free_subdomain(
+    ctx: DeployContext,
+    progress: ProgressCallback,
+    *,
+    hostname: str,
+    dns_validated: bool,
+) -> Dict[str, Any]:
+    """Free *.thtwaat.app subdomain — platform-owned, no DNS proof needed.
+
+    Reuses Domain Manager + SslManager exactly like bind_domain_and_ssl();
+    the only difference is that ownership verification is skipped (THTWAAT
+    owns the zone), so create_free_subdomain() marks the row pre-verified
+    and the scheduler/worker take it to LIVE automatically. Returns the
+    truthful current state — usually still pending right after a first
+    deploy — rather than a fabricated "already active" status.
+    """
+    emit(progress, DeployStage.SSL.value, message="Free subdomain via Domain Manager")
+    if not dns_validated:
+        emit(
+            progress,
+            DeployStage.SSL.value,
+            message="SSL deferred — waiting for platform wildcard DNS",
+            hostname=hostname,
+        )
+        return {
+            "status": "waiting_for_dns",
+            "domain": hostname,
+            "ssl_enabled": False,
+            "note": "Waiting for the *.thtwaat.app wildcard DNS record to resolve",
+            "renewal": "ssl.auto_renew",
+        }
+
+    db = ctx.db_session
+    if db is None:
+        return {
+            "status": "pending_dns",
+            "domain": hostname,
+            "ssl_enabled": False,
+            "note": "Free subdomain will be provisioned by the domain scheduler",
+            "renewal": "ssl.auto_renew",
+        }
+    try:
+        from app.domains.service import DomainService
+
+        svc = DomainService(db)
+        actor = ctx.actor_user_id or ctx.workspace_id
+        resp = svc.create_free_subdomain(ctx.workspace_id, hostname, actor)
+        ssl_val = str(resp.ssl_status or "").upper()
+        ssl_info: Dict[str, Any] = {
+            "status": resp.status,
+            "domain_id": str(resp.id),
+            "hostname": resp.hostname,
+            "ssl_status": resp.ssl_status,
+            "ssl_expires_at": resp.ssl_expires_at.isoformat() if resp.ssl_expires_at else None,
+            "ssl_enabled": ssl_val in {"ACTIVE", "ISSUED"},
+            "note": "Auto-issuing Let's Encrypt — no verify/request step needed for *.thtwaat.app",
+            "renewal": "ssl.auto_renew",
+        }
+        emit(progress, DeployStage.SSL.value, message="Free subdomain provisioned", hostname=hostname)
+        return ssl_info
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("free_subdomain_bind_failed hostname=%s err=%s", hostname, exc)
+        return {
+            "status": "error",
+            "domain": hostname,
+            "error": str(exc),
+            "ssl_enabled": False,
+            "note": "Domain automation will retry via the scheduler",
+            "renewal": "ssl.auto_renew",
+        }
+
+
 DEPLOY_STAGES = (
     "queued",
     "preparing",
@@ -874,25 +947,19 @@ class VpsDockerProvider:
         from app.studio.launch import verify_deployment_gates
 
         dns_ok = bool(validation.reachable and validation.registered)
-        # SSL bind first so we can evaluate certificate state for LIVE gate
-        ssl_info = bind_domain_and_ssl(
-            ctx, progress, hostname=hostname, dns_validated=dns_ok
-        )
-        from app.studio.domain_validation import free_subdomain_zone
-
-        zone = free_subdomain_zone()
-        ssl_val = str(ssl_info.get("ssl_status") or ssl_info.get("status") or "").upper()
-        if mode == "free_subdomain" and hostname.endswith(f".{zone}") and dns_ok:
-            # Free zone is fronted by platform TLS once DNS is live.
-            ssl_info = {
-                **ssl_info,
-                "ssl_enabled": True,
-                "ssl_status": ssl_info.get("ssl_status") or "PLATFORM_WILDCARD",
-                "status": ssl_info.get("status") or "platform_wildcard",
-            }
-            ssl_ok = True
+        # SSL bind first so we can evaluate certificate state for LIVE gate.
+        # Free subdomains get their own real (non-fabricated) provisioning
+        # path — no DNS ownership proof needed since THTWAAT owns the zone.
+        if mode == "free_subdomain":
+            ssl_info = bind_free_subdomain(
+                ctx, progress, hostname=hostname, dns_validated=dns_ok
+            )
         else:
-            ssl_ok = bool(ssl_info.get("ssl_enabled")) or ssl_val in {"ACTIVE", "ISSUED"}
+            ssl_info = bind_domain_and_ssl(
+                ctx, progress, hostname=hostname, dns_validated=dns_ok
+            )
+        ssl_val = str(ssl_info.get("ssl_status") or ssl_info.get("status") or "").upper()
+        ssl_ok = bool(ssl_info.get("ssl_enabled")) or ssl_val in {"ACTIVE", "ISSUED"}
 
         # Offline unit/dev: when compose was skipped and HTTP probes cannot reach the
         # public API, do not fail the overlay package — treat connection errors as soft.

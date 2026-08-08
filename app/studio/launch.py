@@ -125,7 +125,6 @@ def build_launch_checklist(
     """Pre-launch checklist reusing platform config + last deployment health."""
     from app.config.settings import settings
     from app.studio.deploy import run_platform_health
-    from app.studio.domain_validation import free_subdomain_zone
 
     health = run_platform_health(
         db,
@@ -160,12 +159,11 @@ def build_launch_checklist(
             validation = (deployment.health or {}).get("domain")
         reachable = bool((validation or {}).get("reachable")) if isinstance(validation, dict) else live
         domain_ok = bool(host) and (reachable or live)
-        zone = free_subdomain_zone()
         ssl_val = str(ssl.get("ssl_status") or ssl.get("status") or "").upper()
-        https_ok = bool(ssl.get("ssl_enabled")) or ssl_val in {"ACTIVE", "ISSUED", "PLATFORM_WILDCARD"}
-        if host and str(host).endswith(f".{zone}") and domain_ok:
-            # Free zone is served behind platform TLS once DNS is live.
-            https_ok = https_ok or True
+        # Free *.thtwaat.app subdomains now go through the same real
+        # issuance path as custom domains (see bind_free_subdomain in
+        # app/studio/deploy.py) — no fabricated "always true" shortcut.
+        https_ok = bool(ssl.get("ssl_enabled")) or ssl_val in {"ACTIVE", "ISSUED"}
         domain_detail = f"{host or '—'} · {'reachable' if domain_ok else 'pending DNS'}"
 
     health_ok = bool((health.get("api") or {}).get("ok")) and bool(
@@ -443,7 +441,10 @@ def build_domain_wizard(
     verify_result = None
     if auto_verify:
         try:
-            verify_result = svc.verify(domain_id, workspace_id, actor_id)
+            # auto=True: a poll landing before DNS has propagated should not
+            # burn the domain to FAILED — same non-terminal retry semantics
+            # as the background scheduler (app/domains/service.py::verify).
+            verify_result = svc.verify(domain_id, workspace_id, actor_id, auto=True)
             domain_status = str(getattr(verify_result, "status", None) or domain_status)
             # Refresh SSL after verify
             row = svc.repo.get_by_id(domain_id)
