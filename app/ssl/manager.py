@@ -181,7 +181,12 @@ class SslManager:
                 include_www=domain.hostname.count(".") == 1,
             )
             domain.nginx_config_path = str(conf)
-            reload_nginx()
+            reload_ok, reload_msg = reload_nginx()
+            if not reload_ok:
+                logger.warning(
+                    "nginx_reload_deferred domain_id=%s hostname=%s reason=%s",
+                    domain.id, domain.hostname, reload_msg,
+                )
 
         self.repo.save(domain)
         self._audit(event, domain_id=domain.id, company_id=domain.company_id, user_id=user_id, hostname=domain.hostname)

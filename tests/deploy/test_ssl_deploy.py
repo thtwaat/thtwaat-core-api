@@ -119,6 +119,84 @@ def test_prod_image_installs_certbot():
     assert "certbot" in dockerfile
 
 
+def test_nginx_image_runs_self_reload_watcher():
+    """Regression: reload_nginx() (app/ssl/nginx_gen.py) runs from the
+    api/worker containers, which have neither Docker socket access nor a
+    local nginx binary, so it always fails silently in production. Newly
+    issued vhosts/certs then sat on the shared volume unreloaded and
+    requests kept falling through to nginx's self-signed default_server
+    cert (NET::ERR_CERT_AUTHORITY_INVALID). nginx must instead watch its
+    own conf.d/domains and ssl mounts and reload itself."""
+    dockerfile = (REPO_ROOT / "nginx" / "Dockerfile").read_text(encoding="utf-8")
+    assert "inotify-tools" in dockerfile
+    assert "reload-watch.sh" in dockerfile
+
+    watch_script = REPO_ROOT / "nginx" / "reload-watch.sh"
+    assert watch_script.exists()
+    script = watch_script.read_text(encoding="utf-8")
+    assert "inotifywait" in script
+    assert "/etc/nginx/conf.d/domains" in script
+    assert "/etc/nginx/ssl" in script
+    assert "nginx -s reload" in script
+
+
+def test_activate_logs_when_reload_fails(tmp_path, monkeypatch, caplog):
+    """Regression: SslManager._activate() must not silently discard a
+    failed reload_nginx() call — it should at least be logged so a failed
+    in-band reload (expected in prod; the nginx-side watcher picks it up
+    instead) is visible in ops logs rather than invisible."""
+    import logging
+    from datetime import datetime, timezone, timedelta
+    from app.domains.models import CompanyDomain, DomainStatus
+
+    db = MagicMock()
+    mgr = SslManager(db)
+    domain = MagicMock(spec=CompanyDomain)
+    domain.id = uuid.uuid4()
+    domain.company_id = uuid.uuid4()
+    domain.hostname = "chat.test.local"
+    domain.verified_at = True
+    domain.status = DomainStatus.VERIFIED
+    domain.ssl_status = SslStatus.NONE.value
+    domain.renew_attempts = 0
+    domain.is_wildcard = False
+    domain.cert_path = None
+    domain.key_path = None
+    domain.ssl_expires_at = None
+    domain.ssl_issued_at = None
+    domain.ssl_renewal_at = None
+    domain.ssl_last_checked_at = None
+    domain.certificate_serial = None
+    domain.renewal_error = None
+    domain.nginx_config_path = None
+    domain.ssl_provider = "letsencrypt"
+    domain.ssl_challenge = "http-01"
+
+    mgr.repo.get_for_company = MagicMock(return_value=domain)
+    mgr.repo.save = MagicMock(side_effect=lambda d: d)
+
+    monkeypatch.setattr("app.ssl.certs.certs_root", lambda: tmp_path / "certs")
+    with patch("app.ssl.manager.issue_certificate") as issue:
+        cert = tmp_path / "c.pem"
+        key = tmp_path / "k.pem"
+        cert.write_text("c")
+        key.write_text("k")
+        issue.return_value = (True, "ok", cert, key, "abc123", datetime.now(timezone.utc) + timedelta(days=90))
+        with patch("app.ssl.manager.generate_vhost", return_value=tmp_path / "v.conf"):
+            with patch(
+                "app.ssl.manager.reload_nginx",
+                return_value=(False, "nginx reload skipped (container/binary unavailable)"),
+            ):
+                with caplog.at_level(logging.WARNING):
+                    result = mgr.request(domain.id, domain.company_id, domain.company_id)
+
+    assert "nginx_reload_deferred" in caplog.text
+    # State machine is unchanged — the nginx-side watcher is expected to pick
+    # up the change even when the in-band reload attempt fails.
+    assert result["ssl_status"] == SslStatus.ACTIVE.value
+    assert domain.status == DomainStatus.LIVE
+
+
 def test_generate_vhost(tmp_path, monkeypatch):
     conf = tmp_path / "conf"
     conf.mkdir(parents=True, exist_ok=True)
