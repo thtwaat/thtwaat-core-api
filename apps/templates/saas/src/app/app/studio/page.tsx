@@ -2373,14 +2373,14 @@ export default function StudioPage() {
                   className="mt-1"
                 />
                 <span>
-                  Use a free *.thtwaat.app subdomain
+                  Use a free *.thtwaat.com subdomain
                   <span className="mt-0.5 block text-xs text-slate-500">
                     {currentDeploy?.free_subdomain ||
                       (selected
                         ? `Auto: ${selected.title
                             .toLowerCase()
                             .replace(/[^a-z0-9]+/g, "-")
-                            .slice(0, 28)}.thtwaat.app`
+                            .slice(0, 28)}.thtwaat.com`
                         : "Allocated per project")}
                   </span>
                 </span>
@@ -2492,7 +2492,7 @@ export default function StudioPage() {
                     {currentDeploy.error || "This domain is not registered."}
                   </p>
                   <ul className="mt-2 list-disc space-y-1 pl-4 text-amber-100/80">
-                    <li>Use a free *.thtwaat.app subdomain</li>
+                    <li>Use a free *.thtwaat.com subdomain</li>
                     <li>Connect an existing custom domain that already resolves in DNS</li>
                   </ul>
                   <p className="mt-2 text-xs text-amber-200/70">

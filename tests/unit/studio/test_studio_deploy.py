@@ -36,7 +36,7 @@ def _reachable(hostname: str, **_kwargs) -> DomainValidationResult:
         registered=True,
         reachable=True,
         nxdomain=False,
-        is_free_subdomain=hostname.endswith(".thtwaat.app"),
+        is_free_subdomain=hostname.endswith(".thtwaat.com"),
         message="Domain is registered and reachable",
         records=["A:1.2.3.4"],
         options=[],
@@ -127,8 +127,8 @@ def test_secret_masking():
 def test_allocate_free_subdomain_unique_per_project():
     a = allocate_free_subdomain(project_id=uuid4(), project_title="News App")
     b = allocate_free_subdomain(project_id=uuid4(), project_title="News App")
-    assert a.endswith(".thtwaat.app")
-    assert b.endswith(".thtwaat.app")
+    assert a.endswith(".thtwaat.com")
+    assert b.endswith(".thtwaat.com")
     assert a != b
 
 
@@ -144,7 +144,7 @@ def test_nxdomain_custom_blocks_live(tmp_path: Path):
         message=DOMAIN_NOT_REGISTERED,
         records=[],
         options=[
-            {"id": "free_subdomain", "label": "free", "hostname": "demo.thtwaat.app"},
+            {"id": "free_subdomain", "label": "free", "hostname": "demo.thtwaat.com"},
             {"id": "custom", "label": "custom", "hostname": ""},
         ],
     )
@@ -242,7 +242,7 @@ def test_vps_deploy_workflow(tmp_path: Path):
 
 
 def test_free_subdomain_deploy_is_provisioning_ssl_not_fake_live(tmp_path: Path):
-    """Regression: a free *.thtwaat.app subdomain must not be reported LIVE
+    """Regression: a free *.thtwaat.com subdomain must not be reported LIVE
     before a certificate has actually been issued. Guards against the old
     bind_domain_and_ssl override that unconditionally forced
     ssl_status=PLATFORM_WILDCARD / ssl_ok=True on first deploy."""
@@ -380,5 +380,5 @@ def test_resolve_free_subdomain_mode():
         project_title="Acme Bot",
     )
     assert mode == "free_subdomain"
-    assert host.endswith(".thtwaat.app")
+    assert host.endswith(".thtwaat.com")
     assert validation.is_free_subdomain is True

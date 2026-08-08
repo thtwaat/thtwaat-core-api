@@ -326,7 +326,7 @@ class DomainService:
     def create_free_subdomain(
         self, company_id: UUID, hostname: str, user_id: UUID
     ) -> DomainResponse:
-        """Provision a platform-owned *.thtwaat.app subdomain — always free.
+        """Provision a platform-owned *.thtwaat.com subdomain — always free.
 
         Unlike create(), ownership is never in question (THTWAAT owns the
         zone), so the row is created already VERIFIED/SSL_PENDING instead of

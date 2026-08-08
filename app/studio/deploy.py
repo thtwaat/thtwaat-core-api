@@ -414,7 +414,7 @@ def bind_free_subdomain(
     hostname: str,
     dns_validated: bool,
 ) -> Dict[str, Any]:
-    """Free *.thtwaat.app subdomain — platform-owned, no DNS proof needed.
+    """Free *.thtwaat.com subdomain — platform-owned, no DNS proof needed.
 
     Reuses Domain Manager + SslManager exactly like bind_domain_and_ssl();
     the only difference is that ownership verification is skipped (THTWAAT
@@ -435,7 +435,7 @@ def bind_free_subdomain(
             "status": "waiting_for_dns",
             "domain": hostname,
             "ssl_enabled": False,
-            "note": "Waiting for the *.thtwaat.app wildcard DNS record to resolve",
+            "note": "Waiting for the *.thtwaat.com wildcard DNS record to resolve",
             "renewal": "ssl.auto_renew",
         }
 
@@ -462,7 +462,7 @@ def bind_free_subdomain(
             "ssl_status": resp.ssl_status,
             "ssl_expires_at": resp.ssl_expires_at.isoformat() if resp.ssl_expires_at else None,
             "ssl_enabled": ssl_val in {"ACTIVE", "ISSUED"},
-            "note": "Auto-issuing Let's Encrypt — no verify/request step needed for *.thtwaat.app",
+            "note": "Auto-issuing Let's Encrypt — no verify/request step needed for *.thtwaat.com",
             "renewal": "ssl.auto_renew",
         }
         emit(progress, DeployStage.SSL.value, message="Free subdomain provisioned", hostname=hostname)
@@ -860,7 +860,7 @@ class VpsDockerProvider:
                 error=DOMAIN_NOT_REGISTERED,
                 instructions=[
                     DOMAIN_NOT_REGISTERED,
-                    f"Option 1: Use free subdomain {suggested}" if suggested else "Option 1: Use a free *.thtwaat.app subdomain",
+                    f"Option 1: Use free subdomain {suggested}" if suggested else "Option 1: Use a free *.thtwaat.com subdomain",
                     "Option 2: Connect an existing custom domain that is already registered in DNS",
                 ],
                 notes=["Deployment not LIVE until a reachable domain is configured"],
@@ -1017,7 +1017,7 @@ class VpsDockerProvider:
                     f"Assigned hostname: {hostname}",
                     "Deployment status: Waiting for DNS until the hostname resolves.",
                     "SSL will be enabled only after DNS validation succeeds.",
-                    "Option: use free *.thtwaat.app subdomain or connect a registered custom domain.",
+                    "Option: use free *.thtwaat.com subdomain or connect a registered custom domain.",
                     f"Bundle: {bundle}",
                 ],
                 notes=["Not LIVE until domain resolves"],

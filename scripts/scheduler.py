@@ -54,7 +54,7 @@ def tick(r):
             logger.info("enqueued ssl.renew hostname=%s", d.hostname)
 
         # Vercel-style domain automation: sweep every domain still moving
-        # toward LIVE (free *.thtwaat.app subdomains and customer custom
+        # toward LIVE (free *.thtwaat.com subdomains and customer custom
         # domains alike) and let the worker advance it one step.
         progressing = DomainRepository(db).list_active_for_progress()
         for d in progressing:

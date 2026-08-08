@@ -160,7 +160,7 @@ def build_launch_checklist(
         reachable = bool((validation or {}).get("reachable")) if isinstance(validation, dict) else live
         domain_ok = bool(host) and (reachable or live)
         ssl_val = str(ssl.get("ssl_status") or ssl.get("status") or "").upper()
-        # Free *.thtwaat.app subdomains now go through the same real
+        # Free *.thtwaat.com subdomains now go through the same real
         # issuance path as custom domains (see bind_free_subdomain in
         # app/studio/deploy.py) — no fabricated "always true" shortcut.
         https_ok = bool(ssl.get("ssl_enabled")) or ssl_val in {"ACTIVE", "ISSUED"}
@@ -210,7 +210,7 @@ def build_launch_checklist(
             "https",
             "HTTPS",
             ok=https_ok,
-            detail="SSL active / platform wildcard for *.thtwaat.app",
+            detail="SSL active / platform wildcard for *.thtwaat.com",
         ),
         _item(
             "health",

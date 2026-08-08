@@ -219,7 +219,7 @@ def test_create_free_subdomain_is_pre_verified_and_free(client, db_session):
     # Deliberately do NOT enable a paid plan / domain quota — free subdomains
     # must not be gated by the customer-domain usage meter.
     svc = DomainService(db_session)
-    hostname = f"myapp-{uuid.uuid4().hex[:8]}.thtwaat.app"
+    hostname = f"myapp-{uuid.uuid4().hex[:8]}.thtwaat.com"
 
     with patch("app.monitoring.queue.enqueue") as mock_enqueue:
         resp = svc.create_free_subdomain(uuid.UUID(company_id), hostname, uuid.UUID(company_id))
@@ -248,7 +248,7 @@ def test_create_free_subdomain_idempotent_for_same_company(db_session):
     db_session.refresh(company)
 
     svc = DomainService(db_session)
-    hostname = f"redeploy-{uuid.uuid4().hex[:8]}.thtwaat.app"
+    hostname = f"redeploy-{uuid.uuid4().hex[:8]}.thtwaat.com"
     with patch("app.monitoring.queue.enqueue"):
         first = svc.create_free_subdomain(company.id, hostname, company.id)
         second = svc.create_free_subdomain(company.id, hostname, company.id)

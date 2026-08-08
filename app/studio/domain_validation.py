@@ -1,4 +1,4 @@
-"""Studio deploy domain validation and free *.thtwaat.app subdomains."""
+"""Studio deploy domain validation and free *.thtwaat.com subdomains."""
 from __future__ import annotations
 
 import logging
@@ -9,7 +9,7 @@ from uuid import UUID
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_FREE_ZONE = "thtwaat.app"
+DEFAULT_FREE_ZONE = "thtwaat.com"
 DOMAIN_NOT_REGISTERED = "This domain is not registered."
 
 
@@ -53,7 +53,7 @@ def _slug_label(value: str) -> str:
 
 
 def allocate_free_subdomain(*, project_id: UUID, project_title: str) -> str:
-    """Stable unique free hostname: {slug}-{project8}.thtwaat.app"""
+    """Stable unique free hostname: {slug}-{project8}.thtwaat.com"""
     zone = free_subdomain_zone()
     label = f"{_slug_label(project_title)}-{str(project_id).replace('-', '')[:8]}"
     return f"{label}.{zone}".lower()

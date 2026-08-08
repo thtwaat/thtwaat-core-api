@@ -237,8 +237,8 @@ class Settings(BaseSettings):
     DOMAIN_CNAME_TARGET: str = "cname.thtwaat.com"
     DOMAIN_A_RECORDS: list[str] = []
     DOMAIN_AAAA_RECORDS: list[str] = []
-    # Studio free deploy hostnames: {slug}-{id8}.thtwaat.app
-    STUDIO_FREE_SUBDOMAIN_ZONE: str = "thtwaat.app"
+    # Studio free deploy hostnames: {slug}-{id8}.thtwaat.com
+    STUDIO_FREE_SUBDOMAIN_ZONE: str = "thtwaat.com"
 
     # SSL Manager
     SSL_MODE: str = "simulate"  # simulate | certbot
