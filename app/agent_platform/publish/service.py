@@ -18,6 +18,7 @@ from app.agent_platform.publish.schemas import (
     AgentApiKeyCreatedResponse,
     AgentApiKeyListItem,
     AgentApiKeyRotateResponse,
+    AgentLifecycleResponse,
     PublishResponse,
     UnpublishResponse,
     WidgetConfig,
@@ -211,6 +212,26 @@ class PublishService:
 
     # ── Publish / Unpublish ───────────────────────────────────────────────────
 
+    def _validate_for_publish(self, agent: AgentConfig) -> None:
+        """Raise 422 with field-level detail if the agent isn't ready to go live."""
+        from app.agent_platform.agent_runtime import resolve_provider_and_model
+
+        errors: List[str] = []
+        if not (agent.system_prompt_template or "").strip():
+            errors.append("system_prompt_template is empty — add instructions before publishing.")
+
+        provider, model = resolve_provider_and_model(agent)
+        if not provider:
+            errors.append("No AI provider configured.")
+        if not model:
+            errors.append("No model configured.")
+
+        if errors:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={"error": "agent_not_ready", "issues": errors},
+            )
+
     def publish(
         self,
         agent_id: UUID,
@@ -222,6 +243,8 @@ class PublishService:
         agent = self.repo.get_agent_for_company(agent_id, company_id)
         if not agent:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+
+        self._validate_for_publish(agent)
 
         raw_key, active_key = self._resolve_publish_api_key(
             agent_id, company_id, known_api_key=known_api_key
@@ -328,6 +351,40 @@ class PublishService:
             user_id=user_id,
         )
         return UnpublishResponse(status="DRAFT", agent_id=agent.id)
+
+    def pause(self, agent_id: UUID, company_id: UUID, user_id: UUID) -> AgentLifecycleResponse:
+        """Temporarily stop serving public/dashboard chat without losing widget_id/keys."""
+        agent = self.repo.get_agent_for_company(agent_id, company_id)
+        if not agent:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+        if agent.status != "PUBLISHED":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only a published (live) agent can be paused.",
+            )
+
+        agent.status = "PAUSED"
+        self.repo.save_agent(agent)
+
+        _audit("agent_paused", agent_id=agent_id, company_id=company_id, user_id=user_id)
+        return AgentLifecycleResponse(status="PAUSED", agent_id=agent.id)
+
+    def resume(self, agent_id: UUID, company_id: UUID, user_id: UUID) -> AgentLifecycleResponse:
+        """Resume a paused agent — restores PUBLISHED status, widget_id/keys untouched."""
+        agent = self.repo.get_agent_for_company(agent_id, company_id)
+        if not agent:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Agent not found")
+        if agent.status != "PAUSED":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Only a paused agent can be resumed.",
+            )
+
+        agent.status = "PUBLISHED"
+        self.repo.save_agent(agent)
+
+        _audit("agent_resumed", agent_id=agent_id, company_id=company_id, user_id=user_id)
+        return AgentLifecycleResponse(status="PUBLISHED", agent_id=agent.id)
 
     # ── API Keys ──────────────────────────────────────────────────────────────
 

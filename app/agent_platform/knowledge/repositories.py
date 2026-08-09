@@ -195,10 +195,45 @@ class KnowledgeRepository:
 
     @staticmethod
     def attach_kb_to_agent(db: Session, kb_id: UUID, agent_id: UUID) -> KnowledgeBaseAgent:
+        existing = (
+            db.query(KnowledgeBaseAgent)
+            .filter(
+                KnowledgeBaseAgent.knowledge_base_id == kb_id,
+                KnowledgeBaseAgent.agent_id == agent_id,
+            )
+            .first()
+        )
+        if existing:
+            return existing
         attachment = KnowledgeBaseAgent(knowledge_base_id=kb_id, agent_id=agent_id)
         db.add(attachment)
         db.commit()
         return attachment
+
+    @staticmethod
+    def detach_kb_from_agent(db: Session, kb_id: UUID, agent_id: UUID) -> bool:
+        attachment = (
+            db.query(KnowledgeBaseAgent)
+            .filter(
+                KnowledgeBaseAgent.knowledge_base_id == kb_id,
+                KnowledgeBaseAgent.agent_id == agent_id,
+            )
+            .first()
+        )
+        if not attachment:
+            return False
+        db.delete(attachment)
+        db.commit()
+        return True
+
+    @staticmethod
+    def list_kb_for_agent(db: Session, agent_id: UUID) -> List[KnowledgeBase]:
+        return (
+            db.query(KnowledgeBase)
+            .join(KnowledgeBaseAgent, KnowledgeBaseAgent.knowledge_base_id == KnowledgeBase.id)
+            .filter(KnowledgeBaseAgent.agent_id == agent_id)
+            .all()
+        )
 
     # ── Vector Search (Phase 5) ───────────────────────────────────────────────
 

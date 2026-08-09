@@ -58,6 +58,9 @@ import app.agent_platform.providers.openai      # noqa
 import app.agent_platform.providers.anthropic   # noqa
 import app.agent_platform.providers.ollama      # noqa
 import app.agent_platform.providers.openrouter  # noqa
+
+# Import all agent tool modules to trigger ToolRegistry self-registration
+import app.agent_platform.tools.knowledge_search  # noqa
 # Use lifespan events for startup and shutdown instead of deprecated @app.on_event
 @asynccontextmanager
 async def lifespan(app: FastAPI):

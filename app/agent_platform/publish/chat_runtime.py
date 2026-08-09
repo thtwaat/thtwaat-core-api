@@ -12,21 +12,24 @@ from sqlalchemy.orm import Session, joinedload
 from app.agent_platform.agent_runtime import (
     AI_BLOCKED_STATUSES,
     agent_capabilities,
+    build_tool_schemas,
     conversation_closed_message,
     detect_handoff_intent,
     extract_lead,
     handoff_wait_message,
     language_system_instruction,
+    maybe_execute_tool_calls,
     memory_message_window,
     merge_lead_into_metadata,
     resolve_locale,
+    resolve_provider_and_model,
+    search_agent_knowledge,
     to_gateway_role,
 )
 from app.agent_platform.models.agent import AgentConfig
 from app.agent_platform.models.api_key import AgentApiKey
 from app.agent_platform.models.conversation import Conversation, Message
 from app.agent_platform.knowledge.models.knowledge_base import KnowledgeBaseAgent
-from app.agent_platform.knowledge.services import KnowledgeService
 from app.agent_platform.gateway.service import AIGatewayService
 from app.agent_platform.schemas import UnifiedChatRequest
 from app.agent_platform.publish.schemas import PublicChatUsage
@@ -94,6 +97,9 @@ async def iter_public_chat_events(
     agent = db.query(AgentConfig).filter(AgentConfig.id == api_key.agent_id).first()
     if not agent:
         yield ("error", {"message": "Agent not found"})
+        return
+    if agent.status == "PAUSED":
+        yield ("error", {"message": "Agent is paused"})
         return
     if agent.status != "PUBLISHED":
         yield ("error", {"message": "Agent is not published"})
@@ -205,23 +211,19 @@ async def iter_public_chat_events(
         )
         return
 
-    provider = (agent.web_config or {}).get("provider", "openai")
-    model = (agent.web_config or {}).get("model", "gpt-4o-mini")
+    provider, model = resolve_provider_and_model(agent)
     system_prompt = agent.system_prompt_template or "You are a helpful assistant."
     if caps.get("multilingual", True):
         system_prompt = system_prompt + language_system_instruction(locale)
 
-    agent_kb = db.query(KnowledgeBaseAgent).filter(KnowledgeBaseAgent.agent_id == agent.id).first()
-    if agent_kb:
+    has_knowledge = (
+        db.query(KnowledgeBaseAgent.id).filter(KnowledgeBaseAgent.agent_id == agent.id).first()
+        is not None
+    )
+    if has_knowledge:
         yield ("thinking", {"stage": "searching", "message": "Searching knowledge…"})
         try:
-            sources = KnowledgeService.search_knowledge_base(
-                db=db,
-                query=message,
-                top_k=5,
-                company_id=api_key.company_id,
-                kb_id=agent_kb.knowledge_base_id,
-            )
+            sources = search_agent_knowledge(db, agent.id, message, api_key.company_id, top_k=5)
             try:
                 usage_svc.record(
                     api_key.company_id,
@@ -262,6 +264,7 @@ async def iter_public_chat_events(
         if role in ("user", "assistant", "system", "tool"):
             messages.append({"role": role, "content": msg.content})
 
+    allowed_tools = agent.allowed_tools or []
     chat_request = UnifiedChatRequest(
         company_id=str(api_key.company_id),
         agent_id=str(agent.id),
@@ -270,18 +273,28 @@ async def iter_public_chat_events(
         messages=messages,
         temperature=agent.temperature or 0.7,
         max_tokens=1024,
+        tools=build_tool_schemas(allowed_tools) if allowed_tools else None,
+    )
+
+    usage_ctx = dict(
+        api_key_id=str(api_key.id),
+        widget_id=agent.widget_id,
+        source="public_chat",
+        is_widget=True,
+        create_conversation=created_conversation,
     )
 
     try:
-        result = await AIGatewayService.process_request(
-            chat_request,
-            db=db,
-            api_key_id=str(api_key.id),
-            widget_id=agent.widget_id,
-            source="public_chat",
-            is_widget=True,
-            create_conversation=created_conversation,
-        )
+        result = await AIGatewayService.process_request(chat_request, db=db, **usage_ctx)
+        if result.tool_calls:
+            result = await maybe_execute_tool_calls(
+                chat_request,
+                result,
+                db=db,
+                company_id=api_key.company_id,
+                agent_id=agent.id,
+                usage_ctx=usage_ctx,
+            )
         reply = result.content or ""
         usage = PublicChatUsage(
             input_tokens=result.input_tokens,

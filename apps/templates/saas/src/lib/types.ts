@@ -24,18 +24,27 @@ export type Agent = {
   id: string;
   company_id: string;
   name: string;
+  slug?: string | null;
   description?: string | null;
   system_prompt_template: string;
+  provider?: string | null;
+  model?: string | null;
   temperature: number;
   status: string;
   version: number;
   is_template: boolean;
+  allowed_tools: string[];
   web_config: Record<string, unknown>;
   published_at?: string | null;
   widget_id?: string | null;
   deleted_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type AgentTool = {
+  name: string;
+  description: string;
 };
 
 export type PublishResult = {

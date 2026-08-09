@@ -1,11 +1,18 @@
 """Production agent runtime helpers — handoff, memory, locale, leads."""
 from __future__ import annotations
 
+import json
+import logging
 import re
-from typing import Any, Dict, List, Mapping, Optional, Sequence
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 HANDOFF_STATUSES = frozenset({"pending_human", "human"})
 AI_BLOCKED_STATUSES = frozenset({"pending_human", "human", "closed"})
+
+logger = logging.getLogger(__name__)
+
+DEFAULT_PROVIDER = "openai"
+DEFAULT_MODEL = "gpt-4o-mini"
 
 _HANDOFF_PATTERNS = (
     r"\btalk to (a )?human\b",
@@ -186,3 +193,141 @@ def to_gateway_role(role: str) -> str:
     if role == "human":
         return "assistant"
     return role
+
+
+def slugify(value: str, fallback: str) -> str:
+    """Lowercase, hyphenated slug from a name; falls back to ``fallback`` if empty."""
+    base = re.sub(r"[^a-z0-9]+", "-", (value or "").lower()).strip("-")
+    return base or fallback
+
+
+def resolve_provider_and_model(agent: Any) -> Tuple[str, str]:
+    """Prefer the first-class provider/model columns; fall back to web_config, then a default.
+
+    Older agents (created before the ``provider``/``model`` columns existed) keep working
+    unchanged via the ``web_config`` fallback.
+    """
+    web_config = getattr(agent, "web_config", None) or {}
+    provider = getattr(agent, "provider", None) or web_config.get("provider") or DEFAULT_PROVIDER
+    model = getattr(agent, "model", None) or web_config.get("model") or DEFAULT_MODEL
+    return provider, model
+
+
+def search_agent_knowledge(
+    db: Any,
+    agent_id: Any,
+    query: str,
+    company_id: Any,
+    *,
+    top_k: int = 5,
+) -> List[Any]:
+    """Search every knowledge base attached to an agent, merged and ranked by score.
+
+    An agent can have more than one knowledge base attached (``KnowledgeBaseAgent`` is a
+    many-to-many join table) — this searches all of them instead of only the first attachment.
+    """
+    from app.agent_platform.knowledge.models.knowledge_base import KnowledgeBaseAgent
+    from app.agent_platform.knowledge.services import KnowledgeService
+
+    attachments = (
+        db.query(KnowledgeBaseAgent).filter(KnowledgeBaseAgent.agent_id == agent_id).all()
+    )
+    if not attachments:
+        return []
+
+    merged: List[Any] = []
+    for attachment in attachments:
+        try:
+            merged.extend(
+                KnowledgeService.search_knowledge_base(
+                    db=db,
+                    query=query,
+                    top_k=top_k,
+                    company_id=company_id,
+                    kb_id=attachment.knowledge_base_id,
+                )
+            )
+        except Exception as exc:
+            logger.warning("Knowledge search failed for kb_id=%s: %s", attachment.knowledge_base_id, exc)
+
+    merged.sort(key=lambda r: getattr(r, "score", 0.0), reverse=True)
+    return merged[:top_k]
+
+
+def build_tool_schemas(tool_names: Sequence[str]) -> List[Dict[str, Any]]:
+    """Build OpenAI-style ``tools`` payloads for the given registered tool names."""
+    from app.agent_platform.registries.tool_registry import ToolRegistry
+
+    schemas = []
+    for raw in ToolRegistry.get_schemas_for_tools(list(tool_names)):
+        schemas.append(
+            {
+                "type": "function",
+                "function": {
+                    "name": raw["name"],
+                    "description": raw["description"],
+                    "parameters": raw["parameters"],
+                },
+            }
+        )
+    return schemas
+
+
+async def maybe_execute_tool_calls(
+    chat_request: Any,
+    response: Any,
+    *,
+    db: Any,
+    company_id: Any,
+    agent_id: Any,
+    usage_ctx: Optional[Dict[str, Any]] = None,
+) -> Any:
+    """If the model asked to call tools, execute them and issue one bounded follow-up call.
+
+    Only wired for the OpenAI provider today (the only adapter that forwards ``tools`` /
+    parses ``tool_calls`` — see ``app/agent_platform/providers/openai.py``). Other providers
+    never populate ``response.tool_calls``, so this is a no-op for them — zero regression risk.
+    Bounded to a single round: the follow-up request has ``tools=None``, so the model cannot
+    trigger another round of tool calls.
+    """
+    if not getattr(response, "tool_calls", None):
+        return response
+
+    from app.agent_platform.gateway.service import AIGatewayService
+    from app.agent_platform.registries.tool_registry import ToolRegistry
+
+    tool_calls = response.tool_calls
+    assistant_message: Dict[str, Any] = {
+        "role": "assistant",
+        "content": response.content or "",
+        "tool_calls": tool_calls,
+    }
+    chat_request.messages.append(assistant_message)
+
+    for call in tool_calls:
+        function = call.get("function") or {}
+        name = function.get("name")
+        raw_args = function.get("arguments") or "{}"
+        try:
+            args = json.loads(raw_args) if isinstance(raw_args, str) else (raw_args or {})
+        except (TypeError, ValueError):
+            args = {}
+
+        try:
+            tool = ToolRegistry.get_tool(name)
+            result = await tool.execute(db=db, company_id=company_id, agent_id=agent_id, **args)
+            content = result if isinstance(result, str) else json.dumps(result, default=str)
+        except Exception as exc:
+            logger.warning("Tool execution failed for %s: %s", name, exc)
+            content = f"Tool '{name}' failed: {exc}"
+
+        chat_request.messages.append(
+            {
+                "role": "tool",
+                "tool_call_id": call.get("id"),
+                "content": content,
+            }
+        )
+
+    chat_request.tools = None
+    return await AIGatewayService.process_request(chat_request, db=db, **(usage_ctx or {}))

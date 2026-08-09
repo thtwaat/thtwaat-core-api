@@ -24,6 +24,11 @@ class ToolRegistry:
         return tool_class()
 
     @classmethod
+    def list_tools(cls) -> List[str]:
+        """Names of every registered tool, sorted for stable listing output."""
+        return sorted(cls._tools.keys())
+
+    @classmethod
     def get_schemas_for_tools(cls, tool_names: List[str]) -> List[Dict]:
         """Gets schemas for a list of tool names to pass to LLM."""
         schemas = []

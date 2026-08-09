@@ -13,6 +13,25 @@ logger = logging.getLogger(__name__)
 # Default fallback models in priority order
 OPENAI_FALLBACK_MODELS = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
 
+
+def _extract_tool_calls(message: Any) -> Optional[List[Dict[str, Any]]]:
+    """Normalize the SDK's tool_calls objects into plain dicts, or None if there are none."""
+    raw = getattr(message, "tool_calls", None)
+    if not raw:
+        return None
+    return [
+        {
+            "id": tc.id,
+            "type": tc.type,
+            "function": {
+                "name": tc.function.name,
+                "arguments": tc.function.arguments,
+            },
+        }
+        for tc in raw
+    ]
+
+
 class OpenAIProvider(AIProvider):
     def __init__(self):
         self.api_key = settings.OPENAI_API_KEY
@@ -53,20 +72,27 @@ class OpenAIProvider(AIProvider):
                 params["temperature"] = kwargs["temperature"]
             if kwargs.get("max_tokens") is not None:
                 params["max_tokens"] = kwargs["max_tokens"]
+            if kwargs.get("tools"):
+                params["tools"] = kwargs["tools"]
+            if kwargs.get("tool_choice") is not None:
+                params["tool_choice"] = kwargs["tool_choice"]
 
             response = await client.chat.completions.create(**params)
 
-            content = response.choices[0].message.content or ""
+            message = response.choices[0].message
+            content = message.content or ""
             usage = response.usage
             input_tokens = usage.prompt_tokens if usage else 0
             output_tokens = usage.completion_tokens if usage else 0
+            tool_calls = _extract_tool_calls(message)
 
             return AIProviderResponse(
                 content=content,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
                 model_used=response.model,
-                provider_response_id=response.id
+                provider_response_id=response.id,
+                tool_calls=tool_calls,
             )
 
         except Exception as e:

@@ -84,6 +84,31 @@ def attach_agent(
     return {"message": "Knowledge base attached to agent successfully"}
 
 
+@router.delete("/bases/{kb_id}/agents/{agent_id}", status_code=200)
+def detach_agent(
+    kb_id: UUID,
+    agent_id: UUID,
+    db: Session = Depends(get_db),
+    auth_data: dict = Depends(get_current_user_and_company),
+):
+    """Detach a knowledge base from an agent."""
+    company_id = auth_data.get("company_id")
+    KnowledgeService.get_knowledge_base(db, kb_id, company_id)  # raises 404 if not found
+    KnowledgeService.detach_knowledge_base_from_agent(db, kb_id, agent_id)
+    return {"message": "Knowledge base detached from agent successfully"}
+
+
+@router.get("/agents/{agent_id}/bases", response_model=List[KnowledgeBaseResponse])
+def list_agent_bases(
+    agent_id: UUID,
+    db: Session = Depends(get_db),
+    auth_data: dict = Depends(get_current_user_and_company),
+):
+    """List knowledge bases attached to an agent (company-scoped)."""
+    company_id = auth_data.get("company_id")
+    return KnowledgeService.list_agent_knowledge_bases(db, agent_id, company_id)
+
+
 # ── Document Upload (multipart) ───────────────────────────────────────────────
 
 @router.post("/upload", response_model=DocumentResponse, status_code=201)

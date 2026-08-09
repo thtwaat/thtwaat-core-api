@@ -2,6 +2,7 @@ import { api } from "@/lib/api";
 import { apiPaths } from "@/lib/config";
 import type {
   Agent,
+  AgentTool,
   AiProviderHealthMap,
   AiProviderModelsResponse,
   AiProvidersList,
@@ -37,7 +38,15 @@ export const agentsApi = {
   list: () => api.v2<Agent[]>("/agents"),
   get: (id: string) => api.v2<Agent>(`/agents/${id}`),
   create: (body: Record<string, unknown>) => api.v2<Agent>("/agents", { method: "POST", body }),
+  update: (id: string, body: Record<string, unknown>) =>
+    api.v2<Agent>(`/agents/${id}`, { method: "PATCH", body }),
   clone: (id: string) => api.v2<Agent>(`/agents/${id}/clone`, { method: "POST" }),
+  tools: () => api.v2<AgentTool[]>("/agents/tools"),
+  chat: (id: string, message: string, conversationId?: string) =>
+    api.v2<{ message: string; conversation_id: string; usage: Record<string, unknown> }>(
+      `/agents/${id}/chat`,
+      { method: "POST", body: { message, conversation_id: conversationId } }
+    ),
   deleteImpact: (id: string) => api.v2<AgentDeleteImpact>(`/agents/${id}/delete-impact`),
   delete: (
     id: string,
@@ -59,6 +68,8 @@ export const agentsApi = {
     ),
   publish: (id: string) => api.v1<PublishResult>(`/agents/${id}/publish`, { method: "POST" }),
   unpublish: (id: string) => api.v1(`/agents/${id}/unpublish`, { method: "POST" }),
+  pause: (id: string) => api.v1<{ status: string; agent_id: string }>(`/agents/${id}/pause`, { method: "POST" }),
+  resume: (id: string) => api.v1<{ status: string; agent_id: string }>(`/agents/${id}/resume`, { method: "POST" }),
   createApiKey: (id: string, name?: string) =>
     api.v1<{ api_key?: string; key?: string; id?: string; plain_key?: string }>(`/agents/${id}/api-keys`, {
       method: "POST",
@@ -147,6 +158,9 @@ export const knowledgeApi = {
     api.v2(`/knowledge/documents/${docId}`, { method: "DELETE" }),
   attach: (kbId: string, agentId: string) =>
     api.v2<{ message?: string }>(`/knowledge/bases/${kbId}/agents/${agentId}`, { method: "POST" }),
+  detach: (kbId: string, agentId: string) =>
+    api.v2<{ message?: string }>(`/knowledge/bases/${kbId}/agents/${agentId}`, { method: "DELETE" }),
+  listForAgent: (agentId: string) => api.v2<KnowledgeBase[]>(`/knowledge/agents/${agentId}/bases`),
   search: (baseId: string, q: string) =>
     api.v2<{ results: Array<{ text: string; score?: number; document_name?: string }> }>(
       "/knowledge/search",

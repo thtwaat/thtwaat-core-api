@@ -9,11 +9,16 @@ class AgentConfig(Base, TimestampMixin):
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4, index=True, nullable=False)
     company_id = Column(UUID(as_uuid=True), ForeignKey("companies.id", ondelete="CASCADE"), nullable=False)
     name = Column(String(255), nullable=False)
+    slug = Column(String(160), nullable=True, index=True)
     description = Column(Text, nullable=True)
     system_prompt_template = Column(Text, nullable=False)
     default_model_id = Column(UUID(as_uuid=True), ForeignKey("agent_model_configs.id", ondelete="SET NULL"), nullable=True)
     allowed_tools = Column(JSONB, default=list, nullable=False)
     temperature = Column(Float, nullable=False, default=0.7)
+
+    # First-class provider/model (falls back to web_config for older rows — see agent_runtime.resolve_provider_and_model)
+    provider = Column(String(50), nullable=True)
+    model = Column(String(120), nullable=True)
 
     # Sprint 14 Customer AI Platform fields
     status = Column(String(50), default="DRAFT", nullable=False)

@@ -166,6 +166,42 @@ async def public_chat(
 
 
 @router.post(
+    "/agents/{slug}/chat",
+    response_model=PublicChatResponse,
+    summary="Public chat addressed by agent slug (still requires the agent's api_key)",
+)
+async def public_chat_by_slug(
+    slug: str,
+    body: PublicChatRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    api_key = _resolve_key(request, body, db)
+
+    agent = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.slug == slug, AgentConfig.company_id == api_key.company_id)
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if str(agent.id) != str(api_key.agent_id):
+        raise HTTPException(status_code=403, detail="API key is not authorized for this agent")
+
+    reply, conversation_id, usage, extras = await run_public_chat(
+        db, api_key, body.message, body.session_id, metadata=body.metadata
+    )
+    return PublicChatResponse(
+        reply=reply,
+        conversation_id=conversation_id,
+        usage=usage,
+        status=extras.get("status"),
+        handoff=bool(extras.get("handoff")),
+        lead=extras.get("lead"),
+    )
+
+
+@router.post(
     "/chat/stream",
     summary="SSE streaming public chat (thinking + progressive tokens)",
 )

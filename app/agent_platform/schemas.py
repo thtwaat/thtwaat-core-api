@@ -11,6 +11,7 @@ class UnifiedChatRequest(BaseModel):
     messages: List[Dict[str, Any]] = Field(..., description="List of messages with 'role' and 'content'")
     temperature: float = 0.7
     max_tokens: Optional[int] = None
+    tools: Optional[List[Dict[str, Any]]] = None
 
 class UnifiedChatResponse(BaseModel):
     content: str
@@ -22,32 +23,44 @@ class UnifiedChatResponse(BaseModel):
     estimated_cost: float = 0.0
     latency: float = 0.0
     finish_reason: Optional[str] = None
+    tool_calls: Optional[List[Dict[str, Any]]] = None
 
 class AgentCreate(BaseModel):
     name: str
+    slug: Optional[str] = None
     description: Optional[str] = None
     system_prompt_template: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
     temperature: float = 0.7
     is_template: bool = False
+    allowed_tools: List[str] = []
     web_config: Dict[str, Any] = {}
 
 class AgentUpdate(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
     system_prompt_template: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
     temperature: Optional[float] = None
+    allowed_tools: Optional[List[str]] = None
     web_config: Optional[Dict[str, Any]] = None
 
 class AgentResponse(BaseModel):
     id: UUID
     company_id: UUID
     name: str
+    slug: Optional[str] = None
     description: Optional[str]
     system_prompt_template: str
+    provider: Optional[str] = None
+    model: Optional[str] = None
     temperature: float
     status: str
     version: int
     is_template: bool
+    allowed_tools: List[str] = []
     web_config: Dict[str, Any]
     published_at: Optional[datetime] = None
     widget_id: Optional[str] = None
@@ -111,3 +124,28 @@ class ApiKeyResponse(BaseModel):
     is_active: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class AgentChatRequest(BaseModel):
+    message: str
+    conversation_id: Optional[UUID] = None
+
+
+class AgentChatUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    estimated_cost: float = 0.0
+    provider: Optional[str] = None
+    model: Optional[str] = None
+
+
+class AgentChatResponse(BaseModel):
+    message: str
+    conversation_id: UUID
+    usage: AgentChatUsage
+
+
+class AgentToolInfo(BaseModel):
+    name: str
+    description: str

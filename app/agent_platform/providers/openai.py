@@ -44,6 +44,8 @@ class OpenAIProvider(LLMProvider):
         }
         if request.max_tokens:
             kwargs["max_tokens"] = request.max_tokens
+        if request.tools:
+            kwargs["tools"] = request.tools
 
         result = await self._core.chat(
             messages=request.messages,
@@ -58,7 +60,8 @@ class OpenAIProvider(LLMProvider):
             input_tokens=result.input_tokens,
             output_tokens=result.output_tokens,
             total_tokens=result.input_tokens + result.output_tokens,
-            finish_reason="stop",
+            finish_reason="tool_calls" if result.tool_calls else "stop",
+            tool_calls=result.tool_calls,
         )
 
 

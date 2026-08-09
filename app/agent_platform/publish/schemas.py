@@ -65,6 +65,13 @@ class UnpublishResponse(BaseModel):
     agent_id: UUID
 
 
+class AgentLifecycleResponse(BaseModel):
+    """Response for pause/resume transitions."""
+
+    status: str
+    agent_id: UUID
+
+
 class AgentApiKeyCreate(BaseModel):
     name: str = "Default Key"
     expires_at: Optional[datetime] = None

@@ -8,16 +8,24 @@ from app.auth.dependencies import get_current_user_and_company
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
 from app.agent_platform.schemas import (
+    AgentChatRequest,
+    AgentChatResponse,
+    AgentChatUsage,
     AgentCreate,
     AgentDeleteImpact,
     AgentDeleteRequest,
     AgentDeleteResponse,
     AgentResponse,
+    AgentToolInfo,
+    AgentUpdate,
 )
+from app.agent_platform.agent_runtime import slugify
 from app.agent_platform.models.agent import AgentConfig
 from app.agent_platform.publish.service import PublishService
 from app.agent_platform.publish.schemas import PublishResponse, AgentApiKeyCreatedResponse
 from app.agent_platform.lifecycle import AgentLifecycleService, RETENTION_DAYS
+from app.agent_platform.services.conversation_service import ConversationService
+from app.agent_platform.registries.tool_registry import ToolRegistry
 from app.rbac.dependencies import RequirePermission
 from app.rbac.enums import Permission
 
@@ -27,6 +35,25 @@ router = APIRouter(prefix="/v2/agents", tags=["Agent Platform"])
 def _require_agents_delete(user: UserProfileResponse = Depends(get_current_user)):
     RequirePermission(Permission.AGENTS_DELETE)(user.role)
     return user
+
+
+def _require_agents_update(user: UserProfileResponse = Depends(get_current_user)):
+    RequirePermission(Permission.AGENTS_UPDATE)(user.role)
+    return user
+
+
+def _unique_slug(db: Session, company_id, name: str, agent_id=None) -> str:
+    base = slugify(name, "agent")
+    query = db.query(AgentConfig.slug).filter(AgentConfig.company_id == company_id)
+    if agent_id is not None:
+        query = query.filter(AgentConfig.id != agent_id)
+    existing = {row[0] for row in query if row[0]}
+    slug = base
+    suffix = 1
+    while slug in existing:
+        suffix += 1
+        slug = f"{base}-{suffix}"
+    return slug
 
 
 @router.post("", response_model=AgentResponse)
@@ -59,10 +86,14 @@ def create_agent(
     new_agent = AgentConfig(
         company_id=company_id,
         name=agent_in.name,
+        slug=agent_in.slug or _unique_slug(db, company_id, agent_in.name),
         description=agent_in.description,
         system_prompt_template=agent_in.system_prompt_template,
+        provider=agent_in.provider,
+        model=agent_in.model,
         temperature=agent_in.temperature,
         is_template=agent_in.is_template,
+        allowed_tools=agent_in.allowed_tools,
         web_config=agent_in.web_config,
         status="DRAFT",
         version=1
@@ -114,6 +145,17 @@ def list_templates(
         .all()
     )
 
+@router.get("/tools", response_model=List[AgentToolInfo])
+def list_available_tools(
+    auth_data: dict = Depends(get_current_user_and_company),
+):
+    """Registered tool capabilities agents can be granted via allowed_tools."""
+    _ = auth_data  # JWT required; the tool catalog itself is platform-wide
+    return [
+        AgentToolInfo(name=name, description=ToolRegistry.get_tool(name).description)
+        for name in ToolRegistry.list_tools()
+    ]
+
 @router.get("/{agent_id}", response_model=AgentResponse)
 def get_agent(
     agent_id: UUID,
@@ -132,6 +174,37 @@ def get_agent(
     )
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
+
+
+@router.patch("/{agent_id}", response_model=AgentResponse)
+def update_agent(
+    agent_id: UUID,
+    patch: AgentUpdate,
+    db: Session = Depends(get_db),
+    user: UserProfileResponse = Depends(_require_agents_update),
+):
+    """Edit an existing agent's configuration (instructions, provider/model, tools, ...)."""
+    company_id = UUID(str(user.company_id))
+    agent = (
+        db.query(AgentConfig)
+        .filter(
+            AgentConfig.id == agent_id,
+            AgentConfig.company_id == company_id,
+            AgentConfig.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    updates = patch.model_dump(exclude_unset=True)
+    for field, value in updates.items():
+        setattr(agent, field, value)
+
+    db.add(agent)
+    db.commit()
+    db.refresh(agent)
     return agent
 
 
@@ -216,18 +289,29 @@ def clone_agent(
     company_id = auth_data.get("company_id")
     source_agent = (
         db.query(AgentConfig)
-        .filter(AgentConfig.id == agent_id, AgentConfig.deleted_at.is_(None))
+        .filter(
+            AgentConfig.id == agent_id,
+            AgentConfig.deleted_at.is_(None),
+        )
+        .filter(
+            (AgentConfig.company_id == company_id) | (AgentConfig.is_template == True)
+        )
         .first()
     )
     if not source_agent:
         raise HTTPException(status_code=404, detail="Source agent not found")
-        
+
+    cloned_name = f"Copy of {source_agent.name}"
     cloned = AgentConfig(
         company_id=company_id,
-        name=f"Copy of {source_agent.name}",
+        name=cloned_name,
+        slug=_unique_slug(db, company_id, cloned_name),
         description=source_agent.description,
         system_prompt_template=source_agent.system_prompt_template,
+        provider=source_agent.provider,
+        model=source_agent.model,
         temperature=source_agent.temperature,
+        allowed_tools=list(source_agent.allowed_tools or []),
         web_config=source_agent.web_config,
         status="DRAFT",
         version=1,
@@ -250,4 +334,56 @@ def generate_api_key(
         agent_id,
         UUID(str(auth_data["company_id"])),
         name=name,
+    )
+
+
+@router.post("/{agent_id}/chat", response_model=AgentChatResponse)
+async def chat_with_agent(
+    agent_id: UUID,
+    body: AgentChatRequest,
+    db: Session = Depends(get_db),
+    auth_data: dict = Depends(get_current_user_and_company),
+):
+    """Single-shot authenticated chat. Auto-creates a dashboard conversation when
+    conversation_id is omitted; otherwise continues an existing one. A thin wrapper
+    around ConversationService — no separate runtime."""
+    from app.agent_platform.conversation_schemas import ConversationCreate
+
+    company_id = UUID(str(auth_data["company_id"]))
+    user_id = auth_data.get("user_id")
+
+    agent = (
+        db.query(AgentConfig)
+        .filter(
+            AgentConfig.id == agent_id,
+            AgentConfig.company_id == company_id,
+            AgentConfig.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    conversation_id = body.conversation_id
+    if not conversation_id:
+        conv = ConversationService.create_conversation(
+            db,
+            company_id,
+            ConversationCreate(agent_id=agent_id, title="Chat", channel="dashboard"),
+        )
+        conversation_id = conv.id
+
+    result = await ConversationService.send_message(
+        db,
+        conversation_id,
+        company_id,
+        body.message,
+        actor_user_id=UUID(str(user_id)) if user_id else None,
+    )
+    assistant = result.get("assistant_message")
+    usage = result.get("usage") or {}
+    return AgentChatResponse(
+        message=assistant.content if assistant else "",
+        conversation_id=conversation_id,
+        usage=AgentChatUsage(**usage),
     )

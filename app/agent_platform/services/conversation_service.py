@@ -14,7 +14,6 @@ from app.agent_platform.models.conversation import (
     Message,
 )
 from app.agent_platform.models.agent import AgentConfig
-from app.agent_platform.knowledge.models.knowledge_base import KnowledgeBaseAgent
 from app.agent_platform.conversation_schemas import (
     ConversationCreate,
     ConversationDetailResponse,
@@ -22,7 +21,6 @@ from app.agent_platform.conversation_schemas import (
     ConversationUpdate,
     MessageResponse,
 )
-from app.agent_platform.knowledge.services import KnowledgeService
 from app.agent_platform.gateway.service import AIGatewayService
 from app.agent_platform.schemas import UnifiedChatRequest
 
@@ -271,9 +269,13 @@ class ConversationService:
     ) -> dict:
         from app.agent_platform.agent_runtime import (
             agent_capabilities,
+            build_tool_schemas,
             language_system_instruction,
+            maybe_execute_tool_calls,
             memory_message_window,
             resolve_locale,
+            resolve_provider_and_model,
+            search_agent_knowledge,
             to_gateway_role,
         )
 
@@ -343,38 +345,38 @@ class ConversationService:
         agent = db.query(AgentConfig).filter(AgentConfig.id == conv.agent_id).first()
         if not agent:
             raise HTTPException(status_code=404, detail="Agent not found")
+        if agent.status == "PAUSED":
+            note = Message(
+                conversation_id=conv.id,
+                role="assistant",
+                content="This agent is paused. Resume it from the agent's Overview to continue chatting.",
+            )
+            db.add(note)
+            db.commit()
+            db.refresh(note)
+            return {"user_message": user_msg, "assistant_message": note, "status": conv.status}
 
         caps = agent_capabilities(agent.web_config)
         locale = resolve_locale(metadata=conv.extra_metadata, web_config=agent.web_config)
 
-        provider = agent.web_config.get("provider", "gemini") if agent.web_config else "gemini"
-        model = agent.web_config.get("model", "gemini-2.0-flash") if agent.web_config else "gemini-2.0-flash"
-
-        agent_kb = db.query(KnowledgeBaseAgent).filter(KnowledgeBaseAgent.agent_id == agent.id).first()
+        provider, model = resolve_provider_and_model(agent)
 
         system_prompt = agent.system_prompt_template or "You are a helpful assistant."
         if caps.get("multilingual", True):
             system_prompt = system_prompt + language_system_instruction(locale)
 
-        if agent_kb:
-            sources = KnowledgeService.search_knowledge_base(
-                db=db,
-                query=content,
-                top_k=5,
-                company_id=company_id,
-                kb_id=agent_kb.knowledge_base_id,
+        sources = search_agent_knowledge(db, agent.id, content, company_id, top_k=5)
+        if sources:
+            context_blocks = []
+            for i, src in enumerate(sources, start=1):
+                context_blocks.append(f"[{i}] (Source: {src.document_name})\n{src.text}")
+            context = "\n\n---\n\n".join(context_blocks)
+            system_prompt = (
+                _SYSTEM_PROMPT_TEMPLATE.format(context=context)
+                + "\n\nOriginal Instructions: "
+                + (agent.system_prompt_template or "")
+                + language_system_instruction(locale)
             )
-            if sources:
-                context_blocks = []
-                for i, src in enumerate(sources, start=1):
-                    context_blocks.append(f"[{i}] (Source: {src.document_name})\n{src.text}")
-                context = "\n\n---\n\n".join(context_blocks)
-                system_prompt = (
-                    _SYSTEM_PROMPT_TEMPLATE.format(context=context)
-                    + "\n\nOriginal Instructions: "
-                    + (agent.system_prompt_template or "")
-                    + language_system_instruction(locale)
-                )
 
         db.refresh(conv)
         prior = memory_message_window(
@@ -388,6 +390,7 @@ class ConversationService:
             if role in ["user", "assistant", "system", "tool"]:
                 messages.append({"role": role, "content": msg.content})
 
+        allowed_tools = agent.allowed_tools or []
         chat_request = UnifiedChatRequest(
             company_id=str(company_id),
             agent_id=str(agent.id),
@@ -396,11 +399,40 @@ class ConversationService:
             messages=messages,
             temperature=agent.temperature,
             max_tokens=1024,
+            tools=build_tool_schemas(allowed_tools) if allowed_tools else None,
         )
 
+        from app.usage.dimensions import UsageDimension
+        from app.usage.service import UsageService
+
+        usage_service = UsageService(db)
+        usage_service.check_quota(company_id, UsageDimension.AI_MESSAGES, quantity=1)
+        usage_service.check_quota(company_id, UsageDimension.TOTAL_TOKENS, quantity=1)
+
+        usage_ctx = dict(source="dashboard", is_widget=False)
+        usage_payload: Dict[str, Any] = {}
         try:
-            response = await AIGatewayService.process_request(chat_request)
+            response = await AIGatewayService.process_request(chat_request, db=db, **usage_ctx)
+            if response.tool_calls:
+                response = await maybe_execute_tool_calls(
+                    chat_request,
+                    response,
+                    db=db,
+                    company_id=company_id,
+                    agent_id=agent.id,
+                    usage_ctx=usage_ctx,
+                )
             answer = response.content or ""
+            usage_payload = {
+                "input_tokens": response.input_tokens,
+                "output_tokens": response.output_tokens,
+                "total_tokens": response.total_tokens,
+                "estimated_cost": response.estimated_cost,
+                "provider": response.provider,
+                "model": response.model,
+            }
+        except HTTPException:
+            raise
         except Exception as e:
             logger.error(f"[Conversation] AI Gateway call failed: {e}", exc_info=True)
             answer = "I encountered an error while generating the answer. Please try again later."
@@ -420,4 +452,5 @@ class ConversationService:
             "user_message": user_msg,
             "assistant_message": assistant_msg,
             "status": conv.status,
+            "usage": usage_payload,
         }

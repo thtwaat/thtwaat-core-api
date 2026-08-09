@@ -356,6 +356,18 @@ class KnowledgeService:
     ):
         return KnowledgeRepository.attach_kb_to_agent(db, kb_id, agent_id)
 
+    @staticmethod
+    def detach_knowledge_base_from_agent(db: Session, kb_id: UUID, agent_id: UUID) -> bool:
+        return KnowledgeRepository.detach_kb_from_agent(db, kb_id, agent_id)
+
+    @staticmethod
+    def list_agent_knowledge_bases(db: Session, agent_id: UUID, company_id: UUID) -> List[KnowledgeBase]:
+        return [
+            kb
+            for kb in KnowledgeRepository.list_kb_for_agent(db, agent_id)
+            if kb.company_id == company_id
+        ]
+
     # ── Search (Phase 5: real pgvector cosine similarity) ─────────────────────
 
     @staticmethod

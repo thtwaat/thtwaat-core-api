@@ -14,7 +14,8 @@ class AIProviderResponse:
         output_tokens: int = 0,
         model_used: str = "",
         provider_response_id: str = "",
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        tool_calls: Optional[List[Dict[str, Any]]] = None,
     ):
         self.content = content
         self.input_tokens = input_tokens
@@ -22,6 +23,7 @@ class AIProviderResponse:
         self.model_used = model_used
         self.provider_response_id = provider_response_id
         self.metadata = metadata or {}
+        self.tool_calls = tool_calls
 
 
 class AIProvider(ABC):

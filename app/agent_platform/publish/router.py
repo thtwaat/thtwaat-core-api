@@ -15,6 +15,7 @@ from app.agent_platform.publish.schemas import (
     AgentApiKeyCreatedResponse,
     AgentApiKeyListItem,
     AgentApiKeyRotateResponse,
+    AgentLifecycleResponse,
     EmbedSnippetResponse,
     PublishResponse,
     UnpublishResponse,
@@ -64,6 +65,32 @@ def unpublish_agent(
     service: PublishService = Depends(get_publish_service),
 ):
     return service.unpublish(agent_id, UUID(str(user.company_id)), UUID(str(user.id)))
+
+
+@router.post(
+    "/{agent_id}/pause",
+    response_model=AgentLifecycleResponse,
+    summary="Pause a live agent (stops serving chat, keeps widget/keys intact)",
+)
+def pause_agent(
+    agent_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.AGENTS_PUBLISH)),
+    service: PublishService = Depends(get_publish_service),
+):
+    return service.pause(agent_id, UUID(str(user.company_id)), UUID(str(user.id)))
+
+
+@router.post(
+    "/{agent_id}/resume",
+    response_model=AgentLifecycleResponse,
+    summary="Resume a paused agent",
+)
+def resume_agent(
+    agent_id: UUID,
+    user: UserProfileResponse = Depends(require_permission(Permission.AGENTS_PUBLISH)),
+    service: PublishService = Depends(get_publish_service),
+):
+    return service.resume(agent_id, UUID(str(user.company_id)), UUID(str(user.id)))
 
 
 @router.get(
