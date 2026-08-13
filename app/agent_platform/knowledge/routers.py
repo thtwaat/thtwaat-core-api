@@ -10,6 +10,7 @@ from uuid import UUID
 
 from app.database.database import get_db
 from app.auth.dependencies import get_current_user_and_company
+from app.agent_platform.models.agent import AgentConfig
 from app.agent_platform.knowledge.schemas import (
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
@@ -23,6 +24,22 @@ from app.agent_platform.knowledge.schemas import (
 from app.agent_platform.knowledge.services import KnowledgeService
 
 router = APIRouter(prefix="/v2/knowledge", tags=["Knowledge Base"])
+
+
+def _require_company_agent(db: Session, agent_id: UUID, company_id: UUID) -> AgentConfig:
+    """Ensure the agent belongs to the authenticated company (reject cross-tenant IDs)."""
+    agent = (
+        db.query(AgentConfig)
+        .filter(
+            AgentConfig.id == agent_id,
+            AgentConfig.company_id == company_id,
+            AgentConfig.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return agent
 
 
 # ── Knowledge Base CRUD ───────────────────────────────────────────────────────
@@ -77,9 +94,10 @@ def attach_agent(
     db: Session = Depends(get_db),
     auth_data: dict = Depends(get_current_user_and_company),
 ):
-    """Attach a knowledge base to an agent."""
+    """Attach a knowledge base to an agent (both must belong to the same company)."""
     company_id = auth_data.get("company_id")
     KnowledgeService.get_knowledge_base(db, kb_id, company_id)  # raises 404 if not found
+    _require_company_agent(db, agent_id, company_id)
     KnowledgeService.attach_knowledge_base_to_agent(db, kb_id, agent_id)
     return {"message": "Knowledge base attached to agent successfully"}
 
@@ -91,9 +109,10 @@ def detach_agent(
     db: Session = Depends(get_db),
     auth_data: dict = Depends(get_current_user_and_company),
 ):
-    """Detach a knowledge base from an agent."""
+    """Detach a knowledge base from an agent (both must belong to the same company)."""
     company_id = auth_data.get("company_id")
     KnowledgeService.get_knowledge_base(db, kb_id, company_id)  # raises 404 if not found
+    _require_company_agent(db, agent_id, company_id)
     KnowledgeService.detach_knowledge_base_from_agent(db, kb_id, agent_id)
     return {"message": "Knowledge base detached from agent successfully"}
 

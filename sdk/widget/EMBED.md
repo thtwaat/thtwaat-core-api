@@ -113,14 +113,37 @@ export class ThtwaatWidgetService {
 
 ## iframe
 
+Live API keys (`tht_live_*`) are rejected in iframe URLs — the endpoint requires a
+`widget_id` + short-lived `embed_token` instead (P0 hardening: no long-lived keys in
+URLs). Don't hand-build this URL; use the ready-made `iframe` string from
+`GET /api/v1/agents/{agent_id}/embed` (dashboard-authenticated), which mints a fresh
+token for you:
+
+```http
+GET /api/v1/agents/{agent_id}/embed
+Authorization: Bearer <jwt>
+```
+
+```json
+{
+  "iframe": "<iframe src=\"https://api.thtwaat.com/public/v1/widget/embed?widget_id=wgt_...&embed_token=...\" width=\"380\" height=\"600\" style=\"border:0;border-radius:16px;\" allow=\"clipboard-write\"></iframe>",
+  ...
+}
+```
+
+If you need to construct the URL yourself, the shape is:
+
 ```html
 <iframe
-  src="https://api.thtwaat.com/public/v1/widget/embed?api_key=tht_live_xxx"
+  src="https://api.thtwaat.com/public/v1/widget/embed?widget_id=wgt_xxx&embed_token=<short-lived-token>"
   width="380"
   height="600"
   style="border:0;border-radius:16px"
 ></iframe>
 ```
+
+`embed_token` is short-lived and signed — mint a fresh one server-side per page load
+rather than hardcoding it (it expires; re-fetch `/embed` when it does).
 
 ## Security notes
 

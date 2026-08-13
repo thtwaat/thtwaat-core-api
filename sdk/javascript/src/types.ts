@@ -55,12 +55,16 @@ export interface StreamCallbacks {
   onDone?: (result: ChatResponse) => void;
   onError?: (error: Error) => void;
   onTyping?: (typing: boolean) => void;
+  /** Server-side progress updates (e.g. "searching knowledge…") before tokens start. */
+  onThinking?: (stage: string, message: string) => void;
 }
 
 export type StreamEvent =
   | { type: "token"; text: string }
   | { type: "done"; result: ChatResponse }
-  | { type: "error"; error: Error };
+  | { type: "error"; error: Error }
+  /** Emitted before the first token — server-side progress ("understanding", "searching", "generating", etc). Purely informational; safe to ignore. */
+  | { type: "thinking"; stage: string; message: string };
 
 export interface SearchParams {
   query: string;

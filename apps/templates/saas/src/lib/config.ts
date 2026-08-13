@@ -2,6 +2,9 @@ export const site = {
   name: process.env.NEXT_PUBLIC_SITE_NAME || "THTWAAT SaaS",
   url: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3300",
   apiUrl: (process.env.NEXT_PUBLIC_API_URL || "https://api.thtwaat.com").replace(/\/$/, ""),
+  developerPortalUrl: (
+    process.env.NEXT_PUBLIC_DEVELOPER_PORTAL_URL || "https://developer.thtwaat.com"
+  ).replace(/\/$/, ""),
   brandColor: process.env.NEXT_PUBLIC_BRAND_COLOR || "#0f766e",
   razorpayKey: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || ""
 };

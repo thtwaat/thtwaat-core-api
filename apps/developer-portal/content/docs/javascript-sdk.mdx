@@ -29,10 +29,16 @@ console.log(reply, conversationId);
 
 ```ts
 for await (const event of client.streamChat("Hello")) {
+  if (event.type === "thinking") console.log(`[${event.stage}] ${event.message}`); // optional, safe to ignore
   if (event.type === "token") process.stdout.write(event.text);
   if (event.type === "done") console.log("\n", event.result);
+  if (event.type === "error") console.error(event.error);
 }
 ```
+
+`thinking` events fire before the first token with server-side progress (e.g.
+`{stage: "searching", message: "Searching knowledge…"}`) — purely informational,
+safe to ignore if you don't need a "thinking…" indicator.
 
 ## Knowledge / Agent / Widget
 

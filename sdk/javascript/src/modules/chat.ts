@@ -159,7 +159,15 @@ export class ChatModule {
             continue;
           }
 
-          if (event === "token") {
+          if (event === "thinking") {
+            const ev: StreamEvent = {
+              type: "thinking",
+              stage: String(payload.stage || ""),
+              message: String(payload.message || ""),
+            };
+            this.events.emit("stream", ev);
+            yield ev;
+          } else if (event === "token") {
             const text = String(payload.text || "");
             assembled += text;
             const ev: StreamEvent = { type: "token", text };
@@ -215,6 +223,7 @@ export class ChatModule {
     let result: ChatResponse | null = null;
     try {
       for await (const event of this.streamChat(input)) {
+        if (event.type === "thinking") callbacks.onThinking?.(event.stage, event.message);
         if (event.type === "token") callbacks.onToken?.(event.text);
         if (event.type === "done") {
           result = event.result;

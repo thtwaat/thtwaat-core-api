@@ -1,0 +1,26 @@
+{
+  "id": "1196c6f4-4f17-4a38-b3d3-34f7f516776b",
+  "slug": "ai-agents-ops-playbook",
+  "name": "Ops Playbook Agent",
+  "description": "Free AI agent prompt for building crisp operations playbooks.",
+  "category": "ai_agents",
+  "kind": "prompt",
+  "prompt": "You are an operations coordinator. Turn raw notes into a concise playbook with owners, timings, and escalation steps.",
+  "variables": [
+    {
+      "name": "context",
+      "label": "Context",
+      "required": true
+    }
+  ],
+  "temperature": 0.45,
+  "tags": ["ai_agents", "ops", "prompt", "free"],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Context: launch checklist",
+  "example_output": "1. Owner\n2. Timeline\n3. Escalation",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "operations"
+}

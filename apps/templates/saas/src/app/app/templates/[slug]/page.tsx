@@ -10,6 +10,7 @@ import {
   type TemplateItem,
   type TemplateVersion
 } from "@/lib/services";
+import { ApiError } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/misc";
 import { Badge, Card } from "@/components/ui/card";
@@ -72,6 +73,13 @@ function MarkdownBlock({ source }: { source: string }) {
       dangerouslySetInnerHTML={{ __html: renderSimpleMarkdown(source) }}
     />
   );
+}
+
+function isFreeTemplate(template: TemplateItem) {
+  const tier = (template.pricing_tier || "free").toLowerCase();
+  if (tier === "free") return true;
+  const n = Number(template.price ?? 0);
+  return !(n > 0);
 }
 
 function InstallPanel({
@@ -222,7 +230,13 @@ export default function TemplateDetailPage() {
       qc.invalidateQueries({ queryKey: ["mkt-home"] });
       qc.invalidateQueries({ queryKey: ["mkt-installed"] });
     },
-    onError: (e: Error) => toast.error(e.message)
+    onError: (e: Error) => {
+      if (e instanceof ApiError) {
+        toast.error(e.message);
+      } else {
+        toast.error(e.message || "Unable to install template right now.");
+      }
+    }
   });
 
   const favorite = useMutation({
@@ -881,17 +895,31 @@ export default function TemplateDetailPage() {
             onClick={() => setConfirmInstall(false)}
           />
           <div className="relative z-10 w-full max-w-md rounded-t-2xl border border-line bg-panel p-5 sm:rounded-2xl">
-            <h2 className="text-lg font-semibold">Install {t.name}?</h2>
+            <h2 className="text-lg font-semibold">
+              {isFreeTemplate(t) ? `Install ${t.name}?` : "Upgrade required"}
+            </h2>
             <p className="mt-2 text-sm text-muted">
-              Uses the existing marketplace install engine for your company workspace.
+              {isFreeTemplate(t)
+                ? "Uses the existing marketplace install engine for your company workspace."
+                : "This template is paid and needs a higher plan. Upgrade your workspace to install it."}
             </p>
+            {!isFreeTemplate(t) ? (
+              <div className="mt-3 rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-ink">
+                <p className="font-semibold">Upgrade to continue</p>
+                <p className="mt-1 text-muted">Choose a paid plan from billing to unlock this template.</p>
+              </div>
+            ) : null}
             <div className="mt-4 flex flex-col-reverse justify-end gap-2 sm:flex-row">
               <Button variant="secondary" onClick={() => setConfirmInstall(false)}>
-                Cancel
+                {isFreeTemplate(t) ? "Cancel" : "Close"}
               </Button>
-              <Button disabled={install.isPending} onClick={() => install.mutate()}>
-                {install.isPending ? "Installing…" : "Confirm install"}
-              </Button>
+              {isFreeTemplate(t) ? (
+                <Button disabled={install.isPending} onClick={() => install.mutate()}>
+                  {install.isPending ? "Installing…" : "Confirm install"}
+                </Button>
+              ) : (
+                <Button onClick={() => window.location.assign("/app/billing")}>Go to billing</Button>
+              )}
             </div>
           </div>
         </div>

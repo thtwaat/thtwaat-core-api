@@ -1,9 +1,12 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
 import {
   AGENT_BUILDER_STEPS,
   buildAgentCreatePayload,
+  clearAgentBuilderDraft,
   defaultAgentBuilderDraft,
+  loadAgentBuilderDraft,
   prefillFromTemplate,
+  saveAgentBuilderDraft,
   stepProgressPercent,
   validateAgentBuilderStep
 } from "./agent-builder";
@@ -78,5 +81,49 @@ describe("agent-builder", () => {
   it("computes progress percent", () => {
     expect(stepProgressPercent(1)).toBe(14);
     expect(stepProgressPercent(7)).toBe(100);
+  });
+
+  describe("draft persistence (New agent must never resume another agent's draft)", () => {
+    const store = new Map<string, string>();
+
+    beforeEach(() => {
+      store.clear();
+      const localStorage = {
+        getItem: (k: string) => store.get(k) ?? null,
+        setItem: (k: string, v: string) => {
+          store.set(k, v);
+        },
+        removeItem: (k: string) => {
+          store.delete(k);
+        }
+      };
+      // agent-builder.ts guards on `typeof window === "undefined"` and reads
+      // window.localStorage, so both window and localStorage need stubbing here.
+      vi.stubGlobal("window", { localStorage });
+      vi.stubGlobal("localStorage", localStorage);
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("never carries a real agentId in a fresh default draft", () => {
+      expect(defaultAgentBuilderDraft().agentId).toBeNull();
+    });
+
+    it("clearing a draft that was tied to a previously created agent removes it entirely", () => {
+      const published = {
+        ...defaultAgentBuilderDraft(),
+        name: "Viral Awaaz Assistant",
+        agentId: "agent-viral-awaaz-123",
+        published: true
+      };
+      saveAgentBuilderDraft(published);
+      expect(loadAgentBuilderDraft()?.agentId).toBe("agent-viral-awaaz-123");
+
+      clearAgentBuilderDraft();
+
+      expect(loadAgentBuilderDraft()).toBeNull();
+    });
   });
 });

@@ -16,6 +16,14 @@ def _raise_agent_quota(db_session, company_id: str) -> None:
     db_session.commit()
 
 
+def _bearer_for_user(db_session, user_id: str) -> dict:
+    """Mint a JWT without /auth/login so suites are not blocked by login rate limits."""
+    from app.auth.service import AuthService
+
+    token = AuthService(db_session).create_access_token(subject=str(user_id))
+    return {"Authorization": f"Bearer {token}"}
+
+
 def _auth(client, db_session, role: EnterpriseRole = EnterpriseRole.COMPANY_OWNER):
     from app.users.model import User
 
@@ -53,10 +61,7 @@ def _auth(client, db_session, role: EnterpriseRole = EnterpriseRole.COMPANY_OWNE
         row.role = role
         db_session.commit()
 
-    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
-    assert login_resp.status_code == 200, login_resp.text
-    token = login_resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}, company_id, user_id
+    return _bearer_for_user(db_session, user_id), company_id, user_id
 
 
 def _create_agent(client, headers, **overrides):
@@ -116,6 +121,92 @@ def test_company_isolation_clone(client, db_session):
     assert resp.status_code == 404
 
 
+def test_create_agent_is_always_blank_and_never_touches_an_existing_agent(client, db_session):
+    """New Agent must create a fresh, independent agent — never inherit fields from,
+    reference, or mutate another agent, regardless of what else exists in the company."""
+    headers, company_id, _ = _auth(client, db_session)
+    _raise_agent_quota(db_session, company_id)
+
+    source = _create_agent(
+        client,
+        headers,
+        name="Viral Awaaz Assistant",
+        description="Original source agent",
+        system_prompt_template="You are the Viral Awaaz assistant.",
+        temperature=0.4,
+    )
+
+    fresh = _create_agent(
+        client,
+        headers,
+        name="THTWAAT Support Agent",
+        description="Support bot",
+        system_prompt_template="You are a helpful support agent.",
+        temperature=0.2,
+    )
+
+    # The new agent must be exactly what was requested — no "Copy of" prefix,
+    # no inherited fields, and a distinct id/slug from the source agent.
+    assert fresh["id"] != source["id"]
+    assert fresh["name"] == "THTWAAT Support Agent"
+    assert not fresh["name"].startswith("Copy of")
+    assert fresh["slug"] != source["slug"]
+    assert fresh["system_prompt_template"] == "You are a helpful support agent."
+    assert fresh["temperature"] == 0.2
+
+    # The source agent must be completely unaffected by creating the new one.
+    refetched_source = client.get(f"/v2/agents/{source['id']}", headers=headers)
+    assert refetched_source.status_code == 200
+    unchanged = refetched_source.json()
+    assert unchanged["name"] == "Viral Awaaz Assistant"
+    assert unchanged["system_prompt_template"] == "You are the Viral Awaaz assistant."
+    assert unchanged["temperature"] == 0.4
+
+    # Both agents show up as separate entries.
+    listing = client.get("/v2/agents", headers=headers)
+    assert listing.status_code == 200
+    names = {a["name"] for a in listing.json()}
+    assert {"Viral Awaaz Assistant", "THTWAAT Support Agent"} <= names
+
+
+def test_clone_agent_produces_a_copy_and_leaves_source_unchanged(client, db_session):
+    """Duplicate is the only flow responsible for cloning — it must prefix the
+    copy's name, create a distinct DRAFT agent, and never mutate the source."""
+    headers, company_id, _ = _auth(client, db_session)
+    _raise_agent_quota(db_session, company_id)
+
+    source = _create_agent(
+        client,
+        headers,
+        name="Viral Awaaz Assistant",
+        system_prompt_template="You are the Viral Awaaz assistant.",
+        temperature=0.4,
+    )
+
+    clone_resp = client.post(f"/v2/agents/{source['id']}/clone", headers=headers)
+    assert clone_resp.status_code == 200, clone_resp.text
+    cloned = clone_resp.json()
+
+    assert cloned["id"] != source["id"]
+    assert cloned["name"] == "Copy of Viral Awaaz Assistant"
+    assert cloned["status"] == "DRAFT"
+    assert cloned["system_prompt_template"] == source["system_prompt_template"]
+
+    # Cloning must not rename, migrate, or otherwise mutate the source agent.
+    refetched_source = client.get(f"/v2/agents/{source['id']}", headers=headers)
+    assert refetched_source.status_code == 200
+    unchanged = refetched_source.json()
+    assert unchanged["name"] == "Viral Awaaz Assistant"
+    assert unchanged["id"] == source["id"]
+    assert unchanged["system_prompt_template"] == "You are the Viral Awaaz assistant."
+
+    # Both agents show up as separate entries.
+    listing = client.get("/v2/agents", headers=headers)
+    assert listing.status_code == 200
+    names = {a["name"] for a in listing.json()}
+    assert {"Viral Awaaz Assistant", "Copy of Viral Awaaz Assistant"} <= names
+
+
 def test_update_agent_rbac_forbidden_for_viewer_and_employee(client, db_session):
     owner_headers, company_id, _ = _auth(client, db_session, EnterpriseRole.COMPANY_OWNER)
     agent = _create_agent(client, owner_headers)
@@ -134,15 +225,14 @@ def test_update_agent_rbac_forbidden_for_viewer_and_employee(client, db_session)
             },
         )
         assert user_resp.status_code in (200, 201), user_resp.text
-        if role != EnterpriseRole.EMPLOYEE:
-            from app.users.model import User
+        from app.users.model import User
 
-            row = db_session.query(User).filter(User.email == email).one()
+        row = db_session.query(User).filter(User.email == email).one()
+        if role != EnterpriseRole.EMPLOYEE:
             row.role = role
             db_session.commit()
 
-        login = client.post("/api/v1/auth/login", json={"email": email, "password": "securepassword"})
-        member_headers = {"Authorization": f"Bearer {login.json()['access_token']}"}
+        member_headers = _bearer_for_user(db_session, str(row.id))
 
         resp = client.patch(
             f"/v2/agents/{agent['id']}",
@@ -201,3 +291,154 @@ def test_list_available_tools_includes_knowledge_search(client, db_session):
     assert resp.status_code == 200, resp.text
     names = [t["name"] for t in resp.json()]
     assert "knowledge_search" in names
+
+
+def _member_headers(client, db_session, company_id: str, role: EnterpriseRole):
+    """Create a same-company member with the given enterprise role and return auth headers."""
+    from app.users.model import User
+
+    email = f"{role.value}-{uuid.uuid4().hex[:8]}@example.com"
+    password = "securepassword"
+    user_resp = client.post(
+        "/api/v1/users/",
+        json={
+            "email": email,
+            "password": password,
+            "company_id": company_id,
+            "first_name": "Member",
+            "last_name": "User",
+            "role": "employee",
+        },
+    )
+    assert user_resp.status_code in (200, 201), user_resp.text
+    row = db_session.query(User).filter(User.email == email).one()
+    if role != EnterpriseRole.EMPLOYEE:
+        row.role = role
+        db_session.commit()
+    return _bearer_for_user(db_session, str(row.id))
+
+
+def test_agent_rbac_unauthorized_role_rejected(client, db_session):
+    """Viewer/employee lack create/publish/manage_keys — mutating routes must 403."""
+    owner_headers, company_id, _ = _auth(client, db_session, EnterpriseRole.COMPANY_OWNER)
+    agent = _create_agent(client, owner_headers)
+    viewer = _member_headers(client, db_session, company_id, EnterpriseRole.VIEWER)
+
+    create_resp = client.post(
+        "/v2/agents",
+        json={
+            "name": "Forbidden Bot",
+            "system_prompt_template": "Nope",
+            "web_config": {},
+        },
+        headers=viewer,
+    )
+    assert create_resp.status_code == 403, create_resp.text
+
+    publish_resp = client.post(f"/v2/agents/{agent['id']}/publish", headers=viewer)
+    assert publish_resp.status_code == 403, publish_resp.text
+
+    keys_resp = client.post(f"/v2/agents/{agent['id']}/api-keys", headers=viewer)
+    assert keys_resp.status_code == 403, keys_resp.text
+
+    clone_resp = client.post(f"/v2/agents/{agent['id']}/clone", headers=viewer)
+    assert clone_resp.status_code == 403, clone_resp.text
+
+
+def test_agent_rbac_authorized_role_allowed(client, db_session):
+    """Company owner may create/list; admin may publish; developer may manage keys."""
+    owner_headers, company_id, _ = _auth(client, db_session, EnterpriseRole.COMPANY_OWNER)
+    _raise_agent_quota(db_session, company_id)
+
+    create_resp = client.post(
+        "/v2/agents",
+        json={
+            "name": "RBAC Allowed",
+            "system_prompt_template": "You are helpful.",
+            "web_config": {},
+        },
+        headers=owner_headers,
+    )
+    assert create_resp.status_code in (200, 201), create_resp.text
+    agent_id = create_resp.json()["id"]
+
+    list_resp = client.get("/v2/agents", headers=owner_headers)
+    assert list_resp.status_code == 200, list_resp.text
+    assert any(a["id"] == agent_id for a in list_resp.json())
+
+    admin = _member_headers(client, db_session, company_id, EnterpriseRole.ADMIN)
+    publish_resp = client.post(f"/v2/agents/{agent_id}/publish", headers=admin)
+    assert publish_resp.status_code == 200, publish_resp.text
+
+    developer = _member_headers(client, db_session, company_id, EnterpriseRole.DEVELOPER)
+    keys_resp = client.post(f"/v2/agents/{agent_id}/api-keys", headers=developer)
+    assert keys_resp.status_code in (200, 201), keys_resp.text
+
+
+def test_agent_rbac_cross_company_access_rejected(client, db_session):
+    headers_a, _, _ = _auth(client, db_session)
+    headers_b, _, _ = _auth(client, db_session)
+    agent = _create_agent(client, headers_a)
+
+    assert client.get(f"/v2/agents/{agent['id']}", headers=headers_b).status_code == 404
+    assert client.post(f"/v2/agents/{agent['id']}/publish", headers=headers_b).status_code == 404
+    assert client.post(f"/v2/agents/{agent['id']}/api-keys", headers=headers_b).status_code == 404
+    assert client.post(f"/v2/agents/{agent['id']}/clone", headers=headers_b).status_code == 404
+
+
+def test_viral_awaaz_cannot_be_created_as_template(client, db_session):
+    headers, _, _ = _auth(client, db_session)
+    resp = client.post(
+        "/v2/agents",
+        json={
+            "name": "Viral Awaaz Assistant",
+            "system_prompt_template": "You are the Viral Awaaz assistant.",
+            "is_template": True,
+            "web_config": {},
+        },
+        headers=headers,
+    )
+    assert resp.status_code == 400, resp.text
+    body = resp.json()
+    message = str(body.get("detail") or body.get("error") or body).lower()
+    assert "template" in message
+
+
+def test_viral_awaaz_excluded_from_templates_and_cross_company_clone(client, db_session):
+    """Even if marked is_template in DB, Viral Awaaz must not leak via templates/clone."""
+    from app.agent_platform.models.agent import AgentConfig
+
+    headers_a, company_a, _ = _auth(client, db_session)
+    headers_b, company_b, _ = _auth(client, db_session)
+    _raise_agent_quota(db_session, company_a)
+    _raise_agent_quota(db_session, company_b)
+
+    source = _create_agent(
+        client,
+        headers_a,
+        name="Viral Awaaz Assistant",
+        system_prompt_template="You are the Viral Awaaz assistant.",
+    )
+    # Simulate accidental template flag in DB without changing prompt/config via API.
+    row = db_session.query(AgentConfig).filter(AgentConfig.id == UUID(source["id"])).one()
+    original_prompt = row.system_prompt_template
+    original_name = row.name
+    row.is_template = True
+    db_session.commit()
+
+    templates = client.get("/v2/agents/templates", headers=headers_b)
+    assert templates.status_code == 200, templates.text
+    assert all(t["id"] != source["id"] for t in templates.json())
+    assert all(t.get("name") != "Viral Awaaz Assistant" for t in templates.json())
+
+    clone_cross = client.post(f"/v2/agents/{source['id']}/clone", headers=headers_b)
+    assert clone_cross.status_code == 404, clone_cross.text
+
+    # Same-company clone still allowed; source prompt/name untouched.
+    clone_same = client.post(f"/v2/agents/{source['id']}/clone", headers=headers_a)
+    assert clone_same.status_code == 200, clone_same.text
+    assert clone_same.json()["name"] == "Copy of Viral Awaaz Assistant"
+
+    refreshed = db_session.query(AgentConfig).filter(AgentConfig.id == UUID(source["id"])).one()
+    assert refreshed.name == original_name
+    assert refreshed.system_prompt_template == original_prompt

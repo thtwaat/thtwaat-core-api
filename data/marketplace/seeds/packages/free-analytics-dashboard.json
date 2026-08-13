@@ -1,0 +1,28 @@
+{
+  "id": "4a08cd95-26f5-4d05-a8b5-4fdf8d5dafd6",
+  "slug": "free-analytics-dashboard",
+  "name": "Analytics Dashboard",
+  "description": "Free analytics package starter for reporting.",
+  "category": "analytics",
+  "industry": "analytics",
+  "icon": "sparkles",
+  "tags": ["free", "package", "starter"],
+  "package_path": "apps/templates/analytics",
+  "thumbnail": "/templates/analytics.png",
+  "supports_billing": false,
+  "featured": false,
+  "default_config": {
+    "template": "free-analytics-dashboard"
+  },
+  "changelog": "Free starter seed",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": false,
+  "supports_domains": false,
+  "supports_mobile": false,
+  "publish": true
+}

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   BarChart3,
+  BookOpen,
   Bot,
   CreditCard,
   Cpu,
@@ -47,6 +48,7 @@ const baseNav = [
   { href: "/app/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/app/billing", label: "Billing", icon: CreditCard },
   { href: "/app/publish", label: "Publish", icon: Rocket },
+  { href: site.developerPortalUrl, label: "Developer Docs", icon: BookOpen, external: true as const },
   { href: "/app/settings", label: "Settings", icon: Settings }
 ];
 
@@ -130,13 +132,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <nav className="flex-1 space-y-1 p-3">
         {nav.map((item) => {
-          const active = pathname === item.href || (item.href !== "/app" && pathname.startsWith(item.href));
+          const isExternal = "external" in item && item.external;
+          const active = !isExternal && (pathname === item.href || (item.href !== "/app" && pathname.startsWith(item.href)));
           const Icon = item.icon;
           return (
             <Link
               key={item.href}
               href={item.href}
               onClick={() => setOpen(false)}
+              target={isExternal ? "_blank" : undefined}
+              rel={isExternal ? "noopener noreferrer" : undefined}
               className={cn(
                 "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition",
                 active ? "bg-brand-soft text-brand-dark" : "text-muted hover:bg-canvas hover:text-ink"

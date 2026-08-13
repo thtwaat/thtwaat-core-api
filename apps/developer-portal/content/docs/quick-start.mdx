@@ -22,7 +22,43 @@ export THTWAAT_API_URL=https://api.thtwaat.com
 export THTWAAT_API_KEY=tht_live_xxx
 ```
 
-## 2. Chat with JavaScript SDK
+## 2. Or just curl it
+
+No SDK required — `POST /public/v1/chat` is a plain JSON endpoint:
+
+```bash
+curl -X POST $THTWAAT_API_URL/public/v1/chat \
+  -H "Authorization: Bearer $THTWAAT_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+Response:
+
+```json
+{
+  "reply": "Hi! How can I help you today?",
+  "conversation_id": "b7e2c1a4-...",
+  "usage": {
+    "input_tokens": 12,
+    "output_tokens": 18,
+    "total_tokens": 30,
+    "estimated_cost": 0.0002,
+    "provider": "openai",
+    "model": "gpt-4o-mini"
+  },
+  "status": "open",
+  "handoff": false,
+  "lead": null
+}
+```
+
+Pass the `conversation_id` back as `session_id` on your next request to continue the
+same conversation. `handoff: true` means the agent has handed off to a human — stop
+sending automated messages until it flips back. See [Errors](/docs/errors) for the
+shape of 4xx/429 responses.
+
+## 3. Chat with JavaScript SDK
 
 ```bash
 npm install @thtwaat/sdk
@@ -40,7 +76,7 @@ const { reply } = await client.chat("Hello");
 console.log(reply);
 ```
 
-## 3. Embed the Widget
+## 4. Embed the Widget
 
 ```html
 <script
@@ -51,7 +87,7 @@ console.log(reply);
 </script>
 ```
 
-## 4. Explore the API
+## 5. Explore the API
 
 - Interactive [API Explorer](/api-explorer)
 - Download [OpenAPI JSON](/openapi.json)

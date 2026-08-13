@@ -1,0 +1,28 @@
+{
+  "id": "2de78014-e78f-4742-a3ef-e2ce0b4d3fc3",
+  "slug": "free-ai-agent-starter",
+  "name": "AI Agent Starter",
+  "description": "Free AI agent package starter.",
+  "category": "ai_agents",
+  "industry": "product",
+  "icon": "sparkles",
+  "tags": ["free", "package", "starter"],
+  "package_path": "apps/templates/agents",
+  "thumbnail": "/templates/agents.png",
+  "supports_billing": false,
+  "featured": false,
+  "default_config": {
+    "template": "free-ai-agent-starter"
+  },
+  "changelog": "Free starter seed",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": false,
+  "supports_domains": false,
+  "supports_mobile": false,
+  "publish": true
+}

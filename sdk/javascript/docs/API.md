@@ -19,8 +19,12 @@
 ## Chat
 
 - `client.chat(message | ChatRequestObject): Promise<ChatResponse>`
-- `client.streamChat(...): AsyncGenerator<StreamEvent, ChatResponse>`
-- `client.streamChatWithCallbacks(input, callbacks)`
+- `client.streamChat(...): AsyncGenerator<StreamEvent, ChatResponse>` — yields
+  `StreamEvent`s of type `thinking` (server-side progress before the first token,
+  e.g. `{stage: "searching", message: "Searching knowledge…"}` — safe to ignore),
+  `token`, `done`, and `error`
+- `client.streamChatWithCallbacks(input, callbacks)` — callbacks: `onThinking(stage, message)`,
+  `onToken(text)`, `onDone(result)`, `onError(error)`, `onTyping(typing)`
 
 ## Knowledge
 

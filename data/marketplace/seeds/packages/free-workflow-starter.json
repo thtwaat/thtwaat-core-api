@@ -1,0 +1,28 @@
+{
+  "id": "c7898c5f-54de-4abd-90f0-f979f9d61e11",
+  "slug": "free-workflow-starter",
+  "name": "Workflow Starter",
+  "description": "Free workflow package starter for repeatable operations.",
+  "category": "automation",
+  "industry": "operations",
+  "icon": "sparkles",
+  "tags": ["free", "package", "starter"],
+  "package_path": "apps/templates/workflows",
+  "thumbnail": "/templates/workflow.png",
+  "supports_billing": false,
+  "featured": false,
+  "default_config": {
+    "template": "free-workflow-starter"
+  },
+  "changelog": "Free starter seed",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": false,
+  "supports_domains": false,
+  "supports_mobile": false,
+  "publish": true
+}

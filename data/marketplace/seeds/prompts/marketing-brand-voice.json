@@ -1,0 +1,26 @@
+{
+  "id": "f5a3a4cb-f5d8-4b6d-8a54-bcd32a865d50",
+  "slug": "marketing-brand-voice",
+  "name": "Brand Voice Prompt",
+  "description": "Free prompt template for generating on-brand marketing copy.",
+  "category": "marketing",
+  "kind": "prompt",
+  "prompt": "Write copy that matches the provided brand voice and campaign objectives.",
+  "variables": [
+    {
+      "name": "brand",
+      "label": "Brand",
+      "required": true
+    }
+  ],
+  "temperature": 0.6,
+  "tags": ["marketing", "brand", "prompt", "free"],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Brand: direct and optimistic",
+  "example_output": "Effective marketing copy",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "marketing"
+}

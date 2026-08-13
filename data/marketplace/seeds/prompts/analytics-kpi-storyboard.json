@@ -1,0 +1,26 @@
+{
+  "id": "d97ca075-1e12-454e-8ec2-2b97445d4f3b",
+  "slug": "analytics-kpi-storyboard",
+  "name": "KPI Storyboard Prompt",
+  "description": "Free prompt template for turning KPI data into a narrative.",
+  "category": "analytics",
+  "kind": "prompt",
+  "prompt": "Turn KPI values into a short executive narrative with trends, blockers, and actions.",
+  "variables": [
+    {
+      "name": "metrics",
+      "label": "Metrics",
+      "required": true
+    }
+  ],
+  "temperature": 0.45,
+  "tags": ["analytics", "kpi", "prompt", "free"],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Metrics: signups and activation",
+  "example_output": "Executive narrative",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "analytics"
+}

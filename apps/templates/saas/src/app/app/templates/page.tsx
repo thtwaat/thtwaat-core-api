@@ -11,6 +11,7 @@ import {
   type UpdateNotification,
   marketplaceApi
 } from "@/lib/services";
+import { ApiError } from "@/lib/api";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader, EmptyState } from "@/components/ui/misc";
 import { Badge, Card } from "@/components/ui/card";
@@ -115,6 +116,13 @@ function priceLabel(price: string | number | undefined, tier?: string, badge?: s
   const n = Number(price ?? 0);
   if (!(n > 0)) return tier && tier !== "free" ? String(tier) : "Free";
   return `$${n}`;
+}
+
+function isFreeTemplate(template: TemplateItem) {
+  const tier = (template.pricing_tier || "free").toLowerCase();
+  if (tier === "free") return true;
+  const n = Number(template.price ?? 0);
+  return !(n > 0);
 }
 
 function categoryName(slug: string, categories?: TemplateCategory[]) {
@@ -525,7 +533,13 @@ export default function MarketplacePage() {
       setInstallTarget(null);
       invalidateAll();
     },
-    onError: (e: Error) => toast.error(e.message)
+    onError: (e: Error) => {
+      if (e instanceof ApiError) {
+        toast.error(e.message);
+      } else {
+        toast.error(e.message || "Unable to install template right now.");
+      }
+    }
   });
 
   const update = useMutation({
@@ -935,26 +949,46 @@ export default function MarketplacePage() {
 
       <DialogShell
         open={Boolean(installTarget)}
-        title="Install template"
+        title={installTarget && !isFreeTemplate(installTarget) ? "Upgrade required" : "Install template"}
         onClose={() => setInstallTarget(null)}
       >
         {installTarget && (
           <div className="space-y-4">
-            <p className="text-sm text-muted">
-              Install <span className="font-medium text-ink">{installTarget.name}</span> into your
-              company workspace? You can update or uninstall later.
-            </p>
-            <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
-              <Button variant="secondary" onClick={() => setInstallTarget(null)}>
-                Cancel
-              </Button>
-              <Button
-                disabled={install.isPending}
-                onClick={() => install.mutate(installTarget.slug)}
-              >
-                {install.isPending ? "Installing…" : "Confirm install"}
-              </Button>
-            </div>
+            {isFreeTemplate(installTarget) ? (
+              <>
+                <p className="text-sm text-muted">
+                  Install <span className="font-medium text-ink">{installTarget.name}</span> into your
+                  company workspace? You can update or uninstall later.
+                </p>
+                <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+                  <Button variant="secondary" onClick={() => setInstallTarget(null)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    disabled={install.isPending}
+                    onClick={() => install.mutate(installTarget.slug)}
+                  >
+                    {install.isPending ? "Installing…" : "Confirm install"}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-sm text-muted">
+                  This template is paid and needs a higher plan. Upgrade your workspace to install it.
+                </p>
+                <div className="rounded-xl border border-line bg-canvas px-3 py-2 text-sm text-ink">
+                  <p className="font-semibold">Upgrade to continue</p>
+                  <p className="mt-1 text-muted">Choose a paid plan from billing to unlock this template.</p>
+                </div>
+                <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
+                  <Button variant="secondary" onClick={() => setInstallTarget(null)}>
+                    Close
+                  </Button>
+                  <Button onClick={() => window.location.assign("/app/billing")}>Go to billing</Button>
+                </div>
+              </>
+            )}
           </div>
         )}
       </DialogShell>

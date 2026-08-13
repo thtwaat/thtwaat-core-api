@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "count": 100,
+  "count": 104,
   "categories": [
     "ai_agents",
     "analytics",
@@ -762,6 +762,46 @@
       "category": "research",
       "name": "Findings Summarizer",
       "file": "prompts/research-findings-summary.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "1196c6f4-4f17-4a38-b3d3-34f7f516776b",
+      "slug": "ai-agents-ops-playbook",
+      "category": "ai_agents",
+      "name": "Ops Playbook Agent",
+      "file": "prompts/ai-agents-ops-playbook.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "f5a3a4cb-f5d8-4b6d-8a54-bcd32a865d50",
+      "slug": "marketing-brand-voice",
+      "category": "marketing",
+      "name": "Brand Voice Prompt",
+      "file": "prompts/marketing-brand-voice.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "d97ca075-1e12-454e-8ec2-2b97445d4f3b",
+      "slug": "analytics-kpi-storyboard",
+      "category": "analytics",
+      "name": "KPI Storyboard Prompt",
+      "file": "prompts/analytics-kpi-storyboard.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "prompt"
+    },
+    {
+      "id": "0d4f92bf-52ab-4e3c-be3e-62bff2be6c61",
+      "slug": "analytics-exec-summary",
+      "category": "analytics",
+      "name": "Executive Summary Prompt",
+      "file": "prompts/analytics-exec-summary.json",
       "featured": false,
       "pricing_tier": "free",
       "kind": "prompt"

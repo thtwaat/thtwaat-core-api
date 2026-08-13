@@ -1,0 +1,28 @@
+{
+  "id": "b741a5eb-6aaf-4aba-ab6b-a916af4ec9de",
+  "slug": "free-marketing-ops",
+  "name": "Marketing Ops Pack",
+  "description": "Free marketing ops package starter.",
+  "category": "marketing",
+  "industry": "marketing",
+  "icon": "sparkles",
+  "tags": ["free", "package", "starter"],
+  "package_path": "apps/templates/marketing",
+  "thumbnail": "/templates/marketing.png",
+  "supports_billing": false,
+  "featured": false,
+  "default_config": {
+    "template": "free-marketing-ops"
+  },
+  "changelog": "Free starter seed",
+  "kind": "package",
+  "pricing_tier": "free",
+  "visibility": "public",
+  "version": "1.0.0",
+  "author": "THTWAAT",
+  "price": "0",
+  "supports_agents": false,
+  "supports_domains": false,
+  "supports_mobile": false,
+  "publish": true
+}

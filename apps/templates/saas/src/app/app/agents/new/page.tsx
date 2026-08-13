@@ -20,7 +20,6 @@ import {
   clearAgentBuilderDraft,
   defaultAgentBuilderDraft,
   docStatusTone,
-  loadAgentBuilderDraft,
   prefillFromTemplate,
   saveAgentBuilderDraft,
   stepProgressPercent,
@@ -98,8 +97,12 @@ export default function NewAgentPage() {
   const [publishKey, setPublishKey] = useState<string | null>(null);
 
   useEffect(() => {
-    const existing = loadAgentBuilderDraft();
-    if (existing) setDraft(existing);
+    // Always start a genuinely new agent here: never resume a previous
+    // session's draft, since a stale draft can carry a real agentId
+    // (e.g. from a previously created/published agent) and silently
+    // reuse/republish that agent instead of creating a new one.
+    clearAgentBuilderDraft();
+    setDraft(defaultAgentBuilderDraft());
     setHydrated(true);
   }, []);
 

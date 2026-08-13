@@ -21,6 +21,7 @@ from app.agent_platform.schemas import (
 )
 from app.agent_platform.agent_runtime import slugify
 from app.agent_platform.models.agent import AgentConfig
+from app.agent_platform.protection import is_protected_agent
 from app.agent_platform.publish.service import PublishService
 from app.agent_platform.publish.schemas import PublishResponse, AgentApiKeyCreatedResponse
 from app.agent_platform.lifecycle import AgentLifecycleService, RETENTION_DAYS
@@ -42,6 +43,26 @@ def _require_agents_update(user: UserProfileResponse = Depends(get_current_user)
     return user
 
 
+def _require_agents_create(user: UserProfileResponse = Depends(get_current_user)):
+    RequirePermission(Permission.AGENTS_CREATE)(user.role)
+    return user
+
+
+def _require_agents_read(user: UserProfileResponse = Depends(get_current_user)):
+    RequirePermission(Permission.AGENTS_READ)(user.role)
+    return user
+
+
+def _require_agents_publish(user: UserProfileResponse = Depends(get_current_user)):
+    RequirePermission(Permission.AGENTS_PUBLISH)(user.role)
+    return user
+
+
+def _require_agents_manage_keys(user: UserProfileResponse = Depends(get_current_user)):
+    RequirePermission(Permission.AGENTS_MANAGE_KEYS)(user.role)
+    return user
+
+
 def _unique_slug(db: Session, company_id, name: str, agent_id=None) -> str:
     base = slugify(name, "agent")
     query = db.query(AgentConfig.slug).filter(AgentConfig.company_id == company_id)
@@ -60,9 +81,9 @@ def _unique_slug(db: Session, company_id, name: str, agent_id=None) -> str:
 def create_agent(
     agent_in: AgentCreate,
     db: Session = Depends(get_db),
-    auth_data: dict = Depends(get_current_user_and_company)
+    user: UserProfileResponse = Depends(_require_agents_create),
 ):
-    company_id = auth_data.get("company_id")
+    company_id = UUID(str(user.company_id))
     current_count = (
         db.query(AgentConfig)
         .filter(AgentConfig.company_id == company_id, AgentConfig.deleted_at.is_(None))
@@ -83,16 +104,25 @@ def create_agent(
             detail="Quota service unavailable; agent creation blocked until metering recovers.",
         ) from exc
 
+    resolved_slug = agent_in.slug or _unique_slug(db, company_id, agent_in.name)
+    # Protected production agents (e.g. Viral Awaaz) must never be created as templates.
+    is_template = bool(agent_in.is_template)
+    if is_template and is_protected_agent(name=agent_in.name, slug=resolved_slug):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Protected production agents cannot be created as reusable templates.",
+        )
+
     new_agent = AgentConfig(
         company_id=company_id,
         name=agent_in.name,
-        slug=agent_in.slug or _unique_slug(db, company_id, agent_in.name),
+        slug=resolved_slug,
         description=agent_in.description,
         system_prompt_template=agent_in.system_prompt_template,
         provider=agent_in.provider,
         model=agent_in.model,
         temperature=agent_in.temperature,
-        is_template=agent_in.is_template,
+        is_template=is_template,
         allowed_tools=agent_in.allowed_tools,
         web_config=agent_in.web_config,
         status="DRAFT",
@@ -121,9 +151,9 @@ def create_agent(
 def list_agents(
     is_template: bool = False,
     db: Session = Depends(get_db),
-    auth_data: dict = Depends(get_current_user_and_company)
+    user: UserProfileResponse = Depends(_require_agents_read),
 ):
-    company_id = auth_data.get("company_id")
+    company_id = UUID(str(user.company_id))
     query = (
         db.query(AgentConfig)
         .filter(AgentConfig.company_id == company_id, AgentConfig.deleted_at.is_(None))
@@ -139,11 +169,13 @@ def list_templates(
     auth_data: dict = Depends(get_current_user_and_company),
 ):
     _ = auth_data  # JWT required; templates are platform-wide, not tenant-filtered
-    return (
+    templates = (
         db.query(AgentConfig)
         .filter(AgentConfig.is_template == True, AgentConfig.deleted_at.is_(None))
         .all()
     )
+    # Never expose protected production agents (Viral Awaaz) as reusable templates.
+    return [a for a in templates if not is_protected_agent(agent=a)]
 
 @router.get("/tools", response_model=List[AgentToolInfo])
 def list_available_tools(
@@ -257,36 +289,36 @@ def delete_agent(
 def publish_agent(
     agent_id: UUID,
     db: Session = Depends(get_db),
-    auth_data: dict = Depends(get_current_user_and_company)
+    user: UserProfileResponse = Depends(_require_agents_publish),
 ):
     """Backward-compatible publish — prefer /api/v1/agents/{id}/publish for RBAC."""
     service = PublishService(db)
     return service.publish(
         agent_id,
-        UUID(str(auth_data["company_id"])),
-        UUID(str(auth_data["user_id"])),
+        UUID(str(user.company_id)),
+        UUID(str(user.id)),
     )
 
 @router.post("/{agent_id}/unpublish")
 def unpublish_agent(
     agent_id: UUID,
     db: Session = Depends(get_db),
-    auth_data: dict = Depends(get_current_user_and_company)
+    user: UserProfileResponse = Depends(_require_agents_publish),
 ):
     service = PublishService(db)
     return service.unpublish(
         agent_id,
-        UUID(str(auth_data["company_id"])),
-        UUID(str(auth_data["user_id"])),
+        UUID(str(user.company_id)),
+        UUID(str(user.id)),
     )
 
 @router.post("/{agent_id}/clone", response_model=AgentResponse)
 def clone_agent(
     agent_id: UUID,
     db: Session = Depends(get_db),
-    auth_data: dict = Depends(get_current_user_and_company)
+    user: UserProfileResponse = Depends(_require_agents_create),
 ):
-    company_id = auth_data.get("company_id")
+    company_id = UUID(str(user.company_id))
     source_agent = (
         db.query(AgentConfig)
         .filter(
@@ -299,6 +331,11 @@ def clone_agent(
         .first()
     )
     if not source_agent:
+        raise HTTPException(status_code=404, detail="Source agent not found")
+
+    # Protected production agents may be cloned within their own company only —
+    # never reused cross-tenant via the template path.
+    if is_protected_agent(agent=source_agent) and source_agent.company_id != company_id:
         raise HTTPException(status_code=404, detail="Source agent not found")
 
     cloned_name = f"Copy of {source_agent.name}"
@@ -327,12 +364,12 @@ def generate_api_key(
     agent_id: UUID,
     name: str = "Default Key",
     db: Session = Depends(get_db),
-    auth_data: dict = Depends(get_current_user_and_company)
+    user: UserProfileResponse = Depends(_require_agents_manage_keys),
 ):
     service = PublishService(db)
     return service.create_api_key(
         agent_id,
-        UUID(str(auth_data["company_id"])),
+        UUID(str(user.company_id)),
         name=name,
     )
 

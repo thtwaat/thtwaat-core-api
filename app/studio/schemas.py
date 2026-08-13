@@ -1100,3 +1100,126 @@ class StudioRollbackResponse(BaseModel):
     deployment: StudioDeploymentResponse
     restored_from: Optional[UUID] = None
     note: str = ""
+
+
+# ── Frontend Preview UX (Phase 4 — Production Preview) ────────────────────────
+
+class FrontendDevicePreview(BaseModel):
+    """HTML snapshot for a specific device viewport."""
+    device: str  # desktop | tablet | mobile
+    width_px: int
+    html_snapshot: str = ""  # self-contained HTML string
+
+
+class FrontendPreviewTab(BaseModel):
+    """One visual tab in the Frontend Preview UI."""
+    id: str
+    label: str
+    page_id: Optional[str] = None
+    route: Optional[str] = None
+    layout: str = "app"
+    device_previews: List[FrontendDevicePreview] = Field(default_factory=list)
+
+
+class FrontendPlatformReuseModule(BaseModel):
+    name: str
+    reused: bool = True
+
+
+class FrontendPlatformReuseCard(BaseModel):
+    """Collapsed platform reuse summary card."""
+    reuse_percent: float = 0.0
+    modules: List[FrontendPlatformReuseModule] = Field(default_factory=list)
+
+
+class FrontendAiSummaryPanel(BaseModel):
+    """AI-generated summary panel for the frontend preview."""
+    theme: str = "light"
+    primary_color: str = "#0F766E"
+    pages: int = 0
+    components: int = 0
+    reuse_percent: float = 0.0
+    generated_components: int = 0
+    estimated_build_time: str = "2-4 weeks"
+    bundle_size_kb: int = 0
+    accessibility_score: int = 0   # 0-100
+    seo_score: int = 0             # 0-100
+
+
+class FrontendPreviewAction(BaseModel):
+    """An action button in the preview toolbar."""
+    id: str
+    label: str
+    kind: str  # open_interactive | regenerate | approve | download
+    endpoint: Optional[str] = None
+    method: str = "GET"
+    enabled: bool = True
+
+
+class FrontendVersionSummary(BaseModel):
+    """Summary entry for a saved frontend preview version."""
+    id: UUID
+    version: int
+    is_current: bool
+    status: str = "draft"
+    blueprint_version: int = 0
+    build_plan_version: int = 0
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class StudioFrontendPreviewResponse(BaseModel):
+    """Enriched visual frontend preview — tabs, device previews, reuse card, AI panel, actions."""
+    project: StudioProjectResponse
+    frontend: StudioFrontendResponse
+    tabs: List[FrontendPreviewTab] = Field(default_factory=list)
+    platform_reuse: FrontendPlatformReuseCard = Field(default_factory=FrontendPlatformReuseCard)
+    ai_summary: FrontendAiSummaryPanel = Field(default_factory=FrontendAiSummaryPanel)
+    actions: List[FrontendPreviewAction] = Field(default_factory=list)
+    versions: List[FrontendVersionSummary] = Field(default_factory=list)
+    interactive_preview_url: Optional[str] = None
+
+
+class StudioFrontendVersionListResponse(BaseModel):
+    """All saved frontend preview versions for a project."""
+    project_id: UUID
+    items: List[FrontendVersionSummary]
+    total: int
+
+
+class FrontendVersionDiff(BaseModel):
+    """Diff between two frontend preview versions."""
+    version_a: int
+    version_b: int
+    added_pages: List[str] = Field(default_factory=list)
+    removed_pages: List[str] = Field(default_factory=list)
+    changed_pages: List[str] = Field(default_factory=list)
+    reuse_delta: float = 0.0   # version_b.reuse_percent - version_a.reuse_percent
+    page_count_delta: int = 0
+
+
+class StudioFrontendCompareResponse(BaseModel):
+    """Compare two frontend preview versions."""
+    project_id: UUID
+    diff: FrontendVersionDiff
+    version_a: StudioFrontendResponse
+    version_b: StudioFrontendResponse
+
+
+class StudioFrontendApproveResponse(BaseModel):
+    """Response after approving the frontend preview."""
+    project: StudioProjectResponse
+    frontend: StudioFrontendResponse
+    backend_triggered: bool = False
+    backend_trigger_error: Optional[str] = None
+    message: str = ""
+
+
+class StudioFrontendRegenerateResponse(BaseModel):
+    """Response after regenerating the frontend preview."""
+    project: StudioProjectResponse
+    frontend: StudioFrontendResponse
+    version: int
+    previous_version: Optional[int] = None
+    message: str = ""

@@ -15,6 +15,23 @@ section: API
 
 Base: `https://api.thtwaat.com` (or your self-hosted origin).
 
+### Example: `/public/v1/chat`
+
+The most common integration — call this with an agent's `tht_live_*` API key
+(create one from that agent's detail page in the dashboard):
+
+```bash
+curl -X POST https://api.thtwaat.com/public/v1/chat \
+  -H "Authorization: Bearer tht_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello!"}'
+```
+
+See [Quick Start](/docs/quick-start) for the full response shape, and the
+[JavaScript SDK](/docs/javascript-sdk) doc for `/public/v1/chat/stream`'s SSE event
+format. More raw curl examples (login, publish, knowledge upload) are in the
+[REST SDK examples](/docs/rest-sdk).
+
 ## Core resources
 
 - Auth — login, refresh, OTP, MFA

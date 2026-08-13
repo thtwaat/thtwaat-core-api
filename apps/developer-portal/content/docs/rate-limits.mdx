@@ -15,7 +15,19 @@ Usage is metered per company across dimensions such as:
 - Templates published
 - Widget / API requests
 
-Exceeding a hard quota returns **HTTP 429** with a structured error body.
+Exceeding a hard quota returns **HTTP 429** with a structured error body:
+
+```json
+{
+  "error": "quota_exceeded",
+  "dimension": "total_tokens",
+  "current_usage": 50000,
+  "plan_limit": 50000,
+  "upgrade_url": "/billing"
+}
+```
+
+See [Errors](/docs/errors) for the full error body reference.
 
 ## Headers
 
@@ -28,6 +40,19 @@ When present, inspect:
 ## SDK behavior
 
 Both `@thtwaat/sdk` and `@thtwaat/rest` retry **429 / 502 / 503 / 504** with exponential backoff by default.
+
+## Monitor your usage
+
+Your agent's `tht_live_*` API key already works against the usage-analytics
+endpoint — no extra credential needed:
+
+```bash
+curl $THTWAAT_API_URL/v1/usage \
+  -H "Authorization: Bearer $THTWAAT_API_KEY"
+```
+
+Returns your current monthly meter (messages, tokens, requests) plus a 30-day daily
+breakdown, scoped to your agent's company.
 
 ## Best practices
 

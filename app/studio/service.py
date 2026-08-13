@@ -18,7 +18,13 @@ from app.studio.architect import (
 
 logger = logging.getLogger(__name__)
 from app.studio.composer import compose_blueprint
-from app.studio.frontend_generator import generate_frontend_manifest
+from app.studio.frontend_generator import (
+    generate_frontend_manifest,
+    build_preview_tabs,
+    build_platform_reuse_card,
+    build_ai_summary_panel,
+    build_preview_actions,
+)
 from app.studio.backend_generator import generate_backend_manifest
 from app.studio.ai_generator import generate_ai_manifest
 from app.studio.infrastructure_generator import generate_infrastructure_manifest
@@ -77,9 +83,16 @@ from app.studio.schemas import (
     StudioDeploymentResponse,
     StudioExportRequest,
     StudioExportResponse,
+    StudioFrontendApproveResponse,
+    StudioFrontendCompareResponse,
     StudioFrontendGenerateResponse,
+    StudioFrontendRegenerateResponse,
+    StudioFrontendPreviewResponse,
     StudioFrontendResponse,
     StudioFrontendUpdate,
+    StudioFrontendVersionListResponse,
+    FrontendVersionDiff,
+    FrontendVersionSummary,
     StudioGenerateSourceRequest,
     StudioGenerateSourceResponse,
     StudioInfrastructureGenerateResponse,
@@ -455,6 +468,7 @@ class StudioService:
                 blueprint_version=bp_row.version,
                 build_plan_version=plan_row.version,
             )
+            # Autosave: demote previous current rows but keep them all
             self.repo.clear_current_frontends(project.id)
             version = self.repo.next_frontend_version(project.id)
             row = StudioProjectFrontend(
@@ -531,6 +545,377 @@ class StudioService:
         )
         saved = self.repo.create_frontend(row)
         return _frontend_response(saved)
+
+    # ── Frontend Preview UX (Production Phase 4) ──────────────────────────────
+
+    def get_frontend_preview(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioFrontendPreviewResponse:
+        """Return the enriched visual frontend preview with tabs, device previews,
+        platform reuse card, AI summary panel, and action buttons."""
+        project = self.get(user, project_id)
+        fe_row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        if not fe_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No frontend yet — run Generate Frontend first",
+            )
+        frontend_resp = _frontend_response(fe_row)
+        manifest = FrontendManifest.model_validate(fe_row.manifest or {})
+
+        bp_row = self.repo.get_current_blueprint(project.id, project.workspace_id)
+        blueprint = (
+            ProductBlueprint.model_validate(bp_row.blueprint or {}) if bp_row else None
+        )
+
+        tabs = build_preview_tabs(manifest)
+        reuse_card = build_platform_reuse_card(manifest)
+        ai_panel = build_ai_summary_panel(manifest, blueprint)
+        actions = build_preview_actions(project_id=str(project_id))
+
+        all_rows = self.repo.list_frontends(project.id, project.workspace_id)
+        versions = [
+            FrontendVersionSummary(
+                id=r.id,
+                version=r.version,
+                is_current=bool(r.is_current),
+                status=r.status or "draft",
+                blueprint_version=r.blueprint_version or 0,
+                build_plan_version=r.build_plan_version or 0,
+                created_at=r.created_at,
+            )
+            for r in all_rows
+        ]
+
+        return StudioFrontendPreviewResponse(
+            project=StudioProjectResponse.model_validate(project),
+            frontend=frontend_resp,
+            tabs=tabs,
+            platform_reuse=reuse_card,
+            ai_summary=ai_panel,
+            actions=actions,
+            versions=versions,
+            interactive_preview_url=f"/api/v2/studio/projects/{project_id}/frontend/interactive",
+        )
+
+    def list_frontend_versions(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioFrontendVersionListResponse:
+        """Return all saved frontend preview versions for a project."""
+        project = self.get(user, project_id)
+        all_rows = self.repo.list_frontends(project.id, project.workspace_id)
+        items = [
+            FrontendVersionSummary(
+                id=r.id,
+                version=r.version,
+                is_current=bool(r.is_current),
+                status=r.status or "draft",
+                blueprint_version=r.blueprint_version or 0,
+                build_plan_version=r.build_plan_version or 0,
+                created_at=r.created_at,
+            )
+            for r in all_rows
+        ]
+        return StudioFrontendVersionListResponse(
+            project_id=project.id,
+            items=items,
+            total=len(items),
+        )
+
+    def compare_frontend_versions(
+        self,
+        user: UserProfileResponse,
+        project_id: UUID,
+        version_a: int,
+        version_b: int,
+    ) -> StudioFrontendCompareResponse:
+        """Diff two frontend preview versions by pages."""
+        project = self.get(user, project_id)
+        row_a = self.repo.get_frontend_by_version(project.id, project.workspace_id, version_a)
+        row_b = self.repo.get_frontend_by_version(project.id, project.workspace_id, version_b)
+        if not row_a:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Frontend version {version_a} not found",
+            )
+        if not row_b:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Frontend version {version_b} not found",
+            )
+        manifest_a = FrontendManifest.model_validate(row_a.manifest or {})
+        manifest_b = FrontendManifest.model_validate(row_b.manifest or {})
+        ids_a = {p.id for p in manifest_a.pages}
+        ids_b = {p.id for p in manifest_b.pages}
+        added = sorted(ids_b - ids_a)
+        removed = sorted(ids_a - ids_b)
+        page_map_a = {p.id: p for p in manifest_a.pages}
+        page_map_b = {p.id: p for p in manifest_b.pages}
+        changed = []
+        for pid in ids_a & ids_b:
+            pa, pb = page_map_a[pid], page_map_b[pid]
+            if pa.kind != pb.kind or pa.route != pb.route:
+                changed.append(pid)
+        reuse_delta = round(
+            manifest_b.summary.reuse_percent - manifest_a.summary.reuse_percent, 1
+        )
+        diff = FrontendVersionDiff(
+            version_a=version_a,
+            version_b=version_b,
+            added_pages=added,
+            removed_pages=removed,
+            changed_pages=sorted(changed),
+            reuse_delta=reuse_delta,
+            page_count_delta=len(manifest_b.pages) - len(manifest_a.pages),
+        )
+        return StudioFrontendCompareResponse(
+            project_id=project.id,
+            diff=diff,
+            version_a=_frontend_response(row_a),
+            version_b=_frontend_response(row_b),
+        )
+
+    def approve_frontend(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioFrontendApproveResponse:
+        """Approve the current frontend and auto-trigger backend generation."""
+        project = self.get(user, project_id)
+        fe_row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        if not fe_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No frontend yet — run Generate Frontend first",
+            )
+        self.repo.clear_current_frontends(project.id)
+        version = self.repo.next_frontend_version(project.id)
+        approved_row = StudioProjectFrontend(
+            project_id=project.id,
+            workspace_id=project.workspace_id,
+            blueprint_version=fe_row.blueprint_version,
+            build_plan_version=fe_row.build_plan_version,
+            version=version,
+            is_current=True,
+            status="approved",
+            manifest=fe_row.manifest,
+            created_by=UUID(str(user.id)) if getattr(user, "id", None) else None,
+        )
+        saved = self.repo.create_frontend(approved_row)
+        frontend_resp = _frontend_response(saved)
+
+        backend_triggered = False
+        backend_error: Optional[str] = None
+        try:
+            self.generate_backend(user, project_id)
+            backend_triggered = True
+        except Exception as exc:
+            backend_error = str(exc)
+            logger.warning(
+                "approve_frontend: auto backend generation failed for project %s: %s",
+                project_id,
+                exc,
+            )
+
+        return StudioFrontendApproveResponse(
+            project=StudioProjectResponse.model_validate(project),
+            frontend=frontend_resp,
+            backend_triggered=backend_triggered,
+            backend_trigger_error=backend_error,
+            message=(
+                "Frontend approved. Backend generation started automatically."
+                if backend_triggered
+                else f"Frontend approved. Backend auto-generation skipped: {backend_error}"
+            ),
+        )
+
+    def regenerate_frontend(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> StudioFrontendRegenerateResponse:
+        """Regenerate the frontend manifest, autosaving all previous versions."""
+        project = self.get(user, project_id)
+        current = self.repo.get_current_frontend(project.id, project.workspace_id)
+        prev_version: Optional[int] = current.version if current else None
+        result = self.generate_frontend(user, project_id)
+        return StudioFrontendRegenerateResponse(
+            project=result.project,
+            frontend=result.frontend,
+            version=result.frontend.version,
+            previous_version=prev_version,
+            message=(
+                f"Frontend regenerated as version {result.frontend.version}."
+                + (f" Previous version {prev_version} preserved." if prev_version else "")
+            ),
+        )
+
+    def download_frontend_preview(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> tuple:
+        """Build a ZIP containing HTML previews (Desktop/Tablet/Mobile) + manifest JSON."""
+        import io
+        import json
+        import zipfile
+
+        project = self.get(user, project_id)
+        fe_row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        if not fe_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No frontend yet — run Generate Frontend first",
+            )
+        manifest = FrontendManifest.model_validate(fe_row.manifest or {})
+        tabs = build_preview_tabs(manifest)
+        reuse_card = build_platform_reuse_card(manifest)
+
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr(
+                "frontend-manifest.json",
+                json.dumps(fe_row.manifest or {}, indent=2, default=str),
+            )
+            zf.writestr(
+                "platform-reuse.json",
+                json.dumps(reuse_card.model_dump(mode="json"), indent=2),
+            )
+            preview_tab = (
+                next((t for t in tabs if t.id == "dashboard"), None) or (tabs[0] if tabs else None)
+            )
+            if preview_tab:
+                for dp in preview_tab.device_previews:
+                    zf.writestr(
+                        f"preview-{dp.device}.html",
+                        dp.html_snapshot.encode("utf-8"),
+                    )
+        return buf.getvalue(), f"frontend-preview-v{fe_row.version}.zip"
+
+    def get_interactive_preview(
+        self, user: UserProfileResponse, project_id: UUID
+    ) -> str:
+        """Return a self-contained live readonly HTML page merging all tab previews."""
+        project = self.get(user, project_id)
+        fe_row = self.repo.get_current_frontend(project.id, project.workspace_id)
+        if not fe_row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="No frontend yet — run Generate Frontend first",
+            )
+        manifest = FrontendManifest.model_validate(fe_row.manifest or {})
+        tabs = build_preview_tabs(manifest)
+        theme_color = manifest.theme.get("primary", "#0F766E") if manifest.theme else "#0F766E"
+        product_name = manifest.product_name or "Preview"
+
+        tab_buttons = ""
+        tab_panels = ""
+        tab_ids = [t.id for t in tabs]
+        for i, tab in enumerate(tabs):
+            is_first = i == 0
+            active_btn = (
+                f"background:{theme_color};color:#fff;"
+                if is_first
+                else "background:#1e293b;color:#94a3b8;"
+            )
+            tab_buttons += (
+                f'<button onclick="showTab(\'{tab.id}\')" id="btn-{tab.id}" '
+                f'style="padding:8px 20px;border:none;border-radius:6px;cursor:pointer;'
+                f'font-size:13px;font-weight:600;transition:all .2s;{active_btn}">'
+                f'{tab.label}</button>'
+            )
+            device_panels = ""
+            device_btns = ""
+            for j, dp in enumerate(tab.device_previews):
+                dv_display = "block" if j == 0 else "none"
+                safe_html = dp.html_snapshot.replace("&", "&amp;").replace('"', "&quot;")
+                device_panels += (
+                    f'<div id="{tab.id}-{dp.device}" style="display:{dv_display};">'
+                    f'<iframe srcdoc="{safe_html}" '
+                    f'width="{dp.width_px}" height="600" '
+                    f'style="border:none;border-radius:8px;max-width:100%;'
+                    f'box-shadow:0 4px 32px rgba(0,0,0,.4);" '
+                    f'scrolling="no"></iframe></div>'
+                )
+                dv_active = (
+                    f"background:{theme_color};color:#fff;"
+                    if j == 0
+                    else "background:#1e293b;color:#64748b;"
+                )
+                device_btns += (
+                    f'<button onclick="showDevice(\'{tab.id}\',\'{dp.device}\')" '
+                    f'id="dbtn-{tab.id}-{dp.device}" '
+                    f'style="padding:6px 14px;border:none;border-radius:4px;cursor:pointer;'
+                    f'font-size:12px;font-weight:500;{dv_active}">'
+                    f'{dp.device.capitalize()} {dp.width_px}px</button>'
+                )
+            tab_display = "block" if is_first else "none"
+            tab_panels += (
+                f'<div id="tab-{tab.id}" style="display:{tab_display};">'
+                f'<div style="display:flex;gap:8px;margin-bottom:16px;">{device_btns}</div>'
+                f'<div style="display:flex;justify-content:center;">{device_panels}</div>'
+                f'</div>'
+            )
+
+        tab_ids_json = "[" + ",".join(f'"{t}"' for t in tab_ids) + "]"
+        device_map_json = (
+            "{"
+            + ",".join(
+                f'"{t.id}":[' + ",".join(f'"{d.device}"' for d in t.device_previews) + "]"
+                for t in tabs
+            )
+            + "}"
+        )
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{product_name} \u2014 Interactive Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{{box-sizing:border-box;margin:0;padding:0}}
+body{{font-family:Inter,system-ui,sans-serif;background:#020617;color:#f1f5f9;min-height:100vh;}}
+button{{cursor:pointer;transition:all .2s;}}
+</style>
+</head>
+<body>
+<div style="max-width:1400px;margin:0 auto;padding:24px 20px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;">
+    <div>
+      <h1 style="font-size:20px;font-weight:700;">{product_name}</h1>
+      <p style="font-size:13px;color:#64748b;margin-top:2px;">Interactive Frontend Preview \u2014 Readonly</p>
+    </div>
+    <span style="background:rgba(15,118,110,.15);border:1px solid {theme_color};
+      border-radius:20px;padding:4px 14px;font-size:12px;color:{theme_color};">\u2736 THTWAAT Studio</span>
+  </div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:24px;
+    background:#0f172a;padding:8px;border-radius:10px;border:1px solid #1e293b;">
+    {tab_buttons}
+  </div>
+  <div style="background:#0f172a;border-radius:12px;padding:24px;border:1px solid #1e293b;">
+    {tab_panels}
+  </div>
+  <p style="text-align:center;color:#334155;font-size:11px;margin-top:16px;">
+    Generated by THTWAAT Studio \u00b7 Preview only \u00b7 No source code emitted
+  </p>
+</div>
+<script>
+const tabIds={tab_ids_json};
+const deviceMap={device_map_json};
+const primary="{theme_color}";
+function showTab(id){{
+  tabIds.forEach(t=>{{
+    document.getElementById("tab-"+t).style.display=t===id?"block":"none";
+    const b=document.getElementById("btn-"+t);
+    b.style.background=t===id?primary:"#1e293b";b.style.color=t===id?"#fff":"#94a3b8";
+  }});
+}}
+function showDevice(tabId,device){{
+  (deviceMap[tabId]||[]).forEach(d=>{{
+    document.getElementById(tabId+"-"+d).style.display=d===device?"block":"none";
+    const b=document.getElementById("dbtn-"+tabId+"-"+d);
+    if(b){{b.style.background=d===device?primary:"#1e293b";b.style.color=d===device?"#fff":"#64748b";}}
+  }});
+}}
+</script>
+</body>
+</html>"""
 
     def generate_backend(
         self, user: UserProfileResponse, project_id: UUID

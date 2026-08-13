@@ -34,6 +34,7 @@ from app.monitoring.router import (
 )
 from app.copilot.router import router as copilot_router
 from app.agent_store.router import router as agent_store_router
+from app.command_center.router import router as command_center_router
 
 # Central versioned router — all module routers are registered here
 api_router = APIRouter(prefix="/api/v1")
@@ -73,6 +74,7 @@ api_router.include_router(operations_router)
 api_router.include_router(monitoring_router)
 api_router.include_router(copilot_router)
 api_router.include_router(agent_store_router)
+api_router.include_router(command_center_router)
 
 # ── System Endpoints ──────────────────────────────────────────────────────────
 

@@ -1,0 +1,26 @@
+{
+  "id": "0d4f92bf-52ab-4e3c-be3e-62bff2be6c61",
+  "slug": "analytics-exec-summary",
+  "name": "Executive Summary Prompt",
+  "description": "Free prompt template for executive-ready summaries.",
+  "category": "analytics",
+  "kind": "prompt",
+  "prompt": "Turn a set of results into a concise executive summary with highlights and actions.",
+  "variables": [
+    {
+      "name": "results",
+      "label": "Results",
+      "required": true
+    }
+  ],
+  "temperature": 0.45,
+  "tags": ["analytics", "executive", "prompt", "free"],
+  "visibility": "public",
+  "featured": false,
+  "version": "1.0.0",
+  "example_input": "Results: monthly growth",
+  "example_output": "Executive summary",
+  "pricing_tier": "free",
+  "author": "THTWAAT",
+  "industry": "analytics"
+}

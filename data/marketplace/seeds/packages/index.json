@@ -1,6 +1,6 @@
 {
   "version": "1.0.0",
-  "count": 12,
+  "count": 17,
   "kind": "package",
   "templates": [
     {
@@ -119,6 +119,46 @@
       "category": "saas",
       "name": "AI SaaS Starter",
       "file": "ai-saas-starter.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "c7898c5f-54de-4abd-90f0-f979f9d61e11",
+      "slug": "free-workflow-starter",
+      "category": "automation",
+      "name": "Workflow Starter",
+      "file": "free-workflow-starter.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "2de78014-e78f-4742-a3ef-e2ce0b4d3fc3",
+      "slug": "free-ai-agent-starter",
+      "category": "ai_agents",
+      "name": "AI Agent Starter",
+      "file": "free-ai-agent-starter.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "4a08cd95-26f5-4d05-a8b5-4fdf8d5dafd6",
+      "slug": "free-analytics-dashboard",
+      "category": "analytics",
+      "name": "Analytics Dashboard",
+      "file": "free-analytics-dashboard.json",
+      "featured": false,
+      "pricing_tier": "free",
+      "kind": "package"
+    },
+    {
+      "id": "b741a5eb-6aaf-4aba-ab6b-a916af4ec9de",
+      "slug": "free-marketing-ops",
+      "category": "marketing",
+      "name": "Marketing Ops Pack",
+      "file": "free-marketing-ops.json",
       "featured": false,
       "pricing_tier": "free",
       "kind": "package"

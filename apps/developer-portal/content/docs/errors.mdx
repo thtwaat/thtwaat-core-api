@@ -19,6 +19,29 @@ section: API
 | 429 | Rate limited / quota exceeded |
 | 5xx | Server / upstream failure |
 
+## Example error bodies
+
+Most 4xx errors from `/public/v1/*` return FastAPI's generic shape:
+
+```json
+{ "detail": "Agent not found" }
+```
+
+Quota-exceeded errors (HTTP 429) return a structured body instead:
+
+```json
+{
+  "error": "quota_exceeded",
+  "dimension": "total_tokens",
+  "current_usage": 50000,
+  "plan_limit": 50000,
+  "upgrade_url": "/billing"
+}
+```
+
+`dimension` is either `"spend"` or `"total_tokens"`. Check for `error === "quota_exceeded"`
+before falling back to generic `detail`-based error handling.
+
 ## JavaScript SDK
 
 ```ts

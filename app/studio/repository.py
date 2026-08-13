@@ -205,6 +205,47 @@ class StudioRepository:
             .first()
         )
 
+    def list_frontends(
+        self, project_id: UUID, workspace_id: UUID
+    ) -> list:
+        """Return all frontend versions for a project, newest first."""
+        return (
+            self.db.query(StudioProjectFrontend)
+            .filter(
+                StudioProjectFrontend.project_id == project_id,
+                StudioProjectFrontend.workspace_id == workspace_id,
+            )
+            .order_by(StudioProjectFrontend.version.desc())
+            .all()
+        )
+
+    def get_frontend_by_version(
+        self, project_id: UUID, workspace_id: UUID, version: int
+    ) -> Optional[StudioProjectFrontend]:
+        """Return a specific frontend version."""
+        return (
+            self.db.query(StudioProjectFrontend)
+            .filter(
+                StudioProjectFrontend.project_id == project_id,
+                StudioProjectFrontend.workspace_id == workspace_id,
+                StudioProjectFrontend.version == version,
+            )
+            .first()
+        )
+
+    def set_current_frontend(
+        self, project_id: UUID, version: int
+    ) -> None:
+        """Mark a specific version as current; clear all others."""
+        self.db.query(StudioProjectFrontend).filter(
+            StudioProjectFrontend.project_id == project_id,
+        ).update({"is_current": False}, synchronize_session=False)
+        self.db.query(StudioProjectFrontend).filter(
+            StudioProjectFrontend.project_id == project_id,
+            StudioProjectFrontend.version == version,
+        ).update({"is_current": True}, synchronize_session=False)
+        self.db.commit()
+
     def next_backend_version(self, project_id: UUID) -> int:
         current = (
             self.db.query(StudioProjectBackend.version)

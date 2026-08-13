@@ -36,9 +36,14 @@ from app.studio.schemas import (
     StudioDomainWizardResponse,
     StudioExportRequest,
     StudioExportResponse,
+    StudioFrontendApproveResponse,
+    StudioFrontendCompareResponse,
     StudioFrontendGenerateResponse,
+    StudioFrontendPreviewResponse,
+    StudioFrontendRegenerateResponse,
     StudioFrontendResponse,
     StudioFrontendUpdate,
+    StudioFrontendVersionListResponse,
     StudioGenerateSourceRequest,
     StudioGenerateSourceResponse,
     StudioInfrastructureGenerateResponse,
@@ -258,6 +263,104 @@ def put_frontend(
     service: StudioService = Depends(get_studio_service),
 ):
     return service.update_frontend(user, project_id, payload)
+
+
+@router.get(
+    "/projects/{project_id}/frontend/preview",
+    response_model=StudioFrontendPreviewResponse,
+    summary="Enriched visual UI preview — tabs, device previews, reuse card, AI panel, actions",
+)
+def get_frontend_preview(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.get_frontend_preview(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/frontend/versions",
+    response_model=StudioFrontendVersionListResponse,
+    summary="List all autosaved frontend preview versions",
+)
+def list_frontend_versions(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.list_frontend_versions(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/frontend/versions/compare",
+    response_model=StudioFrontendCompareResponse,
+    summary="Compare two frontend preview versions (diff pages + reuse delta)",
+)
+def compare_frontend_versions(
+    project_id: UUID,
+    version_a: int = Query(..., ge=1, description="First version number"),
+    version_b: int = Query(..., ge=1, description="Second version number"),
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.compare_frontend_versions(user, project_id, version_a, version_b)
+
+
+@router.post(
+    "/projects/{project_id}/frontend/approve",
+    response_model=StudioFrontendApproveResponse,
+    summary="Approve frontend preview (sets status=approved, auto-triggers backend generation)",
+)
+def approve_frontend(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.approve_frontend(user, project_id)
+
+
+@router.post(
+    "/projects/{project_id}/frontend/regenerate",
+    response_model=StudioFrontendRegenerateResponse,
+    summary="Regenerate frontend preview manifest (autosaves previous versions)",
+)
+def regenerate_frontend(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    return service.regenerate_frontend(user, project_id)
+
+
+@router.get(
+    "/projects/{project_id}/frontend/download",
+    summary="Download frontend preview as ZIP (manifest JSON + Desktop/Tablet/Mobile HTML previews)",
+)
+def download_frontend_preview(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    raw, filename = service.download_frontend_preview(user, project_id)
+    return Response(
+        content=raw,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get(
+    "/projects/{project_id}/frontend/interactive",
+    summary="Live readonly HTML interactive preview (all tabs + device modes)",
+    response_class=Response,
+)
+def get_interactive_preview(
+    project_id: UUID,
+    user: UserProfileResponse = Depends(get_current_user),
+    service: StudioService = Depends(get_studio_service),
+):
+    html = service.get_interactive_preview(user, project_id)
+    return Response(content=html, media_type="text/html")
 
 
 @router.post(
