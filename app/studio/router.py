@@ -4,12 +4,13 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import Response, StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.auth.router import get_current_user
+from app.auth.router import get_auth_service, get_current_user
 from app.auth.schema import UserProfileResponse
+from app.auth.service import AuthService
 from app.database.database import get_db
 from app.studio.schemas import (
     StudioAiGenerateResponse,
@@ -66,6 +67,33 @@ router = APIRouter(prefix="/api/v2/studio", tags=["THTWAAT Studio"])
 
 def get_studio_service(db: Session = Depends(get_db)) -> StudioService:
     return StudioService(db)
+
+
+def get_current_user_for_stream(
+    request: Request,
+    access_token: Optional[str] = Query(default=None),
+    service: AuthService = Depends(get_auth_service),
+) -> UserProfileResponse:
+    """Auth for SSE endpoints only — the browser's native EventSource API
+    cannot set request headers, so the frontend has no way to send
+    `Authorization: Bearer <token>` for a live-log stream (see
+    apps/templates/saas/src/app/app/studio/page.tsx's
+    `new EventSource(...?access_token=...)`). Every other endpoint in this
+    router keeps using the header-only Depends(get_current_user) unchanged;
+    this accepts the SAME access token either via the Authorization header
+    (so it still works for any non-browser caller that can set headers) or,
+    only when that header is absent, via the `access_token` query
+    parameter — then validates it through the exact same
+    AuthService.get_current_user_profile() as every other authenticated
+    request, so token type/expiry/user-lookup rules are identical."""
+    token = access_token
+    if not token:
+        header = request.headers.get("authorization", "")
+        if header.lower().startswith("bearer "):
+            token = header.split(" ", 1)[1]
+    if not token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return service.get_current_user_profile(token)
 
 
 @router.post(
@@ -754,7 +782,7 @@ def domain_wizard_poll(
 def stream_deployment(
     project_id: UUID,
     deployment_id: UUID,
-    user: UserProfileResponse = Depends(get_current_user),
+    user: UserProfileResponse = Depends(get_current_user_for_stream),
     service: StudioService = Depends(get_studio_service),
 ):
     import asyncio
