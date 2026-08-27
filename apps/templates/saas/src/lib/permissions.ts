@@ -40,3 +40,18 @@ export function canDeleteStudioProjects(role?: string | null): boolean {
 export function canDeleteAgents(role?: string | null): boolean {
   return Boolean(role && STUDIO_DELETE_ROLES.has(role));
 }
+
+/** GitHub Connect (connect/select repository/disconnect) — same role set as
+ * can_manage_company_users on the backend (app/auth/tenant.py), which
+ * GitHubService gates every method behind, including reads. */
+export function canManageGithubConnection(role?: string | null): boolean {
+  return Boolean(role && STUDIO_DELETE_ROLES.has(role));
+}
+
+/** Coding AI (app/coding_agent proxy) — every role except viewer, matching
+ * Permission.CODING_AGENT_ACCESS in app/rbac/policy.py (granted to
+ * super_admin/company_owner/admin/manager/developer/employee). Deliberately
+ * broader than STUDIO_DELETE_ROLES. */
+export function canUseCodingAgent(role?: string | null): boolean {
+  return Boolean(role) && role !== "viewer";
+}

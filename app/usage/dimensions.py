@@ -21,6 +21,8 @@ class UsageDimension(str, Enum):
     API_KEYS = "api_keys"
     DOMAINS = "domains"
     TEMPLATES_PUBLISHED = "templates_published"
+    # THTWAAT Deploy Phase 6A — Preview Deployments.
+    PREVIEW_DEPLOYMENTS = "preview_deployments"
 
 
 # Gauge dimensions are set absolute (not incremented) when syncing inventory
@@ -31,6 +33,7 @@ GAUGE_DIMENSIONS = {
     UsageDimension.DOMAINS,
     UsageDimension.TEMPLATES_PUBLISHED,
     UsageDimension.STORAGE_BYTES,
+    UsageDimension.PREVIEW_DEPLOYMENTS,
 }
 
 
@@ -56,6 +59,7 @@ DEFAULT_PLAN_LIMITS: Dict[str, Dict[str, int]] = {
         "max_templates": 0,
         "max_apps": 1,
         "max_users": 5,
+        "max_preview_deployments": 1,
     },
     PlanTier.STARTER: {
         "max_agents": 5,
@@ -68,6 +72,7 @@ DEFAULT_PLAN_LIMITS: Dict[str, Dict[str, int]] = {
         "max_templates": 3,
         "max_apps": 5,
         "max_users": 25,
+        "max_preview_deployments": 3,
     },
     PlanTier.PRO: {
         "max_agents": 25,
@@ -80,6 +85,7 @@ DEFAULT_PLAN_LIMITS: Dict[str, Dict[str, int]] = {
         "max_templates": 20,
         "max_apps": 25,
         "max_users": 100,
+        "max_preview_deployments": 10,
     },
     "growth": {  # alias → Pro
         "max_agents": 25,
@@ -92,6 +98,7 @@ DEFAULT_PLAN_LIMITS: Dict[str, Dict[str, int]] = {
         "max_templates": 20,
         "max_apps": 25,
         "max_users": 100,
+        "max_preview_deployments": 10,
     },
     PlanTier.BUSINESS: {
         "max_agents": 100,
@@ -104,6 +111,7 @@ DEFAULT_PLAN_LIMITS: Dict[str, Dict[str, int]] = {
         "max_templates": 100,
         "max_apps": 100,
         "max_users": 500,
+        "max_preview_deployments": 50,
     },
     PlanTier.ENTERPRISE: {
         "max_agents": 10_000,
@@ -116,6 +124,7 @@ DEFAULT_PLAN_LIMITS: Dict[str, Dict[str, int]] = {
         "max_templates": 10_000,
         "max_apps": 1_000,
         "max_users": 10_000,
+        "max_preview_deployments": 1_000,
     },
 }
 
@@ -131,6 +140,7 @@ DIMENSION_TO_LIMIT = {
     UsageDimension.ACTIVE_USERS: "max_team_members",
     UsageDimension.API_KEYS: "max_api_keys",
     UsageDimension.TEMPLATES_PUBLISHED: "max_templates",
+    UsageDimension.PREVIEW_DEPLOYMENTS: "max_preview_deployments",
 }
 
 

@@ -228,6 +228,57 @@ class Settings(BaseSettings):
     PUBLIC_APP_BASE_URL: str = "http://localhost:3300"
     PASSWORD_RESET_TOKEN_TTL_MINUTES: int = 60
 
+    # THTWAAT Phase 6C-1 — Coding AI / AgentRuntime service-to-service auth.
+    # Core mints a short-lived HS256 token (app/coding_agent/service.py)
+    # identifying (company_id, user_id) to the separately-deployed AI_Project
+    # API (dashboard.thtwaat.com), which verifies it with the SAME secret
+    # configured out-of-band on its own side. Deliberately its OWN secret —
+    # never JWT_SECRET_KEY/JWT_REFRESH_SECRET_KEY — so a leaked/rotated
+    # service secret can never forge a user session or vice versa.
+    CODING_AGENT_SERVICE_JWT_SECRET: Optional[str] = None
+    CODING_AGENT_JWT_AUDIENCE: str = "coding-agent"
+    CODING_AGENT_JWT_ISSUER: str = "thtwaat-core-api"
+    CODING_AGENT_SERVICE_TOKEN_TTL_SECONDS: int = 120
+
+    # THTWAAT Phase 6C-2 — task-creation proxy. Base URL of the
+    # separately-deployed AI_Project API (dashboard.thtwaat.com in
+    # production); empty means the integration is not wired up yet, in
+    # which case app.coding_agent.client fails closed with 503 rather
+    # than attempting a request to an empty URL.
+    CODING_AGENT_API_BASE_URL: Optional[str] = None
+    CODING_AGENT_REQUEST_TIMEOUT_SECONDS: float = 30.0
+
+    # THTWAAT Deploy Phase 5 — GitHub Connect (GitHub App, not OAuth App).
+    # The app authenticates itself via an RS256 JWT signed with
+    # GITHUB_APP_PRIVATE_KEY to mint short-lived installation access tokens
+    # on demand (see app/static_sites/github_client.py) — no GitHub user
+    # access/refresh token is ever requested or stored, so there is no
+    # client_secret here either.
+    GITHUB_APP_ID: Optional[str] = None
+    GITHUB_APP_SLUG: Optional[str] = None
+    GITHUB_APP_PRIVATE_KEY: Optional[str] = None
+    GITHUB_OAUTH_STATE_TTL_MINUTES: int = 15
+
+    # THTWAAT Deploy Phase 5C — Git Push -> Auto Deploy. Server-side-only
+    # webhook secret used to verify GitHub's X-Hub-Signature-256 HMAC over
+    # the raw webhook body (app/static_sites/github_webhook.py). Never
+    # accepted from a request; configured once on the GitHub App's own
+    # "Webhook secret" field in github.com settings.
+    GITHUB_APP_WEBHOOK_SECRET: Optional[str] = None
+    # Hard cap on a fetched repository archive (zipball) size, enforced
+    # while streaming the download — mirrors STATIC_SITE_MAX_ARCHIVE_BYTES
+    # for uploads so a malicious/huge repo can't exhaust disk on the box
+    # fetching it.
+    GITHUB_ARCHIVE_MAX_BYTES: int = 50 * 1024 * 1024
+
+    # THTWAAT Deploy Phase 6A — Preview Deployments. Kill switch, expiry
+    # backstop (a preview is torn down on PR-close regardless; this bounds
+    # how long an abandoned/never-closed PR's preview can live), and the
+    # deterministic hostname prefix (see app/static_sites/preview_hostname.py).
+    PREVIEW_DEPLOYMENTS_ENABLED: bool = True
+    PREVIEW_DEPLOYMENT_TTL_HOURS: int = 72
+    PREVIEW_SUBDOMAIN_PREFIX: str = "pr"
+
     # Public publish / embed base URL (used in embed scripts & iframe URLs)
     PUBLIC_API_BASE_URL: str = "http://localhost:8000"
     # iframe embed JWT lifetime (seconds). Live API keys must never appear in iframe URLs.
@@ -248,6 +299,100 @@ class Settings(BaseSettings):
     SSL_WEBROOT_DIR: str = "nginx/acme-webroot"
     NGINX_GENERATED_DIR: str = "nginx/conf.d/domains"
     NGINX_CERT_CONTAINER_PREFIX: Optional[str] = "/etc/nginx/ssl"
+
+    # THTWAAT Deploy (app/static_sites) — isolated static-site content root.
+    # Mirrors the SSL_CERTS_DIR / NGINX_CERT_CONTAINER_PREFIX pattern: api/worker
+    # write extracted deployments under STATIC_SITES_DIR; nginx mounts the same
+    # host directory read-only at STATIC_SITES_CONTAINER_PREFIX.
+    STATIC_SITES_DIR: str = "data/static-sites"
+    STATIC_SITES_CONTAINER_PREFIX: Optional[str] = "/etc/nginx/static-sites"
+    STATIC_SITE_MAX_ARCHIVE_BYTES: int = 50 * 1024 * 1024
+    STATIC_SITE_MAX_EXTRACTED_BYTES: int = 200 * 1024 * 1024
+    STATIC_SITE_MAX_FILE_BYTES: int = 20 * 1024 * 1024
+    STATIC_SITE_MAX_FILE_COUNT: int = 5000
+
+    # THTWAAT Deploy — Vite build sandbox (app/static_sites/vite_build.py).
+    # The build ALWAYS runs in an ephemeral, non-root, resource-capped
+    # `docker run` against VITE_BUILD_IMAGE — never on the api/worker host,
+    # never with the Docker socket, host filesystem, or any secret mounted
+    # into it. VITE_BUILD_ENABLED lets ops disable this entirely (e.g. on a
+    # host where the docker CLI / socket isn't available to this process).
+    VITE_BUILD_ENABLED: bool = False
+    VITE_BUILD_IMAGE: str = "thtwaat-vite-build:20"
+    # Dedicated network, deliberately separate from thtwaat_net (db/redis/api/
+    # nginx) — the build container is never attached to the network that can
+    # reach internal services. See docker-compose.prod.yml.
+    VITE_BUILD_NETWORK: str = "thtwaat_vite_build_net"
+    VITE_MAX_BUILD_TIME_SECONDS: int = 300
+    VITE_MAX_BUILD_MEMORY_MB: int = 1536
+    VITE_MAX_BUILD_CPU: float = 1.0
+    VITE_BUILD_TMPFS_MB: int = 512
+    VITE_MAX_SOURCE_BYTES: int = 50 * 1024 * 1024
+    VITE_MAX_OUTPUT_BYTES: int = 100 * 1024 * 1024
+    VITE_MAX_OUTPUT_FILE_COUNT: int = 20000
+    VITE_MAX_NODE_MODULES_BYTES: int = 1024 * 1024 * 1024
+    VITE_MAX_LOG_BYTES: int = 200_000
+
+    # THTWAAT Deploy — build-orchestrator (recommended production mode; see
+    # orchestrator/README.md and the Phase 2 staging validation report §1).
+    # When VITE_BUILD_ORCHESTRATOR_URL is set, run_vite_build() calls this
+    # service over HTTP instead of shelling out to `docker` itself — api/
+    # worker then never need Docker socket access at all. Empty (the
+    # default) keeps the original direct-`docker run` fallback below, which
+    # requires this process to have docker.sock access and is intended for
+    # local/dev only (docker-compose.yml), never for docker-compose.prod.yml.
+    VITE_BUILD_ORCHESTRATOR_URL: str = ""
+    VITE_BUILD_ORCHESTRATOR_SHARED_SECRET: str = ""
+    VITE_BUILD_ORCHESTRATOR_TIMEOUT_SECONDS: int = 320
+
+    # THTWAAT Deploy — Next.js standalone build + isolated Node runtime
+    # (Phase 3). Reuses the SAME build-orchestrator service/shared-secret/URL
+    # as Vite above (VITE_BUILD_ORCHESTRATOR_URL/_SHARED_SECRET) — it is one
+    # process with a narrow UUID-only schema; this just adds two more
+    # endpoints to it (/v1/nextjs-builds, /v1/nextjs-runtimes) rather than
+    # standing up a second Docker-control-plane service. Gated by its own
+    # flag because a deployment may want Vite builds without ever running a
+    # persistent Node runtime container (a materially different risk/cost
+    # profile — long-lived process vs. one-shot build).
+    NEXTJS_BUILD_ENABLED: bool = False
+    NEXTJS_BUILD_IMAGE: str = "thtwaat-nextjs-build:20"
+    # Defaults to the SAME network as Vite builds (no path to db/redis/api;
+    # open egress for the npm registry) — a distinct setting so ops can split
+    # them later without a code change, but nothing forces a second network
+    # to exist just for this phase.
+    NEXTJS_BUILD_NETWORK: str = "thtwaat_vite_build_net"
+    NEXTJS_MAX_BUILD_TIME_SECONDS: int = 600
+    NEXTJS_MAX_BUILD_MEMORY_MB: int = 2048
+    NEXTJS_MAX_BUILD_CPU: float = 1.5
+    NEXTJS_BUILD_TMPFS_MB: int = 512
+    NEXTJS_MAX_SOURCE_BYTES: int = 50 * 1024 * 1024
+    # Bigger than Vite's static-dist cap — the standalone artifact includes a
+    # traced, pruned node_modules subset, not just HTML/CSS/JS.
+    NEXTJS_MAX_OUTPUT_BYTES: int = 300 * 1024 * 1024
+    NEXTJS_MAX_OUTPUT_FILE_COUNT: int = 40000
+    NEXTJS_MAX_NODE_MODULES_BYTES: int = 1536 * 1024 * 1024
+    NEXTJS_MAX_LOG_BYTES: int = 200_000
+
+    # Runtime container (one per live Next.js deployment version). No host
+    # port is ever published — nginx reaches it by its fixed container name
+    # over NEXTJS_RUNTIME_NETWORK using Docker's embedded DNS (see
+    # app/ssl/nginx_gen.py RUNTIME_PROXY_LOCATION_BLOCK), so there is no
+    # host-port allocator to run or collide.
+    NEXTJS_RUNTIME_IMAGE: str = "thtwaat-nextjs-runtime:20"
+    NEXTJS_RUNTIME_NETWORK: str = "thtwaat_nextjs_runtime_net"
+    NEXTJS_RUNTIME_PORT: int = 3000
+    NEXTJS_RUNTIME_MEMORY_MB: int = 512
+    NEXTJS_RUNTIME_CPU: float = 0.5
+    NEXTJS_RUNTIME_PIDS: int = 128
+    NEXTJS_RUNTIME_TMPFS_MB: int = 64
+    NEXTJS_HEALTH_STARTUP_TIMEOUT_SECONDS: int = 60
+    NEXTJS_HEALTH_RETRY_COUNT: int = 10
+    NEXTJS_HEALTH_RETRY_INTERVAL_SECONDS: float = 2.0
+    NEXTJS_HEALTH_REQUEST_TIMEOUT_SECONDS: float = 3.0
+    # Per-company cap on simultaneously LIVE Next.js runtime containers — a
+    # single tenant must not be able to start unbounded persistent processes
+    # on the VPS (unlike static files, these hold memory/CPU/PIDs 24/7).
+    NEXTJS_MAX_RUNTIMES_PER_COMPANY: int = 10
 
     # Backups / scheduler
     BACKUP_DIR: str = "data/backups"
@@ -313,6 +458,21 @@ class Settings(BaseSettings):
             problems.append(
                 "JWT_SECRET_KEY and JWT_REFRESH_SECRET_KEY must be different values"
             )
+
+        if self.CODING_AGENT_SERVICE_JWT_SECRET:
+            weakness = _describe_weakness(
+                "CODING_AGENT_SERVICE_JWT_SECRET", self.CODING_AGENT_SERVICE_JWT_SECRET
+            )
+            if weakness:
+                problems.append(weakness)
+            if self.CODING_AGENT_SERVICE_JWT_SECRET in (
+                self.JWT_SECRET_KEY,
+                self.JWT_REFRESH_SECRET_KEY,
+            ):
+                problems.append(
+                    "CODING_AGENT_SERVICE_JWT_SECRET must not reuse "
+                    "JWT_SECRET_KEY or JWT_REFRESH_SECRET_KEY"
+                )
 
         origins = [str(o).strip() for o in (self.CORS_ORIGINS or []) if str(o).strip()]
         if self.is_hardened_env:

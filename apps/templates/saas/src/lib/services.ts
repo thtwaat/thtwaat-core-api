@@ -1,4 +1,4 @@
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { apiPaths } from "@/lib/config";
 import type {
   Agent,
@@ -1719,4 +1719,216 @@ export const platformAdminApi = {
       method: "POST",
       body: { company_id, reason: reason || null }
     })
+};
+
+/** Founder/CEO Command Center — read-only platform KPIs (Super Admin). */
+export type CommandCenterDashboard = {
+  revenue: number | null;
+  mrr: number | null;
+  customers: number | null;
+  active_projects: number | null;
+  leads: number | null;
+  conversion: number | null;
+  ai_tasks: number | null;
+  human_escalations: number | null;
+  ai_cost: number | null;
+};
+
+export type CeoAnalysis = {
+  generated_at: string;
+  metrics_snapshot: CommandCenterDashboard;
+  business_status: string;
+  problems: string[];
+  opportunities: string[];
+  you_must_decide: string[];
+  recommendations: string[];
+  provider?: string | null;
+  model_used?: string | null;
+};
+
+export const commandCenterApi = {
+  dashboard: () => api.v1<CommandCenterDashboard>("/command-center/dashboard"),
+  ceoAnalysis: () =>
+    api.v1<CeoAnalysis>("/command-center/ceo-analysis", { method: "POST" })
+};
+
+// Coding AI — thin proxy to the separate AI_Project AgentRuntime, mounted
+// at /api/v1/coding-agent (app/coding_agent on the backend). Unlike
+// studioApi/staticSitesApi above, this uses api.v1 (not api.apiV2) since
+// it's a different router family. No list-tasks endpoint exists.
+export const codingAgentApi = {
+  createTask: (body: import("@/lib/coding-agent").CodingTaskCreateRequest, idempotencyKey: string) =>
+    api.v1<import("@/lib/coding-agent").CodingTask>("/coding-agent/tasks", {
+      method: "POST",
+      body,
+      headers: { "Idempotency-Key": idempotencyKey }
+    }),
+  getTask: (taskId: string) =>
+    api.v1<import("@/lib/coding-agent").CodingTask>(`/coding-agent/tasks/${taskId}`),
+  cancelTask: (taskId: string) =>
+    api.v1<import("@/lib/coding-agent").CodingTaskCancelResult>(`/coding-agent/tasks/${taskId}/cancel`, {
+      method: "POST"
+    })
+};
+
+// THTWAAT Deploy — static HTML/ZIP sites. Sibling to studioApi, not a
+// replacement — see app/static_sites on the backend.
+export const staticSitesApi = {
+  list: () =>
+    api.apiV2<import("@/lib/static-sites").StaticSiteList>("/studio/static-sites"),
+  create: (name: string) =>
+    api.apiV2<import("@/lib/static-sites").StaticSite>("/studio/static-sites", {
+      method: "POST",
+      body: { name }
+    }),
+  get: (id: string) =>
+    api.apiV2<import("@/lib/static-sites").StaticSite>(`/studio/static-sites/${id}`),
+  listDeployments: (id: string) =>
+    api.apiV2<import("@/lib/static-sites").StaticSiteDeploymentList>(
+      `/studio/static-sites/${id}/deployments`
+    ),
+  getDeployment: (id: string, deploymentId: string) =>
+    api.apiV2<import("@/lib/static-sites").StaticSiteDeployment>(
+      `/studio/static-sites/${id}/deployments/${deploymentId}`
+    ),
+  deploymentStreamUrl: (id: string, deploymentId: string) =>
+    `/api/v2/studio/static-sites/${id}/deployments/${deploymentId}/stream`,
+  rollback: (id: string, body?: { deployment_id?: string }) =>
+    api.apiV2<import("@/lib/static-sites").StaticSiteDeployment>(
+      `/studio/static-sites/${id}/rollback`,
+      { method: "POST", body: body || {} }
+    ),
+  /** XHR upload with progress — same recipe as knowledgeApi.uploadWithProgress. */
+  uploadWithProgress: (
+    siteId: string,
+    file: File,
+    opts: { domainMode?: "free_subdomain" | "custom"; domain?: string },
+    onProgress?: (percent: number) => void
+  ): Promise<import("@/lib/static-sites").StaticSiteDeployment> => {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const url = `${apiPaths.apiV2}/studio/static-sites/${siteId}/upload`;
+      xhr.open("POST", url);
+      const token = typeof window !== "undefined" ? window.localStorage.getItem("tht_access_token") : null;
+      if (token) xhr.setRequestHeader("Authorization", `Bearer ${token}`);
+      xhr.upload.onprogress = (ev) => {
+        if (!ev.lengthComputable || !onProgress) return;
+        onProgress(Math.round((ev.loaded / ev.total) * 100));
+      };
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            resolve(xhr.responseText ? JSON.parse(xhr.responseText) : {});
+          } catch {
+            reject(new Error("Unexpected response from server"));
+          }
+          return;
+        }
+        let message = `Deploy failed (${xhr.status})`;
+        try {
+          const body = JSON.parse(xhr.responseText);
+          message = body?.detail || body?.error || body?.message || message;
+          if (typeof body?.detail === "object" && body.detail?.error) message = body.detail.error;
+        } catch {
+          /* ignore */
+        }
+        reject(new Error(typeof message === "string" ? message : `Deploy failed (${xhr.status})`));
+      };
+      xhr.onerror = () => reject(new Error("Upload network error"));
+      const form = new FormData();
+      form.append("file", file);
+      form.append("domain_mode", opts.domainMode || "free_subdomain");
+      if (opts.domain) form.append("domain", opts.domain);
+      xhr.send(form);
+    });
+  }
+};
+
+// THTWAAT Deploy — environment variables (Phase 4A/4B backend, Phase 4C UI).
+// Site-scoped, same auth/company-isolation as staticSitesApi above — no
+// separate fetch/auth logic. GET/list responses never carry a `value` field
+// (see app/static_sites/schemas.py's StaticSiteEnvVarResponse) — only
+// metadata ever comes back from these calls.
+export const envVarsApi = {
+  list: (siteId: string, environment?: string) =>
+    api.apiV2<import("@/lib/env-vars").EnvVarList>(
+      `/studio/static-sites/${siteId}/env-vars${environment ? `?environment=${encodeURIComponent(environment)}` : ""}`
+    ),
+  create: (siteId: string, body: import("@/lib/env-vars").EnvVarCreateRequest) =>
+    api.apiV2<import("@/lib/env-vars").EnvVar>(`/studio/static-sites/${siteId}/env-vars`, {
+      method: "POST",
+      body
+    }),
+  update: (siteId: string, envId: string, body: import("@/lib/env-vars").EnvVarUpdateRequest) =>
+    api.apiV2<import("@/lib/env-vars").EnvVar>(`/studio/static-sites/${siteId}/env-vars/${envId}`, {
+      method: "PATCH",
+      body
+    }),
+  remove: (siteId: string, envId: string) =>
+    api.apiV2<void>(`/studio/static-sites/${siteId}/env-vars/${envId}`, { method: "DELETE" })
+};
+
+// THTWAAT Deploy Phase 5B — GitHub Connect. Site-scoped, same auth/company-
+// isolation as staticSitesApi/envVarsApi above. The frontend never
+// constructs a GitHub API URL or handles a token here — every call goes
+// through the existing THTWAAT backend, which mints/discards GitHub
+// installation tokens server-side (see app/static_sites/github_client.py).
+export const githubApi = {
+  // GET .../github 404s when nothing is connected yet (see
+  // app/static_sites/github_service.py::_get_connection) — that is this
+  // feature's normal "not connected" state, not an error, so it is mapped
+  // to `null` here rather than left for every caller to catch separately.
+  getConnection: async (siteId: string): Promise<import("@/lib/github").GitHubConnection | null> => {
+    try {
+      return await api.apiV2<import("@/lib/github").GitHubConnection>(`/studio/static-sites/${siteId}/github`);
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 404) return null;
+      throw err;
+    }
+  },
+  // Returns a GitHub-hosted authorize_url only — the caller must navigate
+  // the browser there (window.location.href), never fetch it.
+  connect: (siteId: string) =>
+    api.apiV2<import("@/lib/github").GitHubConnectStartResponse>(`/studio/static-sites/${siteId}/github/connect`),
+  listRepositories: (siteId: string, page = 1, perPage = 30) =>
+    api.apiV2<import("@/lib/github").GitHubRepositoryList>(
+      `/studio/static-sites/${siteId}/github/repositories?page=${page}&per_page=${perPage}`
+    ),
+  listBranches: (siteId: string, owner: string, repo: string, page = 1, perPage = 30) =>
+    api.apiV2<import("@/lib/github").GitHubBranchList>(
+      `/studio/static-sites/${siteId}/github/branches?owner=${encodeURIComponent(owner)}&repo=${encodeURIComponent(repo)}&page=${page}&per_page=${perPage}`
+    ),
+  selectRepository: (siteId: string, body: import("@/lib/github").GitHubSelectRepositoryRequest) =>
+    api.apiV2<import("@/lib/github").GitHubConnection>(`/studio/static-sites/${siteId}/github/select`, {
+      method: "POST",
+      body
+    }),
+  disconnect: (siteId: string) => api.apiV2<void>(`/studio/static-sites/${siteId}/github`, { method: "DELETE" })
+};
+
+// THTWAAT Deploy Phase 6A — Preview Deployments. Site-scoped, same auth/
+// company-isolation as staticSitesApi/githubApi above. Previews are only
+// ever CREATED/advanced/torn down by the GitHub webhook itself
+// (app/static_sites/github_webhook_router.py) — every call here is
+// read/manage only for an authenticated company owner/admin. Follows the
+// page/per_page query-string convention githubApi.listRepositories/
+// listBranches already use (not staticSitesApi.listDeployments's
+// unpaginated shape), since preview history can grow large over a repo's
+// lifetime.
+export const previewDeploymentsApi = {
+  list: (siteId: string, page = 1, perPage = 30) =>
+    api.apiV2<import("@/lib/preview-deployments").PreviewDeploymentList>(
+      `/studio/static-sites/${siteId}/previews?page=${page}&per_page=${perPage}`
+    ),
+  get: (siteId: string, previewId: string) =>
+    api.apiV2<import("@/lib/preview-deployments").PreviewDeployment>(
+      `/studio/static-sites/${siteId}/previews/${previewId}`
+    ),
+  streamUrl: (siteId: string, previewId: string) =>
+    `/api/v2/studio/static-sites/${siteId}/previews/${previewId}/stream`,
+  close: (siteId: string, previewId: string) =>
+    api.apiV2<import("@/lib/preview-deployments").PreviewDeployment>(
+      `/studio/static-sites/${siteId}/previews/${previewId}`,
+      { method: "DELETE" }
+    )
 };

@@ -211,6 +211,18 @@ app.include_router(agent_analytics_router)
 from app.studio.router import router as studio_router
 app.include_router(studio_router)
 
+from app.static_sites.router import router as static_sites_router
+app.include_router(static_sites_router)
+
+from app.static_sites.github_router import router as static_sites_github_router
+app.include_router(static_sites_github_router)
+
+from app.static_sites.github_webhook_router import router as static_sites_github_webhook_router
+app.include_router(static_sites_github_webhook_router)
+
+from app.static_sites.preview_router import router as static_sites_preview_router
+app.include_router(static_sites_preview_router)
+
 from app.branding.public_router import router as branding_public_router
 app.include_router(branding_public_router)
 

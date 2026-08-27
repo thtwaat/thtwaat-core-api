@@ -66,3 +66,7 @@ class Permission(str, enum.Enum):
     
     # Platform (Super Admin only)
     PLATFORM_ADMIN = "platform:admin"
+
+    # Coding Agent (Phase 6C-1 — service-to-service integration with the
+    # separately-deployed AI_Project AgentRuntime at dashboard.thtwaat.com)
+    CODING_AGENT_ACCESS = "coding_agent:access"

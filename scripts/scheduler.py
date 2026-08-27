@@ -115,6 +115,35 @@ def tick(r):
             enqueue(r, {"type": "agent.purge_expired"})
             r.setex(agent_purge_key, 86400, "1")
             logger.info("enqueued agent.purge_expired")
+
+        # THTWAAT Deploy Phase 6A — sweep every still-active preview
+        # deployment whose expires_at has passed and enqueue its teardown.
+        # Mirrors the domain.auto_progress sweep above exactly. A preview
+        # closed by its PR being closed is torn down immediately by the
+        # webhook itself (see github_webhook_router.py) — this sweep is the
+        # backstop for an abandoned/never-closed PR.
+        from app.static_sites.repository import StaticSiteRepository as _StaticSiteRepository
+
+        expired_previews = _StaticSiteRepository(db).list_expired_previews(now=datetime.now(timezone.utc))
+        for p in expired_previews:
+            enqueue(r, {"type": "static_site.preview_teardown", "preview_id": str(p.id), "reason": "expired"})
+        if expired_previews:
+            logger.info("enqueued static_site.preview_teardown count=%s", len(expired_previews))
+
+        # THTWAAT Deploy — daily purge of expired upload-idempotency records
+        # (housekeeping only; get_idempotent_deployment() already ignores
+        # expired rows on its own — see app/static_sites/repository.py).
+        idempotency_purge_key = (
+            f"thtwaat:static_sites:idempotency_purge:"
+            f"{datetime.now(timezone.utc).date().isoformat()}"
+        )
+        if not r.get(idempotency_purge_key):
+            from app.static_sites.repository import StaticSiteRepository
+
+            removed = StaticSiteRepository(db).purge_expired_idempotency_keys()
+            r.setex(idempotency_purge_key, 86400, "1")
+            if removed:
+                logger.info("static_site_idempotency_purged count=%s", removed)
     finally:
         db.close()
 

@@ -73,6 +73,8 @@ data/backups/*
 !data/backups/.gitkeep
 data/deploy-state/
 data/deploy-logs/
+data/static-sites/*
+!data/static-sites/.gitkeep
 
 # TLS private keys and issued certs (keep directory placeholders only)
 *.pem

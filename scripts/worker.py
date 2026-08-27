@@ -150,7 +150,13 @@ def _handle_domain_job_failure(payload: Dict[str, Any], exc: Exception) -> None:
 
 
 def _handle_studio_job_failure(payload: Dict[str, Any], exc: Exception) -> None:
-    """Retry studio.deploy / studio.build with backoff, then dead-letter."""
+    """Retry studio.deploy / studio.build / static_site.github_deploy /
+    static_site.preview_deploy / static_site.preview_teardown with backoff,
+    then dead-letter. Reused as-is for the GitHub auto-deploy and preview-
+    deployment job types — same shape (a single *_id field, an optional
+    timeout_seconds, an attempt counter), so a distinct handler would just
+    duplicate this one. teardown is naturally idempotent (see
+    PreviewDeploymentService.teardown), so retrying it on failure is safe."""
     from app.monitoring.queue import dead_letter, enqueue_delayed
 
     attempt = int(payload.get("attempt") or 1)
@@ -165,7 +171,7 @@ def _handle_studio_job_failure(payload: Dict[str, Any], exc: Exception) -> None:
         logger.error(
             "studio_job_dead type=%s id=%s attempt=%s reason=%s",
             payload.get("type"),
-            payload.get("deployment_id") or payload.get("build_id"),
+            payload.get("deployment_id") or payload.get("build_id") or payload.get("preview_id"),
             attempt,
             reason,
         )
@@ -275,6 +281,43 @@ def process_job(payload: dict) -> None:
             StudioService(db).run_deploy(UUID(str(deployment_id)))
             if time.time() - started > timeout_seconds:
                 raise TimeoutError(f"studio.deploy exceeded {timeout_seconds}s")
+        elif job_type == "static_site.github_deploy":
+            from uuid import UUID
+
+            from app.static_sites.service import StaticSiteService
+
+            deployment_id = payload.get("deployment_id")
+            if not deployment_id:
+                raise ValueError("static_site.github_deploy missing deployment_id")
+            timeout_seconds = int(payload.get("timeout_seconds") or 900)
+            started = time.time()
+            StaticSiteService(db).run_github_deploy(UUID(str(deployment_id)))
+            if time.time() - started > timeout_seconds:
+                raise TimeoutError(f"static_site.github_deploy exceeded {timeout_seconds}s")
+        elif job_type == "static_site.preview_deploy":
+            from uuid import UUID
+
+            from app.static_sites.preview_service import PreviewDeploymentService
+
+            preview_id = payload.get("preview_id")
+            generation = payload.get("generation")
+            if not preview_id or generation is None:
+                raise ValueError("static_site.preview_deploy missing preview_id/generation")
+            timeout_seconds = int(payload.get("timeout_seconds") or 900)
+            started = time.time()
+            PreviewDeploymentService(db).run_preview_deploy(UUID(str(preview_id)), int(generation))
+            if time.time() - started > timeout_seconds:
+                raise TimeoutError(f"static_site.preview_deploy exceeded {timeout_seconds}s")
+        elif job_type == "static_site.preview_teardown":
+            from uuid import UUID
+
+            from app.static_sites.preview_service import PreviewDeploymentService
+
+            preview_id = payload.get("preview_id")
+            if not preview_id:
+                raise ValueError("static_site.preview_teardown missing preview_id")
+            reason = str(payload.get("reason") or "pr_closed")
+            PreviewDeploymentService(db).teardown(UUID(str(preview_id)), reason=reason)
         elif job_type == "agent.cleanup":
             from uuid import UUID
 
@@ -390,7 +433,10 @@ def main():
                 except Exception as inner:  # noqa: BLE001
                     logger.exception("webhook_retry_handler_failed: %s", inner)
                     r.rpush("thtwaat:jobs:dead", raw)
-            elif job_type in {"studio.deploy", "studio.build"}:
+            elif job_type in {
+                "studio.deploy", "studio.build", "static_site.github_deploy",
+                "static_site.preview_deploy", "static_site.preview_teardown",
+            }:
                 try:
                     _handle_studio_job_failure(payload, exc)
                 except Exception as inner:  # noqa: BLE001

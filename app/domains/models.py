@@ -125,3 +125,18 @@ class CompanyDomain(Base, TimestampMixin):
 
     # Derived CORS origin (https://hostname)
     cors_origin = Column(String(300), nullable=False)
+
+    # THTWAAT Deploy (app/static_sites): when set, generate_vhost() serves
+    # static files from this directory instead of proxying to api_backend.
+    # NULL for every domain used by the existing Studio/agent-publish/product
+    # proxy-mode flows — those are completely unaffected by this column.
+    static_root_path = Column(Text, nullable=True)
+
+    # THTWAAT Deploy Phase 3 (Next.js): when set, generate_vhost() proxies to
+    # this internal "container-name:port" target (Docker embedded DNS, no
+    # host port ever published) instead of serving static_root_path or
+    # proxying to api_backend. Mutually exclusive with static_root_path in
+    # practice (a domain is bound to exactly one deployment framework at a
+    # time) — see app/ssl/manager.py::set_runtime_proxy_target(). NULL for
+    # every domain that predates this phase.
+    runtime_proxy_target = Column(String(255), nullable=True)

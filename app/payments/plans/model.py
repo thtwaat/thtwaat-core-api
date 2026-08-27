@@ -50,6 +50,8 @@ class Plan(Base, TimestampMixin):
     max_workspaces = Column(Integer, nullable=False, default=1)
     max_widgets = Column(Integer, nullable=False, default=1)
     max_knowledge = Column(Integer, nullable=False, default=1)
+    # THTWAAT Deploy Phase 6A — Preview Deployments entitlement.
+    max_preview_deployments = Column(Integer, nullable=False, default=1)
     stripe_yearly_price_id = Column(String(255), nullable=True)
     razorpay_yearly_plan_id = Column(String(255), nullable=True)
 

@@ -123,6 +123,7 @@ class UsageService:
                     "max_team_members",
                     "max_api_keys",
                     "max_templates",
+                    "max_preview_deployments",
                 )},
             }
         )
@@ -141,6 +142,7 @@ class UsageService:
             "max_team_members",
             "max_api_keys",
             "max_templates",
+            "max_preview_deployments",
         )
         if not all(hasattr(plan, k) for k in keys):
             return None
@@ -210,6 +212,7 @@ class UsageService:
             "max_team_members",
             "max_api_keys",
             "max_templates",
+            "max_preview_deployments",
         }
         meter = self.get_or_create_meter(company_id)
         for key, value in overrides.items():

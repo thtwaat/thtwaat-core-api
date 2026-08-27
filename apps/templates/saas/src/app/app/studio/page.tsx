@@ -60,6 +60,8 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Badge, Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/misc";
 import { cn } from "@/lib/utils";
+import { StaticDeployPanel } from "./StaticDeployPanel";
+import { CodingAgentPanel } from "./CodingAgentPanel";
 
 function formatWhen(iso: string) {
   try {
@@ -2547,6 +2549,21 @@ export default function StudioPage() {
           </div>
         )}
       </section>
+
+      {/* THTWAAT Deploy — static HTML/ZIP websites. A separate entry point
+          from the AI Software Factory Deployment Center above; does not
+          read or modify any of that flow's state. */}
+      <div className="mt-6">
+        <StaticDeployPanel />
+      </div>
+
+      {/* Coding AI — submit a natural-language coding task to the existing
+          coding-agent proxy (app/coding_agent). A separate entry point from
+          both the AI Software Factory build flow and THTWAAT Deploy above;
+          does not read or modify either flow's state. */}
+      <div className="mt-6">
+        <CodingAgentPanel />
+      </div>
 
       {/* Launch Checklist */}
       <section className="mt-6 rounded-3xl border border-emerald-900/40 bg-gradient-to-br from-slate-900 via-slate-950 to-emerald-950/30 p-5 sm:p-6">

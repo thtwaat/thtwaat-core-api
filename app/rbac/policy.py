@@ -23,8 +23,9 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.ENTERPRISE_READ, Permission.ENTERPRISE_MANAGE,
         Permission.ENTERPRISE_SECURITY, Permission.ENTERPRISE_AUDIT,
         Permission.ENTERPRISE_COMPLIANCE, Permission.ENTERPRISE_REPORTS,
+        Permission.CODING_AGENT_ACCESS,
     },
-    
+
     EnterpriseRole.ADMIN: {
         Permission.APPS_CREATE, Permission.APPS_READ, Permission.APPS_UPDATE, Permission.APPS_DELETE,
         Permission.USERS_CREATE, Permission.USERS_READ, Permission.USERS_UPDATE, Permission.USERS_DELETE,
@@ -37,8 +38,9 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.ENTERPRISE_READ, Permission.ENTERPRISE_MANAGE,
         Permission.ENTERPRISE_SECURITY, Permission.ENTERPRISE_AUDIT,
         Permission.ENTERPRISE_COMPLIANCE, Permission.ENTERPRISE_REPORTS,
+        Permission.CODING_AGENT_ACCESS,
     },
-    
+
     EnterpriseRole.MANAGER: {
         Permission.APPS_READ, Permission.APPS_UPDATE,
         Permission.USERS_READ,
@@ -48,8 +50,9 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.TEMPLATES_READ,
         Permission.BRANDING_READ,
         Permission.ENTERPRISE_READ, Permission.ENTERPRISE_REPORTS,
+        Permission.CODING_AGENT_ACCESS,
     },
-    
+
     EnterpriseRole.DEVELOPER: {
         Permission.APPS_CREATE, Permission.APPS_READ, Permission.APPS_UPDATE,
         Permission.COMPANY_READ,
@@ -59,8 +62,9 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.TEMPLATES_READ, Permission.TEMPLATES_MANAGE,
         Permission.BRANDING_READ,
         Permission.ENTERPRISE_READ, Permission.ENTERPRISE_REPORTS,
+        Permission.CODING_AGENT_ACCESS,
     },
-    
+
     EnterpriseRole.EMPLOYEE: {
         Permission.APPS_READ,
         Permission.USERS_READ,
@@ -70,6 +74,7 @@ ROLE_PERMISSIONS: dict[EnterpriseRole, set[Permission]] = {
         Permission.TEMPLATES_READ,
         Permission.BRANDING_READ,
         Permission.ENTERPRISE_READ,
+        Permission.CODING_AGENT_ACCESS,
     },
     
     EnterpriseRole.VIEWER: {
