@@ -174,11 +174,33 @@ class SslManager:
         domain.status = DomainStatus.LIVE
 
         if domain.cert_path and domain.key_path:
+            # Re-read static_root_path/runtime_proxy_target fresh from the
+            # DB rather than trusting this in-memory `domain` object's
+            # value. request()/renew() load `domain` BEFORE the blocking
+            # issue_certificate() ACME call above, which can take seconds —
+            # a concurrent static-site deploy request, running in a
+            # DIFFERENT process, can commit static_root_path onto this
+            # exact row via SslManager.set_static_root() (see
+            # app/static_sites/provider.py::bind_hostname_and_ssl) WHILE
+            # that call is in flight. This `domain` object predates that
+            # commit and would silently generate a default proxy-to-API
+            # vhost for a site that IS actually static (the bug: a freshly
+            # deployed static site's *.thtwaat.com hostname served the Core
+            # API's own JSON instead of the deployed files).
+            fresh = (
+                self.db.query(CompanyDomain.static_root_path, CompanyDomain.runtime_proxy_target)
+                .filter(CompanyDomain.id == domain.id)
+                .one_or_none()
+            )
+            static_root = fresh.static_root_path if fresh else getattr(domain, "static_root_path", None)
+            runtime_proxy_target = fresh.runtime_proxy_target if fresh else getattr(domain, "runtime_proxy_target", None)
             conf = generate_vhost(
                 domain.hostname,
                 domain.cert_path,
                 domain.key_path,
                 include_www=domain.hostname.count(".") == 1,
+                static_root=static_root,
+                runtime_proxy_target=runtime_proxy_target,
             )
             domain.nginx_config_path = str(conf)
             reload_ok, reload_msg = reload_nginx()
@@ -190,6 +212,96 @@ class SslManager:
 
         self.repo.save(domain)
         self._audit(event, domain_id=domain.id, company_id=domain.company_id, user_id=user_id, hostname=domain.hostname)
+        return self.status(domain.id, domain.company_id)
+
+    def set_static_root(
+        self, domain_id: UUID, company_id: UUID, static_root_path: Optional[str], user_id: UUID
+    ) -> Dict[str, Any]:
+        """Point (or unset) a domain's vhost at a static content directory.
+
+        Used by THTWAAT Deploy (app/static_sites) for redeploys/rollbacks —
+        it never re-issues a certificate, it only rewrites the nginx vhost
+        location block and reloads. If SSL hasn't activated yet, this just
+        persists static_root_path so the normal request()/_activate() path
+        picks it up automatically once the certificate is issued.
+        """
+        domain = self._get(domain_id, company_id)
+        domain.static_root_path = static_root_path
+        self.repo.save(domain)
+        self._audit(
+            "ssl_static_root_updated",
+            domain_id=domain.id,
+            company_id=company_id,
+            user_id=user_id,
+            hostname=domain.hostname,
+        )
+
+        if domain.cert_path and domain.key_path:
+            conf = generate_vhost(
+                domain.hostname,
+                domain.cert_path,
+                domain.key_path,
+                include_www=domain.hostname.count(".") == 1,
+                static_root=static_root_path,
+                runtime_proxy_target=getattr(domain, "runtime_proxy_target", None),
+            )
+            domain.nginx_config_path = str(conf)
+            self.repo.save(domain)
+            reload_ok, reload_msg = reload_nginx()
+            if not reload_ok:
+                logger.warning(
+                    "nginx_reload_deferred domain_id=%s hostname=%s reason=%s",
+                    domain.id, domain.hostname, reload_msg,
+                )
+
+        return self.status(domain.id, domain.company_id)
+
+    def set_runtime_proxy_target(
+        self, domain_id: UUID, company_id: UUID, runtime_proxy_target: Optional[str], user_id: UUID
+    ) -> Dict[str, Any]:
+        """Point (or unset) a domain's vhost at a Next.js runtime container.
+
+        THTWAAT Phase 3 analog of set_static_root() above — used by THTWAAT
+        Deploy (app/static_sites) for Next.js deploys/rollbacks. Never
+        re-issues a certificate; only rewrites the nginx vhost's location
+        block to proxy to "container-name:port" (see nginx_gen.py
+        RUNTIME_PROXY_LOCATION_BLOCK) and reloads. Setting this also clears
+        static_root_path (and vice versa in set_static_root would be the
+        caller's responsibility) — the two are mutually exclusive per
+        domain, and generate_vhost() itself prefers runtime_proxy_target if
+        both were ever somehow set.
+        """
+        domain = self._get(domain_id, company_id)
+        domain.runtime_proxy_target = runtime_proxy_target
+        if runtime_proxy_target:
+            domain.static_root_path = None
+        self.repo.save(domain)
+        self._audit(
+            "ssl_runtime_proxy_target_updated",
+            domain_id=domain.id,
+            company_id=company_id,
+            user_id=user_id,
+            hostname=domain.hostname,
+        )
+
+        if domain.cert_path and domain.key_path:
+            conf = generate_vhost(
+                domain.hostname,
+                domain.cert_path,
+                domain.key_path,
+                include_www=domain.hostname.count(".") == 1,
+                static_root=domain.static_root_path,
+                runtime_proxy_target=runtime_proxy_target,
+            )
+            domain.nginx_config_path = str(conf)
+            self.repo.save(domain)
+            reload_ok, reload_msg = reload_nginx()
+            if not reload_ok:
+                logger.warning(
+                    "nginx_reload_deferred domain_id=%s hostname=%s reason=%s",
+                    domain.id, domain.hostname, reload_msg,
+                )
+
         return self.status(domain.id, domain.company_id)
 
     def check_expiring(self, within_days: int = 30) -> List[CompanyDomain]:

@@ -1,0 +1,13 @@
+[Unit]
+Description=THTWAAT — block cloud instance metadata from Docker containers
+After=docker.service
+Requires=docker.service
+PartOf=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/opt/thtwaat/current/deploy/security/block-metadata-docker.sh
+
+[Install]
+WantedBy=multi-user.target

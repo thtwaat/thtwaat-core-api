@@ -14,6 +14,9 @@ services:
       retries: 20
     volumes:
       - thtwaat_test_pgdata:/var/lib/postgresql/data
+      # See deploy/db-init/01-extensions.sql — fixes "type vector does not
+      # exist" on a fresh test database's first `alembic upgrade head`.
+      - ./deploy/db-init:/docker-entrypoint-initdb.d:ro
 
   redis:
     image: redis:7-alpine

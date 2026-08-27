@@ -16,6 +16,7 @@ describe("super-admin helpers", () => {
     expect(SUPER_ADMIN_NAV[0].href).toBe("/admin");
     const hrefs = SUPER_ADMIN_NAV.map((n) => n.href);
     expect(hrefs).toContain("/admin/companies");
+    expect(hrefs).toContain("/admin/command-center");
     expect(hrefs).toContain("/admin/ai");
     expect(hrefs).toContain("/admin/audit");
     expect(hrefs).toContain("/admin/marketplace");

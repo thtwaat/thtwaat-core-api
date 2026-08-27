@@ -7,6 +7,18 @@ source "${DEPLOY_DIR}/lib/common.sh"
 
 bash "${DEPLOY_DIR}/security/configure-ufw.sh"
 
+# THTWAAT Deploy — cloud metadata SSRF block that actually covers Docker
+# containers (see deploy/security/block-metadata-docker.sh for why the UFW
+# rule above isn't sufficient on its own). Installed as a systemd unit tied
+# to docker.service so it's reliably reapplied after every Docker restart,
+# not just once at bootstrap time.
+chmod +x "${DEPLOY_DIR}/security/block-metadata-docker.sh"
+install -m 0644 "${DEPLOY_DIR}/systemd/thtwaat-docker-metadata-block.service" \
+  /etc/systemd/system/thtwaat-docker-metadata-block.service
+systemctl daemon-reload
+systemctl enable --now thtwaat-docker-metadata-block.service
+ok "Docker container metadata-SSRF block installed (DOCKER-USER chain)"
+
 install -d /etc/fail2ban/jail.d /etc/fail2ban/filter.d
 install -m 0644 "${DEPLOY_DIR}/security/fail2ban/jail.local" /etc/fail2ban/jail.d/thtwaat.local
 install -m 0644 "${DEPLOY_DIR}/security/fail2ban/filter-nginx-limit.conf" \

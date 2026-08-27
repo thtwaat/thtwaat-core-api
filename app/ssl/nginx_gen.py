@@ -54,6 +54,13 @@ server {{
         deny all;
     }}
 
+{root_location_block}}}
+"""
+
+# Default location block — proxies to the THTWAAT API (AI-generated Studio
+# products, agent publish, all pre-existing domain/product traffic). This is
+# the ONLY behavior any existing domain has ever used; do not change it.
+PROXY_LOCATION_BLOCK = """\
     location / {{
         limit_req zone=api_limit burst=40 nodelay;
         proxy_pass http://api_backend;
@@ -66,7 +73,43 @@ server {{
         proxy_set_header Connection "upgrade";
         proxy_read_timeout 120s;
     }}
-}}
+"""
+
+# Static-site location block — serves extracted THTWAAT Deploy content
+# directly from disk. Only used when the domain has a static_root_path set
+# (see app/static_sites); every other domain keeps proxying as before.
+STATIC_LOCATION_BLOCK = """\
+    location / {{
+        root {static_root};
+        index index.html;
+        try_files $uri $uri/ /index.html =404;
+    }}
+"""
+
+# Next.js runtime-proxy location block (THTWAAT Phase 3) — proxies to an
+# isolated per-deployment runtime container by its fixed Docker container
+# name (never a host port — see app/static_sites/nextjs_runtime.py and
+# docker/next-runtime/README.md). `resolver 127.0.0.11` + `set $... ;
+# proxy_pass http://$...` (rather than a bare proxy_pass) forces nginx to
+# re-resolve the container's DNS entry on every request instead of caching
+# the IP for the life of the worker process — required because a redeploy or
+# rollback can start a *new* container that reuses the same name at a new
+# IP. Mirrors the exact pattern already used by nginx/conf.d/domains/
+# api.thtwaat.com.conf for the same reason (Docker recreating `api`).
+RUNTIME_PROXY_LOCATION_BLOCK = """\
+    location / {{
+        resolver 127.0.0.11 valid=10s;
+        set $nextjs_upstream {runtime_target};
+        proxy_pass http://$nextjs_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 60s;
+    }}
 """
 
 
@@ -76,14 +119,50 @@ def conf_dir() -> Path:
     return d
 
 
+def _remap_static_root(static_root: str) -> str:
+    """Map a host-relative static-sites path to the nginx container path.
+
+    Mirrors the cert-path remap below: STATIC_SITES_DIR on the host (e.g.
+    data/static-sites/<company>/<site>/<deployment>) becomes
+    STATIC_SITES_CONTAINER_PREFIX/<company>/<site>/<deployment> inside the
+    nginx container, which mounts that tree read-only.
+    """
+    rel = Path(static_root).as_posix()
+    prefix = getattr(settings, "STATIC_SITES_CONTAINER_PREFIX", None)
+    if not prefix:
+        return rel
+
+    host_root = Path(getattr(settings, "STATIC_SITES_DIR", "data/static-sites")).as_posix().rstrip("/")
+    marker = host_root.rsplit("/", 1)[-1] or "static-sites"
+
+    if host_root and host_root in rel:
+        rel = rel.split(host_root, 1)[1].lstrip("/")
+    elif f"/{marker}/" in rel:
+        rel = rel.split(f"/{marker}/", 1)[1]
+    elif rel.startswith(f"{marker}/"):
+        rel = rel[len(marker) + 1 :]
+
+    return f"{prefix.rstrip('/')}/{rel}"
+
+
 def generate_vhost(
     hostname: str,
     cert_path: str,
     key_path: str,
     *,
     include_www: bool = False,
+    static_root: Optional[str] = None,
+    runtime_proxy_target: Optional[str] = None,
 ) -> Path:
-    """Write nginx vhost for a custom domain. Returns config path."""
+    """Write nginx vhost for a domain. Returns config path.
+
+    static_root and runtime_proxy_target are optional and mutually
+    exclusive — only ever set for THTWAAT Deploy static sites / Next.js
+    deployments respectively (see app/static_sites). Every proxy-mode domain
+    (the entire pre-existing Studio/agent-publish/product surface) passes
+    both as None and gets byte-identical output to before either parameter
+    existed. runtime_proxy_target takes precedence if somehow both are set.
+    """
     out_dir = conf_dir()
     out_dir.mkdir(parents=True, exist_ok=True)
     webroot = str(Path(getattr(settings, "SSL_WEBROOT_DIR", "nginx/acme-webroot")).resolve()).replace("\\", "/")
@@ -102,16 +181,28 @@ def generate_vhost(
         webroot = "/var/www/acme"
 
     www_alias = f" www.{hostname}" if include_www and not hostname.startswith("www.") else ""
+    if runtime_proxy_target:
+        location_block = RUNTIME_PROXY_LOCATION_BLOCK.format(runtime_target=runtime_proxy_target)
+        mode = "runtime_proxy"
+    elif static_root:
+        location_block = STATIC_LOCATION_BLOCK.format(static_root=_remap_static_root(static_root))
+        mode = "static"
+    else:
+        # PROXY_LOCATION_BLOCK is itself a format-string literal (its own {{ }}
+        # need unescaping) — .format() with no substitutions still does that.
+        location_block = PROXY_LOCATION_BLOCK.format()
+        mode = "proxy"
     content = VHOST_TEMPLATE.format(
         hostname=hostname,
         www_alias=www_alias,
         webroot=webroot,
         cert_path=Path(cert_path).as_posix(),
         key_path=Path(key_path).as_posix(),
+        root_location_block=location_block,
     )
     out = out_dir / f"{hostname}.conf"
     out.write_text(content, encoding="utf-8")
-    logger.info("nginx_vhost_written path=%s hostname=%s", out, hostname)
+    logger.info("nginx_vhost_written path=%s hostname=%s mode=%s", out, hostname, mode)
     return out
 
 
@@ -122,9 +213,48 @@ def remove_vhost(hostname: str) -> None:
         logger.info("nginx_vhost_removed hostname=%s", hostname)
 
 
-def reload_nginx() -> tuple[bool, str]:
-    """Best-effort nginx reload (docker exec or local nginx -s reload)."""
+def validate_nginx_config() -> tuple[Optional[bool], str]:
+    """Best-effort `nginx -t` against the on-disk generated configs.
+
+    Returns (True, msg) on a clean pass, (False, msg) on a confirmed syntax
+    failure, or (None, msg) if nginx isn't reachable at all (docker
+    compose/binary unavailable) — None is "unknown", not "failed", so
+    reload_nginx() below still proceeds in that case exactly as it always
+    has (this is additive safety, not a new hard requirement everywhere the
+    binary happens to be absent, e.g. most unit-test/dev environments).
+    """
     import subprocess
+
+    for cmd in (
+        ["docker", "compose", "exec", "-T", "nginx", "nginx", "-t"],
+        ["nginx", "-t"],
+    ):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+        except Exception:
+            continue
+        if r.returncode == 0:
+            return True, "nginx config test passed"
+        return False, (r.stderr or r.stdout or "nginx -t failed").strip()[:2000]
+    return None, "nginx config test skipped (container/binary unavailable)"
+
+
+def reload_nginx() -> tuple[bool, str]:
+    """Best-effort nginx reload (docker exec or local nginx -s reload).
+
+    Runs `nginx -t` first — a bad generated vhost (e.g. a future brace-
+    template bug) must never be applied to the shared nginx container and
+    take down every other domain it serves. A confirmed test failure blocks
+    the reload; an unreachable/unavailable nginx (the common case in
+    dev/test) falls through to the reload attempt exactly as before this
+    check existed.
+    """
+    import subprocess
+
+    ok, msg = validate_nginx_config()
+    if ok is False:
+        logger.error("nginx_config_test_failed reason=%s", msg)
+        return False, f"nginx config test failed, reload skipped: {msg}"
 
     # Prefer docker compose nginx container
     for cmd in (

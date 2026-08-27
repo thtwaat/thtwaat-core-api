@@ -2,6 +2,7 @@
 
 export const SUPER_ADMIN_NAV = [
   { href: "/admin", label: "Dashboard", exact: true as boolean },
+  { href: "/admin/command-center", label: "Command Center", exact: false as boolean },
   { href: "/admin/companies", label: "Workspaces", exact: false as boolean },
   { href: "/admin/users", label: "Users", exact: false as boolean },
   { href: "/admin/ai", label: "AI Analytics", exact: false as boolean },

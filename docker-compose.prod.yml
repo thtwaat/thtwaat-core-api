@@ -16,6 +16,58 @@ networks:
   thtwaat_net:
     name: thtwaat_net
     external: true
+  # THTWAAT Deploy — isolated Vite build sandbox network (create once):
+  #   docker network create thtwaat_vite_build_net
+  # Deliberately NOT declared on any service below and NOT attached to
+  # thtwaat_net — ephemeral build containers (app/static_sites/vite_build.py
+  # direct mode, or orchestrator/app/build.py in the recommended
+  # orchestrator mode below) are launched via ad-hoc
+  # `docker run --network thtwaat_vite_build_net`, not as a compose service,
+  # and must never be able to reach Postgres, Redis, the internal API, or
+  # nginx management by container DNS name or private network route.
+  thtwaat_vite_build_net:
+    name: thtwaat_vite_build_net
+    external: true
+  # THTWAAT Deploy — build-orchestrator control plane. Create with:
+  #   docker network create --internal thtwaat_orchestrator_net
+  # (--internal so containers on it get no route to the internet either;
+  # `internal:` is not repeated below because Compose ignores non-name keys
+  # on external: true networks — the flag must be passed at creation time.)
+  # api/worker reach build-orchestrator here to request a Vite build over
+  # HTTP. Deliberately NOT the same network as thtwaat_socket_proxy_net
+  # below — api/worker must never be able to reach docker-socket-proxy
+  # directly, only through the orchestrator's narrow, UUID-only request
+  # schema (see orchestrator/app/main.py).
+  thtwaat_orchestrator_net:
+    name: thtwaat_orchestrator_net
+    external: true
+  # THTWAAT Deploy — Docker API control plane. Create with:
+  #   docker network create --internal thtwaat_socket_proxy_net
+  # ONLY build-orchestrator and docker-socket-proxy sit on this network. This
+  # is what makes "compromise api" != "get Docker socket access": api/worker
+  # can reach the orchestrator's narrow HTTP API, but have no network path to
+  # the socket-proxy (or the real docker.sock) at all. See orchestrator/README.md
+  # for the full trade-off writeup and the docker-socket-proxy allowlist below.
+  thtwaat_socket_proxy_net:
+    name: thtwaat_socket_proxy_net
+    external: true
+    internal: true
+  # THTWAAT Phase 3 — Next.js runtime network. Create with:
+  #   docker network create --internal thtwaat_nextjs_runtime_net
+  # (--internal: containers on it get no route to the internet, matching
+  # thtwaat_orchestrator_net above.) Only nginx, build-orchestrator, and
+  # ad-hoc per-deployment runtime containers
+  # (thtwaat-nextjs-runtime-<hex>, started by orchestrator/orchestrator_app/
+  # nextjs_runtime.py, NOT declared as compose services) ever sit on this
+  # network — never db/redis/api/worker. nginx reaches a runtime container
+  # by its fixed name over Docker's embedded DNS (see app/ssl/nginx_gen.py
+  # RUNTIME_PROXY_LOCATION_BLOCK); build-orchestrator sits on it too so it
+  # can health-probe a container it just started by that same name. No host
+  # port is ever published for any runtime container.
+  thtwaat_nextjs_runtime_net:
+    name: thtwaat_nextjs_runtime_net
+    external: true
+    internal: true
 
 services:
   nginx:
@@ -28,8 +80,16 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl
       - ./nginx/conf.d/domains:/etc/nginx/conf.d/domains:ro
       - ./nginx/acme-webroot:/var/www/acme:ro
+      # THTWAAT Deploy static sites — nginx only ever reads these, never writes.
+      - ./data/static-sites:/etc/nginx/static-sites:ro
     networks:
       - thtwaat_net
+      # THTWAAT Phase 3 — lets nginx resolve/reach Next.js runtime
+      # containers by name (RUNTIME_PROXY_LOCATION_BLOCK). Not needed and
+      # not attached until at least one Next.js domain actually sets
+      # runtime_proxy_target; harmless (internal-only, no route to db/redis)
+      # if attached with none configured yet.
+      - thtwaat_nextjs_runtime_net
     depends_on:
       api:
         condition: service_healthy
@@ -100,20 +160,43 @@ services:
       # /app/nginx/ssl; nginx itself sees the same host dir at /etc/nginx/ssl —
       # generate_vhost() remaps between the two via NGINX_CERT_CONTAINER_PREFIX).
       SSL_CERTS_DIR: /app/nginx/ssl/domains
+      # Must match the ./data/static-sites mount below (api/worker write here;
+      # nginx mounts the same host dir read-only at STATIC_SITES_CONTAINER_PREFIX).
+      STATIC_SITES_DIR: /app/data/static-sites
+      STATIC_SITES_CONTAINER_PREFIX: /etc/nginx/static-sites
       REDIS_HOST: redis
       DB_HOST: db
       PYTHONPATH: /app
       # In-stack Ollama daemon (do not inherit host.docker.internal from .env).
       OLLAMA_URL: http://ollama:11434
+      # THTWAAT Deploy — Vite builds. api/worker never get docker.sock (see
+      # thtwaat_socket_proxy_net above and orchestrator/README.md) — they
+      # only ever call build-orchestrator's narrow HTTP API. Leave
+      # VITE_BUILD_ORCHESTRATOR_URL unset (and VITE_BUILD_ENABLED=false, the
+      # default) until build-orchestrator + docker-socket-proxy are actually
+      # provisioned and this has been exercised on staging.
+      VITE_BUILD_ORCHESTRATOR_URL: ${VITE_BUILD_ORCHESTRATOR_URL:-http://build-orchestrator:8080}
+      # Empty until an operator sets it in .env.prod — vite_build.py treats
+      # an empty secret as "orchestrator mode not configured" and falls back
+      # to VITE_BUILD_ENABLED's direct-mode/disabled behavior (see settings.py).
+      VITE_BUILD_ORCHESTRATOR_SHARED_SECRET: ${ORCHESTRATOR_SHARED_SECRET:-}
+      # THTWAAT Phase 3 — Next.js. Reuses the SAME orchestrator URL/secret
+      # above (VITE_BUILD_ORCHESTRATOR_URL/_SHARED_SECRET) — see
+      # app/static_sites/nextjs_build.py / nextjs_runtime.py. Off by default
+      # like VITE_BUILD_ENABLED; an operator must explicitly opt in after
+      # verifying the vite-build profile on staging.
+      NEXTJS_BUILD_ENABLED: ${NEXTJS_BUILD_ENABLED:-false}
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/knowledge:/app/data/knowledge
       - ./data/backups:/app/data/backups
+      - ./data/static-sites:/app/data/static-sites
       - ./nginx/ssl:/app/nginx/ssl
       - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
       - ./nginx/acme-webroot:/app/nginx/acme-webroot
     networks:
       - thtwaat_net
+      - thtwaat_orchestrator_net
     command: >
       bash -c "alembic upgrade head &&
                (python -m scripts.seed_marketplace --no-refresh || echo 'marketplace seed failed (non-fatal)') &&
@@ -166,16 +249,24 @@ services:
       DB_HOST: db
       SSL_MODE: ${SSL_MODE:-certbot}
       SSL_CERTS_DIR: /app/nginx/ssl/domains
+      STATIC_SITES_DIR: /app/data/static-sites
+      STATIC_SITES_CONTAINER_PREFIX: /etc/nginx/static-sites
       OLLAMA_URL: http://ollama:11434
       PYTHONPATH: /app
+      # See the identical block on `api` above — worker never gets docker.sock either.
+      VITE_BUILD_ORCHESTRATOR_URL: ${VITE_BUILD_ORCHESTRATOR_URL:-http://build-orchestrator:8080}
+      VITE_BUILD_ORCHESTRATOR_SHARED_SECRET: ${ORCHESTRATOR_SHARED_SECRET:-}
+      NEXTJS_BUILD_ENABLED: ${NEXTJS_BUILD_ENABLED:-false}
     volumes:
       - ./data/uploads:/app/data/uploads
       - ./data/knowledge:/app/data/knowledge
       - ./data/backups:/app/data/backups
+      - ./data/static-sites:/app/data/static-sites
       - ./nginx/ssl:/app/nginx/ssl
       - ./nginx/conf.d/domains:/app/nginx/conf.d/domains
     networks:
       - thtwaat_net
+      - thtwaat_orchestrator_net
     command: python scripts/worker.py
     depends_on:
       db:
@@ -225,6 +316,133 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # THTWAAT Deploy — build orchestration control plane (§1/§2 of the Phase 2
+  # staging validation report). NOT started by default — both services below
+  # require thtwaat_orchestrator_net + thtwaat_socket_proxy_net to already
+  # exist (see the `networks:` block at the top of this file) and
+  # ORCHESTRATOR_SHARED_SECRET set in .env.prod before `docker compose up`
+  # will bring them up cleanly. Until an operator does that and sets
+  # VITE_BUILD_ENABLED=true, api/worker simply never call either of these.
+  #
+  # docker-socket-proxy is the ONLY container in this entire stack that
+  # touches /var/run/docker.sock. It exposes a deliberately narrow subset of
+  # the Docker Engine API over plain TCP to build-orchestrator alone (see
+  # thtwaat_socket_proxy_net above) — no build, no exec, no privileged
+  # create, no arbitrary image pull. Verify the exact env flags below still
+  # match your docker-socket-proxy version's semantics before relying on
+  # them in production — this has been reviewed but not live-tested against
+  # a real socket-proxy deployment (no VPS access from this validation pass;
+  # see §10/§11 of the report). If in doubt, prefer DOCKER_SOCKET_PROXY=0
+  # below and mount /var/run/docker.sock directly into build-orchestrator
+  # instead (see that service's commented-out alternative) — strictly worse
+  # in depth-of-defense terms, but at least its behavior is unambiguous.
+  docker-socket-proxy:
+    container_name: thtwaat-docker-socket-proxy
+    image: tecnativa/docker-socket-proxy:latest
+    profiles: ["vite-build"]
+    environment:
+      # Resource-scoped allowlist. 1 = permitted, 0 (or unset) = denied.
+      CONTAINERS: 1   # /containers/* — create/start/wait/kill/remove/inspect
+      IMAGES: 1       # read-only-in-practice: docker CLI inspects the local
+                      # image before `run`; BUILD=0 below still blocks pushing
+                      # a Dockerfile through this socket.
+      POST: 1         # global gate for any mutating call — required for
+                      # create/start/kill/wait; scoped down to just
+                      # CONTAINERS=1's endpoints by the flags below being 0.
+      NETWORKS: 0
+      VOLUMES: 0
+      EXEC: 0
+      BUILD: 0
+      COMMIT: 0
+      CONFIGS: 0
+      DISTRIBUTION: 0
+      PLUGINS: 0
+      SERVICES: 0
+      SESSION: 0
+      SWARM: 0
+      SYSTEM: 0
+      TASKS: 0
+      NODES: 0
+      SECRETS: 0
+      AUTH: 0
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - thtwaat_socket_proxy_net
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+
+  build-orchestrator:
+    container_name: thtwaat-build-orchestrator
+    build: ./orchestrator
+    profiles: ["vite-build"]
+    environment:
+      # Empty default deliberately: Compose interpolates ${...} for every
+      # service in this file regardless of profile activation, so a `:?`
+      # required-var here would break plain `docker compose up -d` for
+      # every deploy, not just ones using --profile vite-build. The
+      # orchestrator's own settings.py has no default for this field and
+      # will refuse to boot with a clear error if it's actually left empty
+      # when this profile is started — that's the right place to enforce it.
+      ORCHESTRATOR_SHARED_SECRET: ${ORCHESTRATOR_SHARED_SECRET:-}
+      # Talk to the real Docker daemon only through the allowlisted proxy
+      # above — never mount docker.sock into this container directly unless
+      # you have deliberately decided the socket-proxy allowlist is
+      # insufficient for your needs (see the long comment above).
+      DOCKER_HOST: tcp://docker-socket-proxy:2375
+      VITE_BUILD_IMAGE: ${VITE_BUILD_IMAGE:-thtwaat-vite-build:20}
+      VITE_BUILD_NETWORK: ${VITE_BUILD_NETWORK:-thtwaat_vite_build_net}
+      VITE_MAX_BUILD_TIME_SECONDS: ${VITE_MAX_BUILD_TIME_SECONDS:-300}
+      VITE_MAX_BUILD_MEMORY_MB: ${VITE_MAX_BUILD_MEMORY_MB:-1536}
+      VITE_MAX_BUILD_CPU: ${VITE_MAX_BUILD_CPU:-1.0}
+      # Must be the LITERAL HOST path of the ./data/static-sites mount below
+      # (see deploy/bootstrap/02-directories.sh — /opt/thtwaat/shared/data/static-sites
+      # on a real VPS deploy) — the host Docker daemon resolves the -v mounts
+      # this service asks docker-socket-proxy to create against the host
+      # filesystem, not against this container's own view of it. Wrong value
+      # here means the build container gets bind-mounted the wrong host
+      # directory — verify this on first deploy, don't assume the default.
+      # Same reasoning as ORCHESTRATOR_SHARED_SECRET above — must be set in
+      # .env.prod to the absolute host path of ./data/static-sites (e.g.
+      # /opt/thtwaat/shared/data/static-sites — see
+      # deploy/bootstrap/02-directories.sh) before enabling this profile;
+      # settings.py has no default and will refuse to boot without it.
+      STATIC_SITES_HOST_DIR: ${STATIC_SITES_HOST_DIR:-}
+      # THTWAAT Phase 3 — Next.js build + runtime. Reuses VITE_BUILD_NETWORK
+      # for the build sandbox by default (NEXTJS_BUILD_NETWORK below); the
+      # runtime network is new and required for runtime containers to start.
+      NEXTJS_BUILD_IMAGE: ${NEXTJS_BUILD_IMAGE:-thtwaat-nextjs-build:20}
+      NEXTJS_BUILD_NETWORK: ${NEXTJS_BUILD_NETWORK:-thtwaat_vite_build_net}
+      NEXTJS_MAX_BUILD_TIME_SECONDS: ${NEXTJS_MAX_BUILD_TIME_SECONDS:-600}
+      NEXTJS_MAX_BUILD_MEMORY_MB: ${NEXTJS_MAX_BUILD_MEMORY_MB:-2048}
+      NEXTJS_MAX_BUILD_CPU: ${NEXTJS_MAX_BUILD_CPU:-1.5}
+      NEXTJS_RUNTIME_IMAGE: ${NEXTJS_RUNTIME_IMAGE:-thtwaat-nextjs-runtime:20}
+      NEXTJS_RUNTIME_NETWORK: ${NEXTJS_RUNTIME_NETWORK:-thtwaat_nextjs_runtime_net}
+      NEXTJS_RUNTIME_MEMORY_MB: ${NEXTJS_RUNTIME_MEMORY_MB:-512}
+      NEXTJS_RUNTIME_CPU: ${NEXTJS_RUNTIME_CPU:-0.5}
+    volumes:
+      - ./data/static-sites:/data/static-sites
+    networks:
+      - thtwaat_orchestrator_net
+      - thtwaat_socket_proxy_net
+      # THTWAAT Phase 3 — required so this service can health-probe a
+      # runtime container it just started, by container name, over Docker's
+      # embedded DNS (see orchestrator_app/nextjs_runtime.py).
+      - thtwaat_nextjs_runtime_net
+    depends_on:
+      - docker-socket-proxy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/live', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+
   backup:
     container_name: thtwaat-backup
     build: .
@@ -257,6 +475,11 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # Runs once, only against a genuinely empty data directory — see
+      # deploy/db-init/01-extensions.sql. Fixes the "type vector does not
+      # exist" failure a fresh database hits on its first alembic migration
+      # (Phase 2 staging validation report §6).
+      - ./deploy/db-init:/docker-entrypoint-initdb.d:ro
     networks:
       - thtwaat_net
     healthcheck:

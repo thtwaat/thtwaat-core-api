@@ -49,6 +49,9 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+      # See deploy/db-init/01-extensions.sql — fixes "type vector does not
+      # exist" on a fresh dev database's first `alembic upgrade head`.
+      - ./deploy/db-init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s

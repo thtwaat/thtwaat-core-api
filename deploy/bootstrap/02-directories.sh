@@ -15,6 +15,7 @@ mkdir -p \
   "${ROOT}/shared/data/uploads" \
   "${ROOT}/shared/data/knowledge" \
   "${ROOT}/shared/data/backups" \
+  "${ROOT}/shared/data/static-sites" \
   "${ROOT}/shared/nginx/ssl/domains" \
   "${ROOT}/shared/nginx/conf.d/domains" \
   "${ROOT}/shared/nginx/acme-webroot/.well-known/acme-challenge" \

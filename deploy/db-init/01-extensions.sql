@@ -1,0 +1,12 @@
+-- Runs automatically, once, the first time the `db` container initializes an
+-- empty data directory (standard postgres/pgvector image behavior for
+-- /docker-entrypoint-initdb.d/*.sql — see docker-compose.yml /
+-- docker-compose.prod.yml). Every migration below abf83f36755c
+-- ("Initial schema") declares VECTOR(...) columns and will fail with
+-- `type "vector" does not exist` on a genuinely fresh database without this.
+--
+-- Does NOT run against an already-initialized data directory (existing
+-- staging/prod databases already have this extension, or their first
+-- migration would already have failed the same way this file exists to
+-- prevent — see the Phase 2 staging validation report §6).
+CREATE EXTENSION IF NOT EXISTS vector;
