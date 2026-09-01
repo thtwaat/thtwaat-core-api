@@ -14,6 +14,17 @@
   font-family: var(--tht-font);
 }
 
+/* Every element we toggle via the `hidden` DOM property also carries its own
+   `display: flex/grid` rule (composer, recording bar, attachment preview,
+   panel, badge). Author-origin CSS always wins over the UA stylesheet's
+   `[hidden] { display: none }`, regardless of specificity, so without this
+   those elements stayed visibly rendered even while `.hidden === true` —
+   e.g. the voice recording bar showed permanently, letting Stop be clicked
+   while no recording was active, which silently no-ops. */
+[hidden] {
+  display: none !important;
+}
+
 .tht-root[data-theme="dark"] {
   --tht-bg: #0b1220;
   --tht-fg: #f9fafb;
