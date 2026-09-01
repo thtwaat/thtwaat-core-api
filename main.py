@@ -59,6 +59,15 @@ import app.agent_platform.providers.anthropic   # noqa
 import app.agent_platform.providers.ollama      # noqa
 import app.agent_platform.providers.openrouter  # noqa
 
+# Import all voice (STT/TTS) provider modules to trigger registry self-registration
+import app.agent_platform.voice.providers.openai_voice  # noqa
+
+# Import all telephony provider modules to trigger registry self-registration
+import app.agent_platform.telephony.twilio_provider  # noqa
+
+# Import all image-generation provider modules to trigger registry self-registration
+import app.agent_platform.image_generation.providers.openai_image  # noqa
+
 # Import all agent tool modules to trigger ToolRegistry self-registration
 import app.agent_platform.tools.knowledge_search  # noqa
 # Use lifespan events for startup and shutdown instead of deprecated @app.on_event
@@ -192,6 +201,7 @@ app.include_router(api_router)
 # Include the Agent Platform v2 routers (used by platform web)
 from app.agent_platform.routers.agent_router import router as agent_router
 from app.agent_platform.routers.public_router import router as public_router
+from app.agent_platform.routers.telephony_router import router as telephony_router
 from app.agent_platform.knowledge.routers import router as knowledge_router
 from app.agent_platform.routers.conversation_router import router as conversation_router
 from app.agent_platform.routers.leads_router import public_leads_router, router as leads_router
@@ -200,6 +210,7 @@ from app.agent_platform.routers.admin_router import router as agent_admin_router
 app.include_router(agent_router)
 app.include_router(agent_admin_router)
 app.include_router(public_router)
+app.include_router(telephony_router)
 app.include_router(public_leads_router)
 app.include_router(knowledge_router)
 app.include_router(conversation_router)

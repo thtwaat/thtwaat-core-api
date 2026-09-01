@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Dict, Optional, Tuple
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -11,41 +11,25 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.agent_platform.agent_runtime import (
     AI_BLOCKED_STATUSES,
+    AgentRuntime,
     agent_capabilities,
-    build_tool_schemas,
     conversation_closed_message,
     detect_handoff_intent,
     extract_lead,
     handoff_wait_message,
-    language_system_instruction,
-    maybe_execute_tool_calls,
-    memory_message_window,
     merge_lead_into_metadata,
     resolve_locale,
     resolve_provider_and_model,
-    search_agent_knowledge,
-    to_gateway_role,
 )
 from app.agent_platform.models.agent import AgentConfig
 from app.agent_platform.models.api_key import AgentApiKey
 from app.agent_platform.models.conversation import Conversation, Message
 from app.agent_platform.knowledge.models.knowledge_base import KnowledgeBaseAgent
-from app.agent_platform.gateway.service import AIGatewayService
-from app.agent_platform.schemas import UnifiedChatRequest
 from app.agent_platform.publish.schemas import PublicChatUsage
 from app.usage.dimensions import UsageDimension
 from app.usage.service import UsageService
 
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT_TEMPLATE = """\
-You are a helpful, accurate assistant. Answer the user's question using ONLY \
-the context provided below. If the answer is not in the context, say \
-"I don't have enough information to answer that."
-
-Context:
-{context}
-"""
 
 
 async def run_public_chat(
@@ -54,13 +38,14 @@ async def run_public_chat(
     message: str,
     session_id: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    images: Optional[List[Dict[str, Any]]] = None,
 ) -> Tuple[str, str, PublicChatUsage, Dict[str, Any]]:
     """Returns (reply, conversation_id, usage, extras).
 
     ``extras`` may include status, handoff, lead, thinking_stages.
     """
     async for event in iter_public_chat_events(
-        db, api_key, message, session_id=session_id, metadata=metadata
+        db, api_key, message, session_id=session_id, metadata=metadata, images=images
     ):
         if event[0] == "done":
             payload = event[1]
@@ -86,6 +71,7 @@ async def iter_public_chat_events(
     message: str,
     session_id: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
+    images: Optional[List[Dict[str, Any]]] = None,
 ) -> AsyncIterator[Tuple[str, Dict[str, Any]]]:
     """Yield SSE-ready events: thinking → token* → done | error."""
     usage_svc = UsageService(db)
@@ -212,9 +198,6 @@ async def iter_public_chat_events(
         return
 
     provider, model = resolve_provider_and_model(agent)
-    system_prompt = agent.system_prompt_template or "You are a helpful assistant."
-    if caps.get("multilingual", True):
-        system_prompt = system_prompt + language_system_instruction(locale)
 
     has_knowledge = (
         db.query(KnowledgeBaseAgent.id).filter(KnowledgeBaseAgent.agent_id == agent.id).first()
@@ -222,8 +205,34 @@ async def iter_public_chat_events(
     )
     if has_knowledge:
         yield ("thinking", {"stage": "searching", "message": "Searching knowledge…"})
-        try:
-            sources = search_agent_knowledge(db, agent.id, message, api_key.company_id, top_k=5)
+
+    yield ("thinking", {"stage": "generating", "message": "Thinking…"})
+
+    db.refresh(conv)
+
+    usage_ctx = dict(
+        api_key_id=str(api_key.id),
+        widget_id=agent.widget_id,
+        source="public_chat",
+        is_widget=True,
+        create_conversation=created_conversation,
+    )
+
+    try:
+        result, _sources = await AgentRuntime.run_turn(
+            db,
+            agent=agent,
+            company_id=api_key.company_id,
+            conv_messages=conv.messages,
+            user_content=message,
+            locale=locale,
+            provider=provider,
+            model=model,
+            temperature=agent.temperature or 0.7,
+            image_blocks=images,
+            usage_ctx=usage_ctx,
+        )
+        if has_knowledge:
             try:
                 usage_svc.record(
                     api_key.company_id,
@@ -235,66 +244,6 @@ async def iter_public_chat_events(
                 )
             except Exception:
                 pass
-            if sources:
-                blocks = [
-                    f"[{i}] (Source: {src.document_name})\n{src.text}"
-                    for i, src in enumerate(sources, start=1)
-                ]
-                context = "\n\n---\n\n".join(blocks)
-                system_prompt = (
-                    _SYSTEM_PROMPT_TEMPLATE.format(context=context)
-                    + "\n\nOriginal Instructions: "
-                    + (agent.system_prompt_template or "")
-                    + language_system_instruction(locale)
-                )
-        except Exception as exc:
-            logger.warning("RAG retrieval failed for public chat: %s", exc)
-
-    yield ("thinking", {"stage": "generating", "message": "Thinking…"})
-
-    db.refresh(conv)
-    prior = memory_message_window(
-        conv.messages,
-        enabled=caps.get("memory", True),
-        max_messages=40,
-    )
-    messages = [{"role": "system", "content": system_prompt}]
-    for msg in prior:
-        role = to_gateway_role(msg.role)
-        if role in ("user", "assistant", "system", "tool"):
-            messages.append({"role": role, "content": msg.content})
-
-    allowed_tools = agent.allowed_tools or []
-    chat_request = UnifiedChatRequest(
-        company_id=str(api_key.company_id),
-        agent_id=str(agent.id),
-        provider=provider,
-        model=model,
-        messages=messages,
-        temperature=agent.temperature or 0.7,
-        max_tokens=1024,
-        tools=build_tool_schemas(allowed_tools) if allowed_tools else None,
-    )
-
-    usage_ctx = dict(
-        api_key_id=str(api_key.id),
-        widget_id=agent.widget_id,
-        source="public_chat",
-        is_widget=True,
-        create_conversation=created_conversation,
-    )
-
-    try:
-        result = await AIGatewayService.process_request(chat_request, db=db, **usage_ctx)
-        if result.tool_calls:
-            result = await maybe_execute_tool_calls(
-                chat_request,
-                result,
-                db=db,
-                company_id=api_key.company_id,
-                agent_id=agent.id,
-                usage_ctx=usage_ctx,
-            )
         reply = result.content or ""
         usage = PublicChatUsage(
             input_tokens=result.input_tokens,

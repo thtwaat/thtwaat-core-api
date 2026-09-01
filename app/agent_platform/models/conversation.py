@@ -6,8 +6,10 @@ from sqlalchemy.orm import relationship
 from app.models.base import Base, TimestampMixin
 
 
-# Channels unified in one inbox (no social/email/voice in Module 2)
-INBOX_CHANNELS = frozenset({"widget", "dashboard", "api"})
+# Channels unified in one inbox. "voice" = mic/push-to-talk turns (widget or
+# dashboard); "call" = a telephony call session (see app/agent_platform/telephony);
+# "image" = a text-prompt image-generation turn (see app/agent_platform/image_generation).
+INBOX_CHANNELS = frozenset({"widget", "dashboard", "api", "voice", "call", "image"})
 # Handoff-ready statuses — human reply path can land later without schema churn
 INBOX_STATUSES = frozenset({"open", "pending_human", "human", "closed"})
 

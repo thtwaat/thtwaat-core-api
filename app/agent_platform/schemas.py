@@ -126,9 +126,67 @@ class ApiKeyResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AgentCapabilities(BaseModel):
+    """Documents the shape of ``AgentConfig.web_config['capabilities']``.
+
+    web_config itself stays an untyped dict on the wire (changing that would be
+    a breaking API change); this model exists for internal validation/reference
+    and as the single place new capabilities (voice, calling, image_generation)
+    get documented.
+    """
+
+    memory: bool = True
+    handoff: bool = True
+    tools: bool = False
+    lead_capture: bool = True
+    multilingual: bool = True
+    vision: bool = False
+    voice: bool = False
+    calling: bool = False
+    image_generation: bool = False
+
+
+class AgentVoiceConfig(BaseModel):
+    """Documents the shape of ``AgentConfig.web_config['voice']``."""
+
+    provider: str = "openai"
+    voice_id: str = "alloy"
+    language: Optional[str] = None
+    speed: float = 1.0
+
+
+class AgentCallingConfig(BaseModel):
+    """Documents the shape of ``AgentConfig.web_config['calling']``."""
+
+    provider: str = "twilio"
+    phone_number: Optional[str] = None
+    voice_id: str = "alloy"
+    language: Optional[str] = None
+    greeting: str = "Hello! How can I help you today?"
+    human_handoff: bool = False
+    human_handoff_number: Optional[str] = None
+
+
+class AgentImageGenerationConfig(BaseModel):
+    """Documents the shape of ``AgentConfig.web_config['image_generation']``."""
+
+    provider: str = "openai"
+    model: str = "dall-e-3"
+    size: str = "1024x1024"
+    quality: str = "standard"
+
+
 class AgentChatRequest(BaseModel):
     message: str
     conversation_id: Optional[UUID] = None
+    images: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description=(
+            'Optional image content blocks, e.g. '
+            '[{"type": "image_url", "image_url": {"url": "https://..."}}]. '
+            "Requires the agent's vision capability and a vision-capable model."
+        ),
+    )
 
 
 class AgentChatUsage(BaseModel):
@@ -149,3 +207,45 @@ class AgentChatResponse(BaseModel):
 class AgentToolInfo(BaseModel):
     name: str
     description: str
+
+
+class AgentVoiceResponse(BaseModel):
+    """Response for a single voice turn (dashboard push-to-talk or public widget mic).
+
+    Audio is returned base64-encoded JSON (not a binary body) to stay consistent
+    with the rest of the Agent Platform's JSON API surface.
+    """
+
+    conversation_id: UUID
+    transcript: str
+    reply: str
+    audio_base64: str
+    audio_mime_type: str
+    usage: AgentChatUsage
+    status: Optional[str] = None
+    handoff: bool = False
+
+
+class GeneratedImage(BaseModel):
+    """A single generated image. ``data_base64`` always carries the image so
+    the caller never needs a follow-up authenticated fetch; ``url`` (when
+    present) is a durable, dashboard-authenticated copy via StorageService."""
+
+    data_base64: str
+    mime_type: str = "image/png"
+    url: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    revised_prompt: Optional[str] = None
+
+
+class AgentImageRequest(BaseModel):
+    prompt: str
+    conversation_id: Optional[UUID] = None
+
+
+class AgentImageResponse(BaseModel):
+    conversation_id: UUID
+    images: List[GeneratedImage]
+    usage: AgentChatUsage
+    status: Optional[str] = None

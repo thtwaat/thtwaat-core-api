@@ -21,19 +21,7 @@ from app.agent_platform.conversation_schemas import (
     ConversationUpdate,
     MessageResponse,
 )
-from app.agent_platform.gateway.service import AIGatewayService
-from app.agent_platform.schemas import UnifiedChatRequest
-
 logger = logging.getLogger(__name__)
-
-_SYSTEM_PROMPT_TEMPLATE = """\
-You are a helpful, accurate assistant. Answer the user's question using ONLY \
-the context provided below. If the answer is not in the context, say \
-"I don't have enough information to answer that."
-
-Context:
-{context}
-"""
 
 
 def _preview(text: Optional[str], limit: int = 120) -> Optional[str]:
@@ -266,17 +254,12 @@ class ConversationService:
         as_human: bool = False,
         request_handoff: bool = False,
         actor_user_id: Optional[UUID] = None,
+        images: Optional[List[Dict[str, Any]]] = None,
     ) -> dict:
         from app.agent_platform.agent_runtime import (
-            agent_capabilities,
-            build_tool_schemas,
-            language_system_instruction,
-            maybe_execute_tool_calls,
-            memory_message_window,
+            AgentRuntime,
             resolve_locale,
             resolve_provider_and_model,
-            search_agent_knowledge,
-            to_gateway_role,
         )
 
         conv = (
@@ -356,51 +339,10 @@ class ConversationService:
             db.refresh(note)
             return {"user_message": user_msg, "assistant_message": note, "status": conv.status}
 
-        caps = agent_capabilities(agent.web_config)
         locale = resolve_locale(metadata=conv.extra_metadata, web_config=agent.web_config)
-
         provider, model = resolve_provider_and_model(agent)
 
-        system_prompt = agent.system_prompt_template or "You are a helpful assistant."
-        if caps.get("multilingual", True):
-            system_prompt = system_prompt + language_system_instruction(locale)
-
-        sources = search_agent_knowledge(db, agent.id, content, company_id, top_k=5)
-        if sources:
-            context_blocks = []
-            for i, src in enumerate(sources, start=1):
-                context_blocks.append(f"[{i}] (Source: {src.document_name})\n{src.text}")
-            context = "\n\n---\n\n".join(context_blocks)
-            system_prompt = (
-                _SYSTEM_PROMPT_TEMPLATE.format(context=context)
-                + "\n\nOriginal Instructions: "
-                + (agent.system_prompt_template or "")
-                + language_system_instruction(locale)
-            )
-
         db.refresh(conv)
-        prior = memory_message_window(
-            conv.messages,
-            enabled=caps.get("memory", True),
-            max_messages=40,
-        )
-        messages = [{"role": "system", "content": system_prompt}]
-        for msg in prior:
-            role = to_gateway_role(msg.role)
-            if role in ["user", "assistant", "system", "tool"]:
-                messages.append({"role": role, "content": msg.content})
-
-        allowed_tools = agent.allowed_tools or []
-        chat_request = UnifiedChatRequest(
-            company_id=str(company_id),
-            agent_id=str(agent.id),
-            provider=provider,
-            model=model,
-            messages=messages,
-            temperature=agent.temperature,
-            max_tokens=1024,
-            tools=build_tool_schemas(allowed_tools) if allowed_tools else None,
-        )
 
         from app.usage.dimensions import UsageDimension
         from app.usage.service import UsageService
@@ -412,16 +354,19 @@ class ConversationService:
         usage_ctx = dict(source="dashboard", is_widget=False)
         usage_payload: Dict[str, Any] = {}
         try:
-            response = await AIGatewayService.process_request(chat_request, db=db, **usage_ctx)
-            if response.tool_calls:
-                response = await maybe_execute_tool_calls(
-                    chat_request,
-                    response,
-                    db=db,
-                    company_id=company_id,
-                    agent_id=agent.id,
-                    usage_ctx=usage_ctx,
-                )
+            response, _sources = await AgentRuntime.run_turn(
+                db,
+                agent=agent,
+                company_id=company_id,
+                conv_messages=conv.messages,
+                user_content=content,
+                locale=locale,
+                provider=provider,
+                model=model,
+                temperature=agent.temperature,
+                image_blocks=images,
+                usage_ctx=usage_ctx,
+            )
             answer = response.content or ""
             usage_payload = {
                 "input_tokens": response.input_tokens,

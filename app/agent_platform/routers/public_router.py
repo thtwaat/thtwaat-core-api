@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 import logging
-from typing import AsyncIterator
+from typing import AsyncIterator, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,10 @@ from app.agent_platform.schemas import UnifiedChatRequest, UnifiedChatResponse
 from app.agent_platform.publish.schemas import (
     PublicChatRequest,
     PublicChatResponse,
+    PublicChatUsage,
+    PublicImageRequest,
+    PublicImageResponse,
+    PublicVoiceResponse,
 )
 from app.agent_platform.publish.service import PublishService
 from app.agent_platform.publish.chat_runtime import run_public_chat
@@ -29,9 +34,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/public/v1", tags=["Public Agent API"])
 
 
-def _resolve_key(request: Request, body: PublicChatRequest, db: Session) -> AgentApiKey:
-    if body.api_key:
-        key = verify_api_key_from_value(body.api_key, db)
+def _resolve_key_value(request: Request, api_key_value: Optional[str], db: Session) -> AgentApiKey:
+    if api_key_value:
+        key = verify_api_key_from_value(api_key_value, db)
     else:
         key = verify_api_key(request, db)
 
@@ -66,6 +71,10 @@ def _resolve_key(request: Request, body: PublicChatRequest, db: Session) -> Agen
                 },
             )
     return key
+
+
+def _resolve_key(request: Request, body: PublicChatRequest, db: Session) -> AgentApiKey:
+    return _resolve_key_value(request, body.api_key, db)
 
 
 @router.get("/widget/embed", response_class=HTMLResponse, summary="Minimal embeddable chat UI")
@@ -153,7 +162,7 @@ async def public_chat(
 ):
     api_key = _resolve_key(request, body, db)
     reply, conversation_id, usage, extras = await run_public_chat(
-        db, api_key, body.message, body.session_id, metadata=body.metadata
+        db, api_key, body.message, body.session_id, metadata=body.metadata, images=body.images
     )
     return PublicChatResponse(
         reply=reply,
@@ -189,7 +198,7 @@ async def public_chat_by_slug(
         raise HTTPException(status_code=403, detail="API key is not authorized for this agent")
 
     reply, conversation_id, usage, extras = await run_public_chat(
-        db, api_key, body.message, body.session_id, metadata=body.metadata
+        db, api_key, body.message, body.session_id, metadata=body.metadata, images=body.images
     )
     return PublicChatResponse(
         reply=reply,
@@ -198,6 +207,187 @@ async def public_chat_by_slug(
         status=extras.get("status"),
         handoff=bool(extras.get("handoff")),
         lead=extras.get("lead"),
+    )
+
+
+async def _public_voice_turn(
+    db: Session,
+    api_key: AgentApiKey,
+    *,
+    agent: Optional[AgentConfig],
+    audio: UploadFile,
+    session_id: Optional[str],
+) -> PublicVoiceResponse:
+    from app.agent_platform.voice.voice_runtime import VoiceRuntime
+
+    if agent is None:
+        agent = db.query(AgentConfig).filter(AgentConfig.id == api_key.agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.status == "PAUSED":
+        raise HTTPException(status_code=403, detail="Agent is paused")
+    if agent.status != "PUBLISHED":
+        raise HTTPException(status_code=403, detail="Agent is not published")
+    if str(agent.company_id) != str(api_key.company_id):
+        raise HTTPException(status_code=403, detail="Company isolation violation")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio upload")
+
+    result = await VoiceRuntime.run_voice_turn(
+        db,
+        agent=agent,
+        company_id=api_key.company_id,
+        channel="voice",
+        audio_bytes=audio_bytes,
+        audio_mime_type=audio.content_type or "audio/wav",
+        session_id=session_id,
+        usage_ctx=dict(
+            api_key_id=str(api_key.id),
+            widget_id=agent.widget_id,
+            source="public_chat",
+            is_widget=True,
+        ),
+    )
+    return PublicVoiceResponse(
+        conversation_id=result.conversation_id,
+        transcript=result.transcript,
+        reply=result.reply,
+        audio_base64=base64.b64encode(result.audio_bytes).decode("ascii"),
+        audio_mime_type=result.audio_mime_type,
+        usage=PublicChatUsage(**result.usage),
+        status=result.status,
+        handoff=result.handoff,
+    )
+
+
+@router.post(
+    "/voice",
+    response_model=PublicVoiceResponse,
+    summary="Public voice turn for published agents (audio in, audio out)",
+)
+async def public_voice(
+    request: Request,
+    audio: UploadFile = File(..., description="Recorded audio (wav/mp3/webm/m4a/ogg)"),
+    api_key: Optional[str] = Form(default=None),
+    session_id: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    key = _resolve_key_value(request, api_key, db)
+    return await _public_voice_turn(db, key, agent=None, audio=audio, session_id=session_id)
+
+
+@router.post(
+    "/agents/{slug}/voice",
+    response_model=PublicVoiceResponse,
+    summary="Public voice turn addressed by agent slug (still requires the agent's api_key)",
+)
+async def public_voice_by_slug(
+    slug: str,
+    request: Request,
+    audio: UploadFile = File(..., description="Recorded audio (wav/mp3/webm/m4a/ogg)"),
+    api_key: Optional[str] = Form(default=None),
+    session_id: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+):
+    key = _resolve_key_value(request, api_key, db)
+    agent = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.slug == slug, AgentConfig.company_id == key.company_id)
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if str(agent.id) != str(key.agent_id):
+        raise HTTPException(status_code=403, detail="API key is not authorized for this agent")
+    return await _public_voice_turn(db, key, agent=agent, audio=audio, session_id=session_id)
+
+
+async def _public_image_turn(
+    db: Session,
+    api_key: AgentApiKey,
+    *,
+    agent: Optional[AgentConfig],
+    prompt: str,
+    session_id: Optional[str],
+    metadata: Optional[dict],
+) -> PublicImageResponse:
+    from app.agent_platform.image_generation.runtime import ImageGenerationRuntime
+
+    if agent is None:
+        agent = db.query(AgentConfig).filter(AgentConfig.id == api_key.agent_id).first()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if agent.status == "PAUSED":
+        raise HTTPException(status_code=403, detail="Agent is paused")
+    if agent.status != "PUBLISHED":
+        raise HTTPException(status_code=403, detail="Agent is not published")
+    if str(agent.company_id) != str(api_key.company_id):
+        raise HTTPException(status_code=403, detail="Company isolation violation")
+
+    result = await ImageGenerationRuntime.run_image_generation_turn(
+        db,
+        agent=agent,
+        company_id=api_key.company_id,
+        channel="image",
+        prompt=prompt,
+        session_id=session_id,
+        metadata=metadata,
+        usage_ctx=dict(
+            api_key_id=str(api_key.id),
+            widget_id=agent.widget_id,
+            source="public_chat",
+            is_widget=True,
+        ),
+    )
+    return PublicImageResponse(
+        conversation_id=result["conversation_id"],
+        images=result["images"],
+        usage=PublicChatUsage(**result["usage"]),
+        status=result["status"],
+    )
+
+
+@router.post(
+    "/image",
+    response_model=PublicImageResponse,
+    summary="Public image generation for published agents (text prompt in, image(s) out)",
+)
+async def public_image(
+    body: PublicImageRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    key = _resolve_key_value(request, body.api_key, db)
+    return await _public_image_turn(
+        db, key, agent=None, prompt=body.prompt, session_id=body.session_id, metadata=body.metadata
+    )
+
+
+@router.post(
+    "/agents/{slug}/image",
+    response_model=PublicImageResponse,
+    summary="Public image generation addressed by agent slug (still requires the agent's api_key)",
+)
+async def public_image_by_slug(
+    slug: str,
+    body: PublicImageRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    key = _resolve_key_value(request, body.api_key, db)
+    agent = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.slug == slug, AgentConfig.company_id == key.company_id)
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if str(agent.id) != str(key.agent_id):
+        raise HTTPException(status_code=403, detail="API key is not authorized for this agent")
+    return await _public_image_turn(
+        db, key, agent=agent, prompt=body.prompt, session_id=body.session_id, metadata=body.metadata
     )
 
 
@@ -217,7 +407,7 @@ async def public_chat_stream(
             from app.agent_platform.publish.chat_runtime import iter_public_chat_events
 
             async for kind, payload in iter_public_chat_events(
-                db, api_key, body.message, body.session_id, metadata=body.metadata
+                db, api_key, body.message, body.session_id, metadata=body.metadata, images=body.images
             ):
                 if kind == "thinking":
                     yield f"event: thinking\ndata: {json.dumps(payload)}\n\n"

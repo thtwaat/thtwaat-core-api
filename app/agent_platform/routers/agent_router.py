@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, status, Body
+import base64
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Body
 from sqlalchemy.orm import Session
-from typing import List
+from typing import List, Optional
 from uuid import UUID
 
 from app.database.database import get_db
@@ -15,9 +17,12 @@ from app.agent_platform.schemas import (
     AgentDeleteImpact,
     AgentDeleteRequest,
     AgentDeleteResponse,
+    AgentImageRequest,
+    AgentImageResponse,
     AgentResponse,
     AgentToolInfo,
     AgentUpdate,
+    AgentVoiceResponse,
 )
 from app.agent_platform.agent_runtime import slugify
 from app.agent_platform.models.agent import AgentConfig
@@ -416,6 +421,7 @@ async def chat_with_agent(
         company_id,
         body.message,
         actor_user_id=UUID(str(user_id)) if user_id else None,
+        images=body.images,
     )
     assistant = result.get("assistant_message")
     usage = result.get("usage") or {}
@@ -423,4 +429,101 @@ async def chat_with_agent(
         message=assistant.content if assistant else "",
         conversation_id=conversation_id,
         usage=AgentChatUsage(**usage),
+    )
+
+
+@router.post("/{agent_id}/voice", response_model=AgentVoiceResponse)
+async def voice_with_agent(
+    agent_id: UUID,
+    audio: UploadFile = File(..., description="Recorded audio (wav/mp3/webm/m4a/ogg)"),
+    conversation_id: Optional[str] = Form(default=None),
+    db: Session = Depends(get_db),
+    auth_data: dict = Depends(get_current_user_and_company),
+):
+    """Single-shot authenticated voice turn: audio in, audio out. Push-to-talk
+    from the dashboard/playground — same capability gate and AgentRuntime
+    core as text chat, just with STT/TTS wrapped around it."""
+    from app.agent_platform.voice.voice_runtime import VoiceRuntime
+
+    company_id = UUID(str(auth_data["company_id"]))
+
+    agent = (
+        db.query(AgentConfig)
+        .filter(
+            AgentConfig.id == agent_id,
+            AgentConfig.company_id == company_id,
+            AgentConfig.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    audio_bytes = await audio.read()
+    if not audio_bytes:
+        raise HTTPException(status_code=400, detail="Empty audio upload")
+
+    result = await VoiceRuntime.run_voice_turn(
+        db,
+        agent=agent,
+        company_id=company_id,
+        channel="voice",
+        audio_bytes=audio_bytes,
+        audio_mime_type=audio.content_type or "audio/wav",
+        session_id=conversation_id,
+        usage_ctx=dict(source="dashboard", is_widget=False),
+    )
+    return AgentVoiceResponse(
+        conversation_id=result.conversation_id,
+        transcript=result.transcript,
+        reply=result.reply,
+        audio_base64=base64.b64encode(result.audio_bytes).decode("ascii"),
+        audio_mime_type=result.audio_mime_type,
+        usage=AgentChatUsage(**result.usage),
+        status=result.status,
+        handoff=result.handoff,
+    )
+
+
+@router.post("/{agent_id}/image", response_model=AgentImageResponse)
+async def generate_image_with_agent(
+    agent_id: UUID,
+    body: AgentImageRequest,
+    db: Session = Depends(get_db),
+    auth_data: dict = Depends(get_current_user_and_company),
+):
+    """Single-shot authenticated image-generation turn: text prompt in,
+    generated image(s) out. Same capability gate and provider/registry
+    pattern as voice (STT/TTS) — AgentRuntime resolves agent/capability/
+    provider/config; the image provider handles the actual generation."""
+    from app.agent_platform.image_generation.runtime import ImageGenerationRuntime
+
+    company_id = UUID(str(auth_data["company_id"]))
+
+    agent = (
+        db.query(AgentConfig)
+        .filter(
+            AgentConfig.id == agent_id,
+            AgentConfig.company_id == company_id,
+            AgentConfig.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    result = await ImageGenerationRuntime.run_image_generation_turn(
+        db,
+        agent=agent,
+        company_id=company_id,
+        channel="image",
+        prompt=body.prompt,
+        session_id=str(body.conversation_id) if body.conversation_id else None,
+        usage_ctx=dict(source="dashboard"),
+    )
+    return AgentImageResponse(
+        conversation_id=result["conversation_id"],
+        images=result["images"],
+        usage=AgentChatUsage(**result["usage"]),
+        status=result["status"],
     )

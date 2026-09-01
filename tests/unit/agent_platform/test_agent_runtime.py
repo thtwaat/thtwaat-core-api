@@ -4,15 +4,20 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 import pytest
+from fastapi import HTTPException
 
 from app.agent_platform.agent_runtime import (
+    AgentRuntime,
     agent_capabilities,
+    build_gateway_messages,
+    build_rag_system_prompt,
     detect_handoff_intent,
     extract_lead,
     handoff_wait_message,
     language_system_instruction,
     memory_message_window,
     merge_lead_into_metadata,
+    provider_model_supports_vision,
     resolve_locale,
     to_gateway_role,
 )
@@ -61,3 +66,94 @@ def test_capabilities_defaults():
     caps = agent_capabilities({"capabilities": {"handoff": False}})
     assert caps["handoff"] is False
     assert caps["memory"] is True
+    assert caps["vision"] is False
+
+
+@pytest.mark.unit
+def test_capabilities_vision_opt_in():
+    caps = agent_capabilities({"capabilities": {"vision": True}})
+    assert caps["vision"] is True
+    # Existing agents with no capabilities key at all stay fully unaffected.
+    assert agent_capabilities({})["vision"] is False
+    assert agent_capabilities(None)["vision"] is False
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "provider,model,expected",
+    [
+        ("openai", "gpt-4o", True),
+        ("openai", "gpt-4o-mini", True),
+        ("openai", "GPT-4O-MINI", True),
+        ("openai", "gpt-3.5-turbo", False),
+        ("anthropic", "claude-3-5-sonnet", False),
+        ("gemini", "gemini-1.5-pro", False),
+        ("openai", "", False),
+        ("", "gpt-4o", False),
+    ],
+)
+def test_provider_model_supports_vision(provider, model, expected):
+    assert provider_model_supports_vision(provider, model) is expected
+
+
+@pytest.mark.unit
+def test_check_vision_request_noop_without_image():
+    agent = SimpleNamespace(provider="anthropic", model="claude-3-5-sonnet", web_config={})
+    caps = {"vision": False}
+    AgentRuntime.check_vision_request(agent, caps, has_image=False)  # must not raise
+
+
+@pytest.mark.unit
+def test_check_vision_request_raises_when_capability_disabled():
+    agent = SimpleNamespace(provider="openai", model="gpt-4o-mini", web_config={})
+    caps = {"vision": False}
+    with pytest.raises(HTTPException) as exc_info:
+        AgentRuntime.check_vision_request(agent, caps, has_image=True)
+    assert exc_info.value.status_code == 400
+    assert "vision capability" in exc_info.value.detail
+
+
+@pytest.mark.unit
+def test_check_vision_request_raises_when_provider_unsupported():
+    agent = SimpleNamespace(provider="anthropic", model="claude-3-5-sonnet", web_config={})
+    caps = {"vision": True}
+    with pytest.raises(HTTPException) as exc_info:
+        AgentRuntime.check_vision_request(agent, caps, has_image=True)
+    assert exc_info.value.status_code == 400
+    assert "does not support image input" in exc_info.value.detail
+
+
+@pytest.mark.unit
+def test_check_vision_request_passes_for_openai_gpt4o_with_capability_enabled():
+    agent = SimpleNamespace(provider="openai", model="gpt-4o-mini", web_config={})
+    caps = {"vision": True}
+    AgentRuntime.check_vision_request(agent, caps, has_image=True)  # must not raise
+
+
+@pytest.mark.unit
+def test_build_rag_system_prompt_no_sources():
+    agent = SimpleNamespace(system_prompt_template="Be helpful.")
+    prompt = build_rag_system_prompt(agent, locale=None, sources=[], caps={"multilingual": False})
+    assert prompt == "Be helpful."
+
+
+@pytest.mark.unit
+def test_build_rag_system_prompt_with_sources():
+    agent = SimpleNamespace(system_prompt_template="Be helpful.")
+    sources = [SimpleNamespace(document_name="doc1", text="fact one")]
+    prompt = build_rag_system_prompt(agent, locale=None, sources=sources, caps={"multilingual": False})
+    assert "fact one" in prompt
+    assert "[1] (Source: doc1)" in prompt
+    assert "Original Instructions: Be helpful." in prompt
+
+
+@pytest.mark.unit
+def test_build_gateway_messages_matches_prior_shape():
+    msgs = [
+        SimpleNamespace(role="user", content="hi"),
+        SimpleNamespace(role="human", content="hello from ops"),
+    ]
+    messages = build_gateway_messages("SYS", msgs, memory_enabled=True)
+    assert messages[0] == {"role": "system", "content": "SYS"}
+    assert messages[1] == {"role": "user", "content": "hi"}
+    assert messages[2] == {"role": "assistant", "content": "hello from ops"}

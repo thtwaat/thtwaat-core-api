@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -127,6 +127,14 @@ class PublicChatRequest(BaseModel):
     message: str
     session_id: Optional[str] = None
     metadata: Dict[str, Any] = Field(default_factory=dict)
+    images: Optional[List[Dict[str, Any]]] = Field(
+        default=None,
+        description=(
+            'Optional image content blocks, e.g. '
+            '[{"type": "image_url", "image_url": {"url": "https://..."}}]. '
+            "Requires the agent's vision capability and a vision-capable model."
+        ),
+    )
 
 
 class PublicChatUsage(BaseModel):
@@ -145,3 +153,47 @@ class PublicChatResponse(BaseModel):
     status: Optional[str] = None
     handoff: bool = False
     lead: Optional[Dict[str, Any]] = None
+
+
+class PublicVoiceResponse(BaseModel):
+    """Response for a public (widget) voice turn — audio in, audio out."""
+
+    conversation_id: str
+    transcript: str
+    reply: str
+    audio_base64: str
+    audio_mime_type: str
+    usage: PublicChatUsage
+    status: Optional[str] = None
+    handoff: bool = False
+    lead: Optional[Dict[str, Any]] = None
+
+
+class PublicGeneratedImage(BaseModel):
+    """A single generated image — mirrors ``app.agent_platform.schemas.GeneratedImage``."""
+
+    data_base64: str
+    mime_type: str = "image/png"
+    url: Optional[str] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
+    revised_prompt: Optional[str] = None
+
+
+class PublicImageRequest(BaseModel):
+    """Simplified public image-generation body — mirrors ``PublicChatRequest``."""
+
+    api_key: Optional[str] = Field(
+        default=None,
+        description="Optional if Authorization: Bearer tht_live_... is set",
+    )
+    prompt: str
+    session_id: Optional[str] = None
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PublicImageResponse(BaseModel):
+    conversation_id: str
+    images: List[PublicGeneratedImage]
+    usage: PublicChatUsage
+    status: Optional[str] = None

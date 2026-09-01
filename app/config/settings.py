@@ -434,6 +434,13 @@ class Settings(BaseSettings):
     BILLING_ENABLE_RAZORPAY: bool = True
     BILLING_DEFAULT_PROVIDER: str = "auto"  # auto|stripe|razorpay
 
+    # Telephony (AI Calling) — platform-level Twilio account, mirrors how
+    # STRIPE_SECRET_KEY/RAZORPAY_KEY_SECRET are global platform credentials
+    # rather than per-company DB rows. Per-company routing is via the
+    # agent's web_config.calling.phone_number, not a separate Twilio account.
+    TWILIO_ACCOUNT_SID: Optional[str] = None
+    TWILIO_AUTH_TOKEN: Optional[str] = None
+
     model_config = SettingsConfigDict(
         env_file=".env", 
         env_file_encoding="utf-8",

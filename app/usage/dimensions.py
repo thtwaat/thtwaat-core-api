@@ -23,6 +23,16 @@ class UsageDimension(str, Enum):
     TEMPLATES_PUBLISHED = "templates_published"
     # THTWAAT Deploy Phase 6A — Preview Deployments.
     PREVIEW_DEPLOYMENTS = "preview_deployments"
+    # Part 3 — Voice AI + AI Calling. No CompanyUsageMeter columns / plan
+    # limits yet (see UsageService.record) — recorded as raw UsageEvent /
+    # daily-aggregate rows for analytics/billing today, not yet quota-enforced.
+    AUDIO_INPUT_SECONDS = "audio_input_seconds"
+    AUDIO_OUTPUT_SECONDS = "audio_output_seconds"
+    CALL_COUNT = "call_count"
+    CALL_MINUTES = "call_minutes"
+    # Part 4 — Image Generation. Same "raw event, not yet quota-enforced"
+    # treatment as the Part 3 dimensions above.
+    IMAGES_GENERATED = "images_generated"
 
 
 # Gauge dimensions are set absolute (not incremented) when syncing inventory
