@@ -1,4 +1,30 @@
-import type { PublicChatResponse } from "./types";
+import type {
+  GeneratedImage,
+  ImageContentBlock,
+  PublicChatResponse,
+  PublicImageResponse,
+  PublicVoiceResponse,
+} from "./types";
+
+export type { GeneratedImage };
+
+/**
+ * The backend's global error handler returns {"error": ..., "code": ...}
+ * (see app/api/exceptions.py) — not FastAPI's default {"detail": ...}.
+ * Only used by the new voice/image methods below; the pre-existing chat/
+ * lead/handoff methods keep their original (unrelated) error parsing as-is.
+ */
+function extractBackendError(data: unknown, fallback: string): string {
+  if (data && typeof data === "object" && "error" in data) {
+    const err = (data as { error: unknown }).error;
+    if (typeof err === "string") return err;
+    if (err && typeof err === "object" && "message" in err) {
+      const msg = (err as { message: unknown }).message;
+      if (typeof msg === "string") return msg;
+    }
+  }
+  return fallback;
+}
 
 export type StreamEvent =
   | { type: "thinking"; stage?: string; message?: string }
@@ -19,7 +45,8 @@ export class WidgetApiClient {
   async chat(
     message: string,
     sessionId: string | null,
-    metadata: Record<string, unknown> = {}
+    metadata: Record<string, unknown> = {},
+    images?: ImageContentBlock[]
   ): Promise<PublicChatResponse> {
     const res = await fetch(this.url("/public/v1/chat"), {
       method: "POST",
@@ -32,6 +59,7 @@ export class WidgetApiClient {
         message,
         session_id: sessionId,
         metadata,
+        ...(images && images.length ? { images } : {}),
       }),
     });
 
@@ -112,12 +140,67 @@ export class WidgetApiClient {
   }
 
   /**
+   * Voice turn: recorded audio in, transcript + spoken reply out.
+   * multipart/form-data, per the existing backend contract
+   * (POST /public/v1/agents/{slug}/voice — audio: File, api_key/session_id: Form fields).
+   */
+  async voiceChat(
+    agentSlug: string,
+    audio: Blob,
+    filename: string,
+    sessionId: string | null
+  ): Promise<PublicVoiceResponse> {
+    const form = new FormData();
+    form.append("audio", audio, filename);
+    form.append("api_key", this.apiKey);
+    if (sessionId) form.append("session_id", sessionId);
+
+    const res = await fetch(this.url(`/public/v1/agents/${encodeURIComponent(agentSlug)}/voice`), {
+      method: "POST",
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(extractBackendError(data, `Voice request failed (${res.status})`));
+    }
+    return data as PublicVoiceResponse;
+  }
+
+  /**
+   * Image generation: text prompt in, generated image(s) out.
+   * POST /public/v1/agents/{slug}/image, JSON body { prompt }.
+   */
+  async generateImage(
+    agentSlug: string,
+    prompt: string,
+    sessionId: string | null,
+    metadata: Record<string, unknown> = {}
+  ): Promise<PublicImageResponse> {
+    const res = await fetch(this.url(`/public/v1/agents/${encodeURIComponent(agentSlug)}/image`), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        api_key: this.apiKey,
+        prompt,
+        session_id: sessionId,
+        metadata,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(extractBackendError(data, `Image generation failed (${res.status})`));
+    }
+    return data as PublicImageResponse;
+  }
+
+  /**
    * SSE streaming when available. Yields thinking + token chunks.
    */
   async *streamChat(
     message: string,
     sessionId: string | null,
-    metadata: Record<string, unknown> = {}
+    metadata: Record<string, unknown> = {},
+    images?: ImageContentBlock[]
   ): AsyncGenerator<StreamEvent> {
     let res: Response;
     try {
@@ -133,6 +216,7 @@ export class WidgetApiClient {
           message,
           session_id: sessionId,
           metadata,
+          ...(images && images.length ? { images } : {}),
         }),
       });
     } catch {

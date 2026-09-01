@@ -13,6 +13,7 @@ import {
 } from "./theme";
 import type {
   ChatMessage,
+  ImageContentBlock,
   THTWAATApi,
   WidgetPosition,
   WidgetRuntimeOptions,
@@ -24,6 +25,37 @@ import { widgetStrings, resolveWidgetLocale } from "./i18n";
 
 function uid(prefix = "m"): string {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+const ACCEPTED_IMAGE_TYPES = ["image/png", "image/jpeg", "image/webp"];
+const MAX_IMAGE_BYTES = 8 * 1024 * 1024; // 8MB — generous for a chat attachment, well under typical upload limits
+const MAX_RECORDING_MS = 120_000; // safety cap so a forgotten-open mic can't record forever
+
+const RECORDER_MIME_CANDIDATES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/ogg;codecs=opus",
+  "audio/mp4",
+];
+
+function pickRecorderMimeType(): string {
+  if (typeof MediaRecorder === "undefined" || !MediaRecorder.isTypeSupported) return "";
+  return RECORDER_MIME_CANDIDATES.find((t) => MediaRecorder.isTypeSupported(t)) || "";
+}
+
+function voiceSupported(): boolean {
+  return (
+    typeof navigator !== "undefined" &&
+    Boolean(navigator.mediaDevices?.getUserMedia) &&
+    typeof MediaRecorder !== "undefined"
+  );
+}
+
+function formatElapsed(ms: number): string {
+  const totalSeconds = Math.floor(ms / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 function detectBaseUrl(script?: HTMLScriptElement | null): string {
@@ -64,6 +96,25 @@ export class Widget implements THTWAATApi {
   private lastMessageId: string | null = null;
   private strings = widgetStrings();
   private leadCaptured = false;
+
+  // Voice input
+  private fileInput?: HTMLInputElement;
+  private micBtnEl?: HTMLButtonElement;
+  private attachBtnEl?: HTMLButtonElement;
+  private imageGenBtnEl?: HTMLButtonElement;
+  private recordingBar?: HTMLElement;
+  private recTimeEl?: HTMLElement;
+  private mediaRecorder: MediaRecorder | null = null;
+  private mediaStream: MediaStream | null = null;
+  private recordedChunks: BlobPart[] = [];
+  private recordingStartedAt = 0;
+  private recordingTimer?: ReturnType<typeof setInterval>;
+  private isRecording = false;
+
+  // Vision (image attach)
+  private attachmentPreviewEl?: HTMLElement;
+  private attachmentThumbEl?: HTMLImageElement;
+  private pendingImage: ImageContentBlock | null = null;
 
   constructor(options: WidgetRuntimeOptions) {
     if (!options.apiKey) {
@@ -114,6 +165,10 @@ export class Widget implements THTWAATApi {
     const locale = script.getAttribute("data-locale") || undefined;
     const leadCapture = script.getAttribute("data-lead-capture") === "true";
     const enableHandoff = script.getAttribute("data-handoff") !== "false";
+    const agentSlug = script.getAttribute("data-agent-slug") || undefined;
+    const voiceEnabled = script.getAttribute("data-voice") === "true";
+    const visionEnabled = script.getAttribute("data-vision") === "true";
+    const imageGenerationEnabled = script.getAttribute("data-image-generation") === "true";
 
     return new Widget({
       apiKey,
@@ -125,6 +180,10 @@ export class Widget implements THTWAATApi {
       locale,
       leadCapture,
       enableHandoff,
+      agentSlug,
+      voiceEnabled,
+      visionEnabled,
+      imageGenerationEnabled,
       theme: {
         mode: themeMode,
         primaryColor: primary,
@@ -178,35 +237,47 @@ export class Widget implements THTWAATApi {
     if (this.mediaQuery && this.onMediaChange) {
       this.mediaQuery.removeEventListener("change", this.onMediaChange);
     }
+    if (this.isRecording) {
+      this.mediaRecorder?.stop();
+      this.teardownRecording();
+    }
     this.root.remove();
   };
 
   sendMessage = async (text: string): Promise<void> => {
     const content = text.trim();
-    if (!content || this.busy || this.destroyed) return;
+    const imageToSend = this.pendingImage;
+    if ((!content && !imageToSend) || this.busy || this.destroyed) return;
 
     if (this.options.leadCapture === true && !this.leadCaptured) {
       this.showLeadForm();
       return;
     }
 
+    this.clearPendingImage();
     this.open();
-    this.busy = true;
-    this.sendBtn.disabled = true;
+    this.setComposerBusy(true);
     this.hideWelcome();
 
     const userMsg: ChatMessage = {
       id: uid("u"),
       role: "user",
-      content,
+      content: content || (imageToSend ? "[Image attached]" : ""),
       createdAt: Date.now(),
     };
-    this.pushMessage(userMsg);
+    this.messages.push(userMsg);
+    saveHistory(this.options.apiKey, this.messages);
+    if (imageToSend) {
+      this.appendUserImageBubble(imageToSend.image_url.url, content, userMsg.id);
+    } else {
+      this.appendBubble("user", userMsg.content, userMsg.id);
+    }
     this.options.onMessage?.(userMsg);
 
     const thinking = this.showThinking(this.strings.thinking);
     const assistantId = uid("a");
     let assistantEl: HTMLElement | null = null;
+    const images = imageToSend ? [imageToSend] : undefined;
 
     try {
       let streamed = false;
@@ -216,7 +287,8 @@ export class Widget implements THTWAATApi {
       for await (const event of this.client.streamChat(
         content,
         this.conversationId,
-        this.userMeta
+        this.userMeta,
+        images
       )) {
         streamed = true;
         if (event.type === "thinking") {
@@ -243,7 +315,8 @@ export class Widget implements THTWAATApi {
         const res = await this.client.chat(
           content,
           this.conversationId,
-          this.userMeta
+          this.userMeta,
+          images
         );
         conversationId = res.conversation_id;
         finalReply = res.reply;
@@ -282,8 +355,7 @@ export class Widget implements THTWAATApi {
       this.appendBubble("assistant", error.message || "Something went wrong.");
       this.options.onError?.(error);
     } finally {
-      this.busy = false;
-      this.sendBtn.disabled = false;
+      this.setComposerBusy(false);
       this.inputEl.focus();
     }
   };
@@ -313,6 +385,14 @@ export class Widget implements THTWAATApi {
     this.sendBtn = this.shadow.querySelector(".tht-send") as HTMLButtonElement;
     this.launcher = this.shadow.querySelector(".tht-launcher") as HTMLButtonElement;
     this.badgeEl = this.shadow.querySelector(".tht-badge") as HTMLSpanElement;
+    this.fileInput = this.shadow.querySelector(".tht-file-input") as HTMLInputElement | undefined;
+    this.recordingBar = this.shadow.querySelector(".tht-recording") as HTMLElement;
+    this.recTimeEl = this.shadow.querySelector(".tht-rec-time") as HTMLElement;
+    this.attachmentPreviewEl = this.shadow.querySelector(".tht-attachment-preview") as HTMLElement;
+    this.attachmentThumbEl = this.shadow.querySelector(".tht-attachment-thumb") as HTMLImageElement;
+    this.micBtnEl = this.shadow.querySelector(".tht-mic") as HTMLButtonElement | undefined;
+    this.attachBtnEl = this.shadow.querySelector(".tht-attach") as HTMLButtonElement | undefined;
+    this.imageGenBtnEl = this.shadow.querySelector(".tht-imagegen") as HTMLButtonElement | undefined;
 
     this.bindEvents();
     this.restoreMessages();
@@ -345,6 +425,38 @@ export class Widget implements THTWAATApi {
         ? ""
         : `<button type="button" class="tht-handoff">${this.escape(s.talkToHuman)}</button>`;
 
+    const micBtn =
+      this.options.voiceEnabled && voiceSupported()
+        ? `<button type="button" class="tht-composer-btn tht-mic" aria-label="${this.escape(s.micLabel)}" title="${this.escape(s.micLabel)}">
+             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+               <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8"/>
+               <path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+             </svg>
+           </button>`
+        : "";
+
+    const attachBtn = this.options.visionEnabled
+      ? `<button type="button" class="tht-composer-btn tht-attach" aria-label="${this.escape(s.attachImageLabel)}" title="${this.escape(s.attachImageLabel)}">
+           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+             <rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/>
+             <circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.5"/>
+             <path d="m5 16 4.5-4.5a2 2 0 0 1 2.8 0L15 14.2m2-2 2.5 2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+           </svg>
+         </button>`
+      : "";
+
+    const imageGenBtn = this.options.imageGenerationEnabled
+      ? `<button type="button" class="tht-composer-btn tht-imagegen" aria-label="${this.escape(s.generateImageLabel)}" title="${this.escape(s.generateImageLabel)}">
+           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+             <path d="M12 4v4M12 16v4M4 12h4M16 12h4M6.5 6.5l2 2M15.5 15.5l2 2M17.5 6.5l-2 2M8.5 15.5l-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+           </svg>
+         </button>`
+      : "";
+
+    const fileInput = this.options.visionEnabled
+      ? `<input type="file" class="tht-file-input" accept="${ACCEPTED_IMAGE_TYPES.join(",")}" hidden />`
+      : "";
+
     return `
       <button type="button" class="tht-launcher" aria-label="${this.escape(s.openChat)}" aria-expanded="false" aria-controls="tht-panel">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -370,10 +482,26 @@ export class Widget implements THTWAATApi {
           </div>
         </div>
         <div class="tht-actions">${handoffBtn}</div>
-        <form class="tht-composer">
-          <textarea class="tht-input" rows="1" placeholder="${this.escape(s.placeholder)}" aria-label="Message"></textarea>
-          <button type="submit" class="tht-send">${this.escape(s.send)}</button>
-        </form>
+        <div class="tht-composer-wrap">
+          <div class="tht-attachment-preview" hidden>
+            <img class="tht-attachment-thumb" alt="" />
+            <button type="button" class="tht-attachment-remove" aria-label="${this.escape(s.removeImage)}">✕</button>
+          </div>
+          <div class="tht-recording" hidden>
+            <span class="tht-rec-dot" aria-hidden="true"></span>
+            <span class="tht-rec-time">0:00</span>
+            <span class="tht-rec-label">${this.escape(s.recording)}</span>
+            <button type="button" class="tht-rec-cancel" aria-label="${this.escape(s.cancelRecording)}">✕</button>
+            <button type="button" class="tht-rec-stop" aria-label="${this.escape(s.stopRecording)}">
+              <svg width="16" height="16" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+            </button>
+          </div>
+          <form class="tht-composer">
+            ${micBtn}${attachBtn}${imageGenBtn}${fileInput}
+            <textarea class="tht-input" rows="1" placeholder="${this.escape(s.placeholder)}" aria-label="Message"></textarea>
+            <button type="submit" class="tht-send">${this.escape(s.send)}</button>
+          </form>
+        </div>
       </section>
     `;
   }
@@ -407,6 +535,32 @@ export class Widget implements THTWAATApi {
 
     this.shadow.querySelector(".tht-handoff")?.addEventListener("click", () => {
       void this.requestHuman();
+    });
+
+    this.shadow.querySelector(".tht-mic")?.addEventListener("click", () => {
+      void this.startRecording();
+    });
+    this.shadow.querySelector(".tht-rec-stop")?.addEventListener("click", () => {
+      void this.stopRecordingAndSend();
+    });
+    this.shadow.querySelector(".tht-rec-cancel")?.addEventListener("click", () => {
+      this.cancelRecording();
+    });
+
+    this.shadow.querySelector(".tht-attach")?.addEventListener("click", () => {
+      this.fileInput?.click();
+    });
+    this.fileInput?.addEventListener("change", () => {
+      const file = this.fileInput?.files?.[0];
+      if (file) void this.handleFileSelected(file);
+      if (this.fileInput) this.fileInput.value = "";
+    });
+    this.shadow.querySelector(".tht-attachment-remove")?.addEventListener("click", () => {
+      this.clearPendingImage();
+    });
+
+    this.shadow.querySelector(".tht-imagegen")?.addEventListener("click", () => {
+      void this.generateImageFromPrompt();
     });
 
     this.shadow.addEventListener("keydown", (e: Event) => {
@@ -555,6 +709,310 @@ export class Widget implements THTWAATApi {
     }
   }
 
+  // ── Voice input ──────────────────────────────────────────────────────────
+
+  private async startRecording(): Promise<void> {
+    if (this.isRecording || this.busy || this.destroyed) return;
+    if (!voiceSupported()) {
+      this.appendBubble("assistant", this.strings.micUnavailable);
+      return;
+    }
+
+    let stream: MediaStream;
+    try {
+      // Permission is requested here, on click — never before.
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      this.appendBubble("assistant", this.strings.micPermissionDenied);
+      this.options.onError?.(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+
+    const mimeType = pickRecorderMimeType();
+    let recorder: MediaRecorder;
+    try {
+      recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    } catch (err) {
+      stream.getTracks().forEach((t) => t.stop());
+      this.appendBubble("assistant", this.strings.micUnavailable);
+      return;
+    }
+
+    this.mediaStream = stream;
+    this.mediaRecorder = recorder;
+    this.recordedChunks = [];
+    this.isRecording = true;
+    this.recordingStartedAt = Date.now();
+
+    recorder.addEventListener("dataavailable", (e) => {
+      if (e.data && e.data.size > 0) this.recordedChunks.push(e.data);
+    });
+
+    recorder.start();
+    this.showRecordingUI(true);
+    this.recordingTimer = setInterval(() => {
+      const elapsed = Date.now() - this.recordingStartedAt;
+      if (this.recTimeEl) this.recTimeEl.textContent = formatElapsed(elapsed);
+      if (elapsed >= MAX_RECORDING_MS) void this.stopRecordingAndSend();
+    }, 250);
+  }
+
+  private teardownRecording(): void {
+    if (this.recordingTimer) {
+      clearInterval(this.recordingTimer);
+      this.recordingTimer = undefined;
+    }
+    this.mediaStream?.getTracks().forEach((t) => t.stop());
+    this.mediaStream = null;
+    this.mediaRecorder = null;
+    this.isRecording = false;
+    this.showRecordingUI(false);
+  }
+
+  private cancelRecording(): void {
+    if (!this.isRecording) return;
+    this.recordedChunks = [];
+    this.mediaRecorder?.stop();
+    this.teardownRecording();
+  }
+
+  private async stopRecordingAndSend(): Promise<void> {
+    if (!this.isRecording || !this.mediaRecorder) return;
+    const recorder = this.mediaRecorder;
+    const mimeType = recorder.mimeType || "audio/webm";
+
+    const stopped = new Promise<void>((resolve) => {
+      recorder.addEventListener("stop", () => resolve(), { once: true });
+    });
+    recorder.stop();
+    await stopped;
+    this.teardownRecording();
+
+    if (!this.recordedChunks.length) return;
+    const blob = new Blob(this.recordedChunks, { type: mimeType });
+    this.recordedChunks = [];
+    await this.sendVoiceMessage(blob, mimeType);
+  }
+
+  private showRecordingUI(recording: boolean): void {
+    const form = this.shadow.querySelector(".tht-composer") as HTMLElement | null;
+    if (this.recordingBar) this.recordingBar.hidden = !recording;
+    if (form) form.hidden = recording;
+    if (this.recTimeEl) this.recTimeEl.textContent = "0:00";
+  }
+
+  private async sendVoiceMessage(audio: Blob, mimeType: string): Promise<void> {
+    if (!this.options.agentSlug) {
+      this.appendBubble("assistant", this.strings.voiceRequestFailed);
+      return;
+    }
+    this.open();
+    this.setComposerBusy(true);
+    this.hideWelcome();
+
+    const ext = mimeType.includes("mp4") ? "m4a" : mimeType.includes("ogg") ? "ogg" : "webm";
+    const thinking = this.showThinking(this.strings.thinking);
+
+    try {
+      const res = await this.client.voiceChat(
+        this.options.agentSlug,
+        audio,
+        `voice-message.${ext}`,
+        this.conversationId
+      );
+      thinking.remove();
+
+      const userMsg: ChatMessage = {
+        id: uid("u"),
+        role: "user",
+        content: res.transcript || "🎤",
+        createdAt: Date.now(),
+      };
+      this.pushMessage(userMsg);
+      this.options.onMessage?.(userMsg);
+
+      const audioUrl = `data:${res.audio_mime_type};base64,${res.audio_base64}`;
+      this.appendAudioBubble(res.reply, audioUrl);
+
+      if (res.conversation_id) {
+        this.conversationId = res.conversation_id;
+        saveSession(this.options.apiKey, res.conversation_id);
+      }
+      const assistantMsg: ChatMessage = {
+        id: uid("a"),
+        role: "assistant",
+        content: res.reply,
+        createdAt: Date.now(),
+      };
+      this.messages.push(assistantMsg);
+      saveHistory(this.options.apiKey, this.messages);
+      this.options.onMessage?.(assistantMsg);
+    } catch (err) {
+      thinking.remove();
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.appendBubble("assistant", error.message || this.strings.voiceRequestFailed);
+      this.options.onError?.(error);
+    } finally {
+      this.setComposerBusy(false);
+    }
+  }
+
+  // ── Vision (image attach) ────────────────────────────────────────────────
+
+  private async handleFileSelected(file: File): Promise<void> {
+    if (!ACCEPTED_IMAGE_TYPES.includes(file.type)) {
+      this.appendBubble("assistant", this.strings.unsupportedImageType);
+      return;
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      this.appendBubble("assistant", this.strings.imageTooLarge);
+      return;
+    }
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result || ""));
+      reader.onerror = () => reject(reader.error || new Error("read failed"));
+      reader.readAsDataURL(file);
+    }).catch(() => null);
+    if (!dataUrl) return;
+
+    this.pendingImage = { type: "image_url", image_url: { url: dataUrl } };
+    if (this.attachmentThumbEl) this.attachmentThumbEl.src = dataUrl;
+    if (this.attachmentPreviewEl) this.attachmentPreviewEl.hidden = false;
+    this.inputEl.focus();
+  }
+
+  private clearPendingImage(): void {
+    this.pendingImage = null;
+    if (this.attachmentPreviewEl) this.attachmentPreviewEl.hidden = true;
+    if (this.attachmentThumbEl) this.attachmentThumbEl.src = "";
+  }
+
+  // ── Image generation ─────────────────────────────────────────────────────
+
+  private async generateImageFromPrompt(): Promise<void> {
+    const prompt = this.inputEl.value.trim();
+    if (!prompt) {
+      this.inputEl.focus();
+      this.appendBubble("assistant", this.strings.imagePromptRequired);
+      return;
+    }
+    if (!this.options.agentSlug || this.busy || this.destroyed) return;
+
+    this.inputEl.value = "";
+    this.open();
+    this.setComposerBusy(true);
+    this.hideWelcome();
+
+    const userMsg: ChatMessage = { id: uid("u"), role: "user", content: prompt, createdAt: Date.now() };
+    this.pushMessage(userMsg);
+    this.options.onMessage?.(userMsg);
+
+    const thinking = this.showThinking(this.strings.generatingImage);
+    try {
+      const res = await this.client.generateImage(
+        this.options.agentSlug,
+        prompt,
+        this.conversationId,
+        this.userMeta
+      );
+      thinking.remove();
+
+      const image = res.images?.[0];
+      if (!image) throw new Error(this.strings.voiceRequestFailed);
+      const src = image.data_base64
+        ? `data:${image.mime_type};base64,${image.data_base64}`
+        : image.url || "";
+      this.appendImageBubble(src, image.revised_prompt || undefined);
+
+      if (res.conversation_id) {
+        this.conversationId = res.conversation_id;
+        saveSession(this.options.apiKey, res.conversation_id);
+      }
+      const assistantMsg: ChatMessage = {
+        id: uid("a"),
+        role: "assistant",
+        content: image.revised_prompt ? `[Image] ${image.revised_prompt}` : "[Image]",
+        createdAt: Date.now(),
+      };
+      this.messages.push(assistantMsg);
+      saveHistory(this.options.apiKey, this.messages);
+      this.options.onMessage?.(assistantMsg);
+    } catch (err) {
+      thinking.remove();
+      const error = err instanceof Error ? err : new Error(String(err));
+      this.appendBubble("assistant", error.message || "Something went wrong.");
+      this.options.onError?.(error);
+    } finally {
+      this.setComposerBusy(false);
+      this.inputEl.focus();
+    }
+  }
+
+  private appendUserImageBubble(src: string, caption: string, id?: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "tht-msg user tht-msg-media";
+    if (id) el.dataset.id = id;
+    const img = document.createElement("img");
+    img.className = "tht-msg-image";
+    img.src = src;
+    img.alt = "";
+    el.appendChild(img);
+    if (caption) {
+      const p = document.createElement("p");
+      p.className = "tht-msg-caption";
+      p.textContent = caption;
+      el.appendChild(p);
+    }
+    this.messagesEl.appendChild(el);
+    this.scrollToBottom();
+    return el;
+  }
+
+  private appendImageBubble(src: string, caption?: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "tht-msg assistant tht-msg-media";
+    const img = document.createElement("img");
+    img.className = "tht-msg-image";
+    img.src = src;
+    img.alt = caption || "";
+    el.appendChild(img);
+    if (caption) {
+      const p = document.createElement("p");
+      p.className = "tht-msg-caption";
+      p.textContent = caption;
+      el.appendChild(p);
+    }
+    this.messagesEl.appendChild(el);
+    this.scrollToBottom();
+    return el;
+  }
+
+  private appendAudioBubble(replyText: string, audioSrc: string): HTMLElement {
+    const el = document.createElement("div");
+    el.className = "tht-msg assistant tht-msg-media";
+    if (replyText) {
+      const p = document.createElement("p");
+      p.className = "tht-msg-caption";
+      p.textContent = replyText;
+      el.appendChild(p);
+    }
+    const audio = document.createElement("audio");
+    audio.className = "tht-msg-audio";
+    audio.controls = true;
+    audio.src = audioSrc;
+    el.appendChild(audio);
+    this.messagesEl.appendChild(el);
+    this.scrollToBottom();
+    // Best-effort autoplay — the mic click that started this turn is the
+    // user gesture; browsers may still block it after the network round
+    // trip, in which case the visible controls let the user press play.
+    void audio.play().catch(() => {
+      /* autoplay blocked — controls remain visible */
+    });
+    return el;
+  }
+
   private startPolling(): void {
     if (this.pollTimer) return;
     this.pollTimer = setInterval(() => {
@@ -606,6 +1064,17 @@ export class Widget implements THTWAATApi {
     } else {
       this.badgeEl.hidden = true;
     }
+  }
+
+  /** Disables/enables the send button AND the mic/attach/image-gen actions
+   * together, so a reply/voice-turn/image-generation in flight can't be
+   * interrupted by starting another one. */
+  private setComposerBusy(busy: boolean): void {
+    this.busy = busy;
+    this.sendBtn.disabled = busy;
+    if (this.micBtnEl) this.micBtnEl.disabled = busy;
+    if (this.attachBtnEl) this.attachBtnEl.disabled = busy;
+    if (this.imageGenBtnEl) this.imageGenBtnEl.disabled = busy;
   }
 
   private scrollToBottom(): void {

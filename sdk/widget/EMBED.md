@@ -145,6 +145,38 @@ If you need to construct the URL yourself, the shape is:
 `embed_token` is short-lived and signed — mint a fresh one server-side per page load
 rather than hardcoding it (it expires; re-fetch `/embed` when it does).
 
+## Voice / vision / image generation
+
+These UI controls only appear if you declare them — there is no public endpoint
+that exposes an agent's capability flags, so the embed script mirrors what you've
+already enabled on the agent (`web_config.capabilities`), the same way
+`data-handoff`/`data-lead-capture` already work:
+
+```html
+<script
+  src="https://api.thtwaat.com/widget.js"
+  data-api-key="tht_live_xxx"
+  data-agent-slug="viral-awaaz-assistant"
+  data-voice="true"
+  data-vision="true"
+  data-image-generation="true">
+</script>
+```
+
+- `data-agent-slug` — required for the mic and image-generation actions (they
+  call the by-slug endpoints, `POST /public/v1/agents/{slug}/voice|image`).
+  Text chat and image *input* don't need it.
+- `data-voice="true"` — shows a mic button; only renders if the browser also
+  supports `MediaRecorder`/`getUserMedia`.
+- `data-vision="true"` — shows an image-attach button in the composer.
+- `data-image-generation="true"` — shows a "generate image" action that turns
+  whatever's typed in the composer into an image-generation prompt.
+
+Turning one of these on when the agent's matching backend capability is
+**not** enabled doesn't break anything — the request just comes back with a
+400 ("does not have the X capability enabled"), which renders as a normal
+error bubble.
+
 ## Security notes
 
 - Only **PUBLISHED** agents accept public chat.

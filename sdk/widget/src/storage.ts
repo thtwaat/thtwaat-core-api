@@ -23,7 +23,7 @@ export function saveSession(apiKey: string, conversationId: string): void {
 
 export function loadHistory(apiKey: string): Array<{
   id: string;
-  role: "user" | "assistant" | "system";
+  role: "user" | "assistant" | "system" | "human";
   content: string;
   createdAt: number;
 }> {
@@ -41,7 +41,7 @@ export function saveHistory(
   apiKey: string,
   history: Array<{
     id: string;
-    role: "user" | "assistant" | "system";
+    role: "user" | "assistant" | "system" | "human";
     content: string;
     createdAt: number;
   }>
