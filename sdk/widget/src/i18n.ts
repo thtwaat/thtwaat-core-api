@@ -30,6 +30,7 @@ export type WidgetLocalePack = {
   voiceRequestFailed: string;
   unsupportedImageType: string;
   imageTooLarge: string;
+  recordingTooShort: string;
 };
 
 const EN: WidgetLocalePack = {
@@ -61,7 +62,8 @@ const EN: WidgetLocalePack = {
   micUnavailable: "Voice recording isn't supported in this browser.",
   voiceRequestFailed: "Couldn't process that voice message. Please try again.",
   unsupportedImageType: "Please attach a PNG, JPEG, or WebP image.",
-  imageTooLarge: "That image is too large. Please attach a smaller file."
+  imageTooLarge: "That image is too large. Please attach a smaller file.",
+  recordingTooShort: "That recording was too short to send. Please try again and speak after starting."
 };
 
 const HI: WidgetLocalePack = {
@@ -93,6 +95,7 @@ const HI: WidgetLocalePack = {
   voiceRequestFailed: "वह वॉइस संदेश प्रोसेस नहीं हो सका। कृपया फिर से कोशिश करें।",
   unsupportedImageType: "कृपया PNG, JPEG, या WebP इमेज संलग्न करें।",
   imageTooLarge: "यह इमेज बहुत बड़ी है। कृपया छोटी फ़ाइल संलग्न करें।",
+  recordingTooShort: "वह रिकॉर्डिंग भेजने के लिए बहुत छोटी थी। कृपया दोबारा कोशिश करें और शुरू करने के बाद बोलें।",
   leadSkip: "छोड़ें"
 };
 

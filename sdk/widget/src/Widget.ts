@@ -748,7 +748,13 @@ export class Widget implements THTWAATApi {
       if (e.data && e.data.size > 0) this.recordedChunks.push(e.data);
     });
 
-    recorder.start();
+    // A timeslice makes `dataavailable` fire periodically during recording
+    // instead of relying solely on the single flush-on-stop event. Without
+    // it, a short recording (or certain browser/codec combinations) can
+    // legitimately deliver an empty final chunk on stop() — with no
+    // periodic chunks to fall back on, recordedChunks ends up empty and
+    // the turn silently never gets sent (see stopRecordingAndSend below).
+    recorder.start(250);
     this.showRecordingUI(true);
     this.recordingTimer = setInterval(() => {
       const elapsed = Date.now() - this.recordingStartedAt;
@@ -780,15 +786,31 @@ export class Widget implements THTWAATApi {
     if (!this.isRecording || !this.mediaRecorder) return;
     const recorder = this.mediaRecorder;
     const mimeType = recorder.mimeType || "audio/webm";
+    // Guard immediately (before the first await) so a rapid double
+    // click/tap on Stop can't re-enter and call recorder.stop() twice.
+    this.isRecording = false;
 
-    const stopped = new Promise<void>((resolve) => {
-      recorder.addEventListener("stop", () => resolve(), { once: true });
-    });
-    recorder.stop();
-    await stopped;
+    try {
+      const stopped = new Promise<void>((resolve) => {
+        recorder.addEventListener("stop", () => resolve(), { once: true });
+      });
+      recorder.stop();
+      await stopped;
+    } catch (err) {
+      this.teardownRecording();
+      this.appendBubble("assistant", this.strings.voiceRequestFailed);
+      this.options.onError?.(err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
     this.teardownRecording();
 
-    if (!this.recordedChunks.length) return;
+    if (!this.recordedChunks.length) {
+      // Never fail silently — a too-short recording (or a browser that
+      // delivered an empty final chunk) must still tell the user something
+      // happened, instead of the composer just going quiet.
+      this.appendBubble("assistant", this.strings.recordingTooShort);
+      return;
+    }
     const blob = new Blob(this.recordedChunks, { type: mimeType });
     this.recordedChunks = [];
     await this.sendVoiceMessage(blob, mimeType);

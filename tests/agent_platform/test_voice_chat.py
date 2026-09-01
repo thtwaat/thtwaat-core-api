@@ -231,6 +231,74 @@ def test_voice_cross_company_isolation_still_holds(client):
     assert resp.status_code in (403, 404), resp.text
 
 
+def test_voice_production_config_diagnostic(client):
+    """End-to-end diagnostic matching the live Viral Awaaz agent's exact
+    production capabilities/config byte-for-byte (captured via a read-only
+    prod audit): vision/voice/image_generation=true, calling=false,
+    handoff=false, memory=false, plus a non-standard 'rag' key our
+    capability parser correctly ignores. Uses the by-slug endpoint, exactly
+    as the deployed widget.js calls it. Exists to positively rule the
+    backend in or out when the frontend reports a broken voice turn.
+    """
+    headers, _ = _auth(client)
+    agent, pub = _create_and_publish_agent(
+        client,
+        headers,
+        {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "widget": {"welcome_message": "Namaste!"},
+            "routing": "auto",
+            "capabilities": {
+                "rag": True,
+                "tools": False,
+                "voice": True,
+                "memory": False,
+                "vision": True,
+                "handoff": False,
+                "image_generation": True,
+            },
+        },
+        name="Voice Bot Prod Config Diagnostic",
+    )
+
+    # A transcript that WOULD trip the keyword-handoff detector if handoff
+    # were enabled — it must NOT trigger handoff here (capabilities.handoff
+    # is explicitly false for this agent, matching production).
+    p1, p2, p3, stt, tts = _patched_voice(stt_transcribe=_mock_stt(text="can I talk to a human please"))
+    with p1, p2, p3 as gw_mock:
+        resp = client.post(
+            f"/public/v1/agents/{agent['slug']}/voice",
+            files=_AUDIO_FILE,
+            data={"api_key": pub["api_key"]},
+        )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    # STT -> AgentRuntime -> TTS all actually ran (not short-circuited by a
+    # false-positive handoff/blocked-status branch).
+    stt.transcribe.assert_awaited_once()
+    gw_mock.assert_awaited_once()
+    tts.synthesize.assert_awaited_once()
+
+    assert body["transcript"] == "can I talk to a human please"
+    assert body["reply"] == "I can help with that."
+    assert body["handoff"] is False
+    assert body["status"] == "open"  # never flipped to pending_human
+
+    import base64
+
+    assert base64.b64decode(body["audio_base64"]) == b"FAKE_MP3_BYTES"
+    assert body["audio_mime_type"] == "audio/mpeg"
+
+    conv_resp = client.get(f"/v2/conversations/{body['conversation_id']}", headers=headers)
+    assert conv_resp.status_code == 200, conv_resp.text
+    conv = conv_resp.json()
+    assert conv["channel"] == "voice"
+    assert conv["status"] == "open"
+
+
 def test_voice_empty_transcript_skips_ai_call(client):
     """An unintelligible/silent clip shouldn't burn an LLM call — VoiceRuntime
     short-circuits to a re-prompt before ever calling AgentRuntime."""
