@@ -686,16 +686,21 @@ export default function NewAgentPage() {
               />
               {(
                 [
-                  ["rag", "Knowledge / RAG", "Answer from uploaded documents"],
-                  ["tools", "Tools (planned)", "Reserved in config — no new backend"],
-                  ["memory", "Session memory", "Reserved flag in web_config"],
-                  ["handoff", "Human handoff ready", "Aligns with Inbox pending_human"],
-                  ["voice", "Voice", "Requires a speech-to-text / text-to-speech provider — configure after creating the agent"],
-                  ["vision", "Vision (image upload)", "Requires a vision-capable model (e.g. GPT-4o class)"],
-                  ["image_generation", "Image generation", "Requires an image-generation provider/model"],
-                  ["calling", "AI calling", "Requires voice + a telephony provider and phone number"]
+                  ["rag", "Knowledge / RAG", "Answer from uploaded documents", ""],
+                  ["tools", "Tools (planned)", "Reserved in config — no new backend", ""],
+                  ["memory", "Session memory", "Reserved flag in web_config", ""],
+                  ["handoff", "Human handoff ready", "Aligns with Inbox pending_human", ""],
+                  ["voice", "Voice", "Let users talk to the agent with voice.", ""],
+                  ["vision", "Vision", "Let users send images for the agent to analyze.", ""],
+                  ["image_generation", "Image Generation", "Allow the agent to generate images.", ""],
+                  [
+                    "calling",
+                    "AI Calling",
+                    "Enable phone-call interactions with the agent.",
+                    "Requires voice enabled, plus a telephony provider and phone number configured for this agent."
+                  ]
                 ] as const
-              ).map(([key, label, hint]) => (
+              ).map(([key, label, hint, note]) => (
                 <label
                   key={key}
                   className="flex cursor-pointer items-start gap-3 rounded-xl border border-line p-3"
@@ -713,6 +718,9 @@ export default function NewAgentPage() {
                   <span>
                     <span className="block text-sm font-medium text-ink">{label}</span>
                     <span className="text-xs text-muted">{hint}</span>
+                    {note && (
+                      <span className="mt-0.5 block text-xs font-medium text-amber-600">{note}</span>
+                    )}
                   </span>
                 </label>
               ))}

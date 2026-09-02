@@ -36,15 +36,25 @@ const DEFAULT_CAPABILITIES: AgentCapabilities = {
   calling: false
 };
 
-const CAPABILITY_FIELDS: Array<{ key: keyof AgentCapabilities; label: string; hint: string }> = [
+const CAPABILITY_FIELDS: Array<{
+  key: keyof AgentCapabilities;
+  label: string;
+  hint: string;
+  note?: string;
+}> = [
   { key: "rag", label: "Knowledge / RAG", hint: "Answer from attached knowledge bases" },
   { key: "memory", label: "Session memory", hint: "Remember prior turns in the conversation" },
   { key: "tools", label: "Tools", hint: "Allow the model to call registered tools" },
   { key: "handoff", label: "Human handoff", hint: "Detect \"talk to a human\" and route to Inbox" },
-  { key: "voice", label: "Voice", hint: "Requires an STT/TTS provider to be configured" },
-  { key: "vision", label: "Vision (image upload)", hint: "Requires a vision-capable model (e.g. GPT-4o class)" },
-  { key: "image_generation", label: "Image generation", hint: "Requires an image-generation provider/model" },
-  { key: "calling", label: "AI calling", hint: "Requires voice + a telephony provider and phone number" }
+  { key: "voice", label: "Voice", hint: "Let users talk to the agent with voice." },
+  { key: "vision", label: "Vision", hint: "Let users send images for the agent to analyze." },
+  { key: "image_generation", label: "Image Generation", hint: "Allow the agent to generate images." },
+  {
+    key: "calling",
+    label: "AI Calling",
+    hint: "Enable phone-call interactions with the agent.",
+    note: "Requires voice enabled, plus a telephony provider and phone number configured for this agent."
+  }
 ];
 
 const STATUS_TONE: Record<string, "success" | "neutral" | "warn"> = {
@@ -343,7 +353,7 @@ export default function AgentDetailPage() {
             description="Optional capabilities this agent can use. Some require provider setup."
           />
           <div className="space-y-2 text-sm">
-            {CAPABILITY_FIELDS.map(({ key, label, hint }) => (
+            {CAPABILITY_FIELDS.map(({ key, label, hint, note }) => (
               <label key={key} className="flex items-start gap-2">
                 <input
                   type="checkbox"
@@ -356,12 +366,9 @@ export default function AgentDetailPage() {
                 <span>
                   <span className="block font-medium text-ink">{label}</span>
                   <span className="block text-xs text-muted">{hint}</span>
-                  {(key === "voice" || key === "vision" || key === "image_generation" || key === "calling") &&
-                    capabilities[key] && (
-                      <span className="mt-0.5 block text-xs font-medium text-amber-600">
-                        Requires setup — see hint above before publishing.
-                      </span>
-                    )}
+                  {note && (
+                    <span className="mt-0.5 block text-xs font-medium text-amber-600">{note}</span>
+                  )}
                 </span>
               </label>
             ))}
