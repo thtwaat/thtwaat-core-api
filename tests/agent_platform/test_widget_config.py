@@ -9,9 +9,39 @@ present in the response body.
 from __future__ import annotations
 
 import uuid
+from uuid import UUID
 
 
-def _auth(client, role: str = "company_owner"):
+def _raise_agent_quota(db_session, company_id: str) -> None:
+    """Free plan caps agents_count at 1 — bump to starter (5) for the one test
+    below that creates a second agent in the same company. Test-only: mirrors
+    the identical helper in test_agent_management.py, does not touch plan
+    limits, quota enforcement, or any production code path."""
+    from app.companies.model import Company, CompanyPlan
+
+    company = db_session.query(Company).filter(Company.id == UUID(company_id)).one()
+    company.plan = CompanyPlan.STARTER
+    db_session.commit()
+
+
+def _bearer_for_user(db_session, user_id: str) -> dict:
+    """Mint a JWT directly instead of POSTing /api/v1/auth/login.
+
+    Same helper/pattern as test_agent_management.py: this file plus
+    test_agent_capabilities.py make enough real logins between them to trip
+    the production auth rate limit (auth_rate_limit(times=10, seconds=60) in
+    app/auth/router.py) when run in the same process. Company/user creation
+    still goes through the real API — only the login call itself is skipped,
+    so the minted token is for the exact same, already-provisioned company
+    owner and preserves company isolation.
+    """
+    from app.auth.service import AuthService
+
+    token = AuthService(db_session).create_access_token(subject=str(user_id))
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _auth(client, db_session, role: str = "company_owner"):
     company_slug = f"wcfg-{uuid.uuid4().hex[:8]}"
     company_resp = client.post(
         "/api/v1/companies/",
@@ -34,11 +64,9 @@ def _auth(client, role: str = "company_owner"):
         },
     )
     assert user_resp.status_code in (200, 201), user_resp.text
+    user_id = user_resp.json()["id"]
 
-    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
-    assert login_resp.status_code == 200, login_resp.text
-    token = login_resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}, company_id
+    return _bearer_for_user(db_session, user_id), company_id
 
 
 def _create_and_publish_agent(client, headers, web_config, name: str, system_prompt: str):
@@ -84,8 +112,8 @@ def _collect_keys(obj) -> set:
     return keys
 
 
-def test_widget_config_requires_api_key(client):
-    headers, _ = _auth(client)
+def test_widget_config_requires_api_key(client, db_session):
+    headers, _ = _auth(client, db_session)
     agent, _pub = _create_and_publish_agent(
         client, headers, {}, "No Key Bot", "You are helpful. SECRET_INSTRUCTIONS_MARKER"
     )
@@ -93,8 +121,8 @@ def test_widget_config_requires_api_key(client):
     assert resp.status_code == 401
 
 
-def test_widget_config_returns_selected_capabilities(client):
-    headers, _ = _auth(client)
+def test_widget_config_returns_selected_capabilities(client, db_session):
+    headers, _ = _auth(client, db_session)
     agent, pub = _create_and_publish_agent(
         client,
         headers,
@@ -130,8 +158,9 @@ def test_widget_config_returns_selected_capabilities(client):
     assert "public_chat_url" in body
 
 
-def test_widget_config_rejects_key_for_a_different_agent(client):
-    headers, _ = _auth(client)
+def test_widget_config_rejects_key_for_a_different_agent(client, db_session):
+    headers, company_id = _auth(client, db_session)
+    _raise_agent_quota(db_session, company_id)
     agent_a, pub_a = _create_and_publish_agent(client, headers, {}, "Agent A", "You are A.")
     agent_b, pub_b = _create_and_publish_agent(client, headers, {}, "Agent B", "You are B.")
 
@@ -142,15 +171,15 @@ def test_widget_config_rejects_key_for_a_different_agent(client):
     assert resp.status_code == 403
 
 
-def test_widget_config_company_isolation_by_slug(client):
+def test_widget_config_company_isolation_by_slug(client, db_session):
     """Slug is only unique per company. Company B's key must never resolve
     company A's same-slug agent, and must never leak any of its data."""
-    headers_a, _ = _auth(client)
+    headers_a, _ = _auth(client, db_session)
     agent_a, _pub_a = _create_and_publish_agent(
         client, headers_a, {}, "Iso Bot", "You are A. SECRET_COMPANY_A_MARKER"
     )
 
-    headers_b, _ = _auth(client)
+    headers_b, _ = _auth(client, db_session)
     agent_b, pub_b = _create_and_publish_agent(
         client, headers_b, {}, "Other Bot", "You are B. SECRET_COMPANY_B_MARKER"
     )
@@ -172,13 +201,13 @@ def test_widget_config_company_isolation_by_slug(client):
     assert ok.status_code == 200
 
 
-def test_widget_config_same_slug_collision_across_companies_stays_isolated(client):
+def test_widget_config_same_slug_collision_across_companies_stays_isolated(client, db_session):
     """Two different companies naming their agent identically get the exact
     same slug string (slug is de-duped per-company only, see
     agent_router._unique_slug). Company A's key must resolve strictly to
     company A's agent/config for that slug — never company B's, even though
     the slug string itself collides."""
-    headers_a, _ = _auth(client)
+    headers_a, _ = _auth(client, db_session)
     agent_a, pub_a = _create_and_publish_agent(
         client,
         headers_a,
@@ -187,7 +216,7 @@ def test_widget_config_same_slug_collision_across_companies_stays_isolated(clien
         "You are Company A's bot. SECRET_A_ONLY_MARKER",
     )
 
-    headers_b, _ = _auth(client)
+    headers_b, _ = _auth(client, db_session)
     agent_b, pub_b = _create_and_publish_agent(
         client,
         headers_b,
@@ -226,8 +255,8 @@ def test_widget_config_same_slug_collision_across_companies_stays_isolated(clien
     assert pub_a["api_key"] != pub_b["api_key"]
 
 
-def test_widget_config_never_leaks_sensitive_fields(client):
-    headers, _ = _auth(client)
+def test_widget_config_never_leaks_sensitive_fields(client, db_session):
+    headers, _ = _auth(client, db_session)
     agent, pub = _create_and_publish_agent(
         client,
         headers,

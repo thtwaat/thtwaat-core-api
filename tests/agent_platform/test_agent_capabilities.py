@@ -10,7 +10,24 @@ from __future__ import annotations
 import uuid
 
 
-def _auth(client, role: str = "company_owner"):
+def _bearer_for_user(db_session, user_id: str) -> dict:
+    """Mint a JWT directly instead of POSTing /api/v1/auth/login.
+
+    Same helper/pattern as test_agent_management.py: this file plus
+    test_widget_config.py make enough real logins between them to trip the
+    production auth rate limit (auth_rate_limit(times=10, seconds=60) in
+    app/auth/router.py) when run in the same process. Company/user creation
+    still goes through the real API — only the login call itself is skipped,
+    so the minted token is for the exact same, already-provisioned company
+    owner and preserves company isolation.
+    """
+    from app.auth.service import AuthService
+
+    token = AuthService(db_session).create_access_token(subject=str(user_id))
+    return {"Authorization": f"Bearer {token}"}
+
+
+def _auth(client, db_session, role: str = "company_owner"):
     company_slug = f"caps-{uuid.uuid4().hex[:8]}"
     company_resp = client.post(
         "/api/v1/companies/",
@@ -33,15 +50,13 @@ def _auth(client, role: str = "company_owner"):
         },
     )
     assert user_resp.status_code in (200, 201), user_resp.text
+    user_id = user_resp.json()["id"]
 
-    login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
-    assert login_resp.status_code == 200, login_resp.text
-    token = login_resp.json()["access_token"]
-    return {"Authorization": f"Bearer {token}"}, company_id
+    return _bearer_for_user(db_session, user_id), company_id
 
 
-def test_capability_flags_persist_through_create_and_update(client):
-    headers, _ = _auth(client)
+def test_capability_flags_persist_through_create_and_update(client, db_session):
+    headers, _ = _auth(client, db_session)
     resp = client.post(
         "/v2/agents",
         json={
@@ -67,12 +82,12 @@ def test_capability_flags_persist_through_create_and_update(client):
     assert updated["web_config"]["capabilities"]["image_generation"] is True
 
 
-def test_agent_with_no_capabilities_configured_resolves_safe_defaults(client):
+def test_agent_with_no_capabilities_configured_resolves_safe_defaults(client, db_session):
     """An agent created with an empty web_config (or none of the new keys)
     must behave exactly as it did before this feature existed."""
     from app.agent_platform.agent_runtime import agent_capabilities
 
-    headers, _ = _auth(client)
+    headers, _ = _auth(client, db_session)
     resp = client.post(
         "/v2/agents",
         json={"name": "Plain Bot", "system_prompt_template": "You are helpful."},
@@ -92,8 +107,8 @@ def test_agent_with_no_capabilities_configured_resolves_safe_defaults(client):
     assert caps["handoff"] is True
 
 
-def test_capability_only_update_preserves_unrelated_web_config_keys(client):
-    headers, _ = _auth(client)
+def test_capability_only_update_preserves_unrelated_web_config_keys(client, db_session):
+    headers, _ = _auth(client, db_session)
     resp = client.post(
         "/v2/agents",
         json={
@@ -135,10 +150,10 @@ def test_capability_only_update_preserves_unrelated_web_config_keys(client):
     assert updated["calling"]["phone_number"] == "+15551234567"
 
 
-def test_non_web_config_update_is_unaffected_by_merge_change(client):
+def test_non_web_config_update_is_unaffected_by_merge_change(client, db_session):
     """Sanity check: PATCH bodies that omit web_config entirely (the common
     case — name/description/provider edits) keep behaving exactly as before."""
-    headers, _ = _auth(client)
+    headers, _ = _auth(client, db_session)
     resp = client.post(
         "/v2/agents",
         json={
