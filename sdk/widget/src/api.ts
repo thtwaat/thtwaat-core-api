@@ -4,6 +4,7 @@ import type {
   PublicChatResponse,
   PublicImageResponse,
   PublicVoiceResponse,
+  PublicWidgetConfigResponse,
 } from "./types";
 
 export type { GeneratedImage };
@@ -191,6 +192,26 @@ export class WidgetApiClient {
       throw new Error(extractBackendError(data, `Image generation failed (${res.status})`));
     }
     return data as PublicImageResponse;
+  }
+
+  /**
+   * Fetch public widget config (capability flags + theming) for an agent
+   * slug. Called at most once per widget init (see Widget.ts). Never throws
+   * — any failure (network, 401, 404, malformed body) returns null so the
+   * widget always keeps working for text chat even if this can't load.
+   */
+  async getWidgetConfig(agentSlug: string): Promise<PublicWidgetConfigResponse | null> {
+    try {
+      const res = await fetch(this.url(`/public/v1/agents/${encodeURIComponent(agentSlug)}/widget-config`), {
+        headers: { Authorization: `Bearer ${this.apiKey}` },
+      });
+      if (!res.ok) return null;
+      const data = await res.json().catch(() => null);
+      if (!data || typeof data !== "object" || !data.capabilities) return null;
+      return data as PublicWidgetConfigResponse;
+    } catch {
+      return null;
+    }
   }
 
   /**

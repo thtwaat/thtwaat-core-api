@@ -19,6 +19,10 @@ export type AgentBuilderCapability = {
   tools: boolean;
   memory: boolean;
   handoff: boolean;
+  voice: boolean;
+  vision: boolean;
+  image_generation: boolean;
+  calling: boolean;
 };
 
 export type AgentBuilderWidget = {
@@ -73,7 +77,14 @@ export function defaultAgentBuilderDraft(): AgentBuilderDraft {
       rag: true,
       tools: false,
       memory: false,
-      handoff: false
+      handoff: false,
+      // Optional capabilities that need a provider/credential configured
+      // (STT/TTS, telephony number, image provider, vision-capable model)
+      // must default to false — see AgentRuntime.agent_capabilities defaults.
+      voice: false,
+      vision: false,
+      image_generation: false,
+      calling: false
     },
     widget: {
       theme: "light",

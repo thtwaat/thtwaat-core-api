@@ -107,6 +107,8 @@ class PublishService:
         self,
         api_key_or_placeholder: str,
         config: Optional[WidgetConfig] = None,
+        *,
+        agent_slug: Optional[str] = None,
     ) -> str:
         cfg = config or DEFAULT_WIDGET
         prompts = "|".join(cfg.suggested_prompts or [])
@@ -123,6 +125,14 @@ class PublishService:
             attrs.append(f'data-agent-name="{cfg.agent_name}"')
         if prompts:
             attrs.append(f'data-prompts="{prompts}"')
+        if agent_slug:
+            # New embeds only need slug + api key — the widget fetches
+            # /public/v1/agents/{slug}/widget-config itself for capability
+            # flags, so data-voice/data-vision/data-image-generation are no
+            # longer generated here. Older, already-issued snippets that do
+            # set those attributes keep working unchanged (Widget.fromScript
+            # still reads them, and explicit values always win).
+            attrs.append(f'data-agent-slug="{agent_slug}"')
         return "<script\n  " + "\n  ".join(attrs) + ">\n</script>"
 
     def build_iframe_tag(
@@ -174,7 +184,7 @@ class PublishService:
             agent_id=agent.id,
             widget_id=agent.widget_id,
             status=agent.status,
-            script=self.build_embed_script(api_key_placeholder, config),
+            script=self.build_embed_script(api_key_placeholder, config, agent_slug=agent.slug),
             iframe=self.build_iframe_tag(
                 agent.widget_id,
                 agent_id=agent.id,
@@ -289,7 +299,7 @@ class PublishService:
             api_key=raw_key,
             widget_id=agent.widget_id,
             public_chat_url=self.build_public_chat_url(),
-            embed_script=self.build_embed_script(embed_key, widget_cfg),
+            embed_script=self.build_embed_script(embed_key, widget_cfg, agent_slug=agent.slug),
             iframe_url=self.build_iframe_url(
                 agent.widget_id,
                 agent_id=agent.id,
@@ -524,7 +534,7 @@ class PublishService:
             status=agent.status,
             config=config,
             public_chat_url=self.build_public_chat_url(),
-            embed_script=self.build_embed_script(f"{KEY_PREFIX}<YOUR_KEY>", config),
+            embed_script=self.build_embed_script(f"{KEY_PREFIX}<YOUR_KEY>", config, agent_slug=agent.slug),
             iframe_url=self.build_iframe_url(
                 agent.widget_id,
                 agent_id=agent.id,
@@ -555,6 +565,40 @@ class PublishService:
         self.repo.save_agent(agent)
 
         return self.get_widget_config(agent_id, company_id)
+
+    def get_public_widget_config_for_agent(self, agent: AgentConfig) -> "PublicWidgetConfigResponse":
+        """Safe public widget config for a resolved, already-authorized agent.
+
+        Caller (public_router.public_widget_config_by_slug) is responsible for
+        API-key verification and company scoping — this method only shapes the
+        response, and only from the fields the dedicated response model allows.
+        """
+        from app.agent_platform.agent_runtime import agent_capabilities
+        from app.agent_platform.publish.schemas import (
+            PublicWidgetCapabilities,
+            PublicWidgetConfigResponse,
+        )
+
+        config = self.widget_config_from_agent(agent)
+        if not config.agent_name:
+            config.agent_name = agent.name
+        caps = agent_capabilities(agent.web_config)
+
+        return PublicWidgetConfigResponse(
+            agent_name=config.agent_name,
+            slug=agent.slug,
+            theme=config.theme,
+            primary_color=config.primary_color,
+            welcome_message=config.welcome_message,
+            logo=config.logo,
+            avatar=config.avatar,
+            position=config.position,
+            border_radius=config.border_radius,
+            font_family=config.font_family,
+            suggested_prompts=config.suggested_prompts,
+            capabilities=PublicWidgetCapabilities(**caps),
+            public_chat_url=self.build_public_chat_url(),
+        )
 
     def get_public_widget(self, widget_id: str) -> dict:
         agent = self.repo.get_agent_by_widget_id(widget_id)

@@ -36,14 +36,51 @@ export interface WidgetConfig {
    */
   agentSlug?: string;
   /**
-   * Mirror the agent's backend capability flags here (there is no public
-   * endpoint that exposes them, so the embedder declares what's enabled —
-   * same pattern as the existing `enableHandoff`/`leadCapture` options).
+   * Mirror the agent's backend capability flags here. Legacy/explicit use —
+   * an embed script with `data-voice`/`data-vision`/`data-image-generation`
+   * attributes sets these directly and always wins over anything fetched
+   * from GET /public/v1/agents/{slug}/widget-config (see Widget.ts
+   * `loadCapabilitiesFromConfig`). Leave undefined to let the widget decide
+   * from the fetched config instead — the new/recommended way to embed.
    * All default false/undefined, matching the backend's safe defaults.
    */
   voiceEnabled?: boolean;
   visionEnabled?: boolean;
   imageGenerationEnabled?: boolean;
+}
+
+/** Public capability flags — mirrors `agent_runtime.agent_capabilities()`. */
+export interface PublicWidgetCapabilities {
+  voice: boolean;
+  vision: boolean;
+  image_generation: boolean;
+  calling: boolean;
+  memory: boolean;
+  tools: boolean;
+  knowledge: boolean;
+  handoff: boolean;
+  lead_capture: boolean;
+  multilingual: boolean;
+}
+
+/**
+ * Response shape of GET /public/v1/agents/{slug}/widget-config. Safe public
+ * fields only — no system prompt, provider credentials, or internal config.
+ */
+export interface PublicWidgetConfigResponse {
+  agent_name: string;
+  slug?: string | null;
+  theme: string;
+  primary_color: string;
+  welcome_message: string;
+  logo?: string | null;
+  avatar?: string | null;
+  position: string;
+  border_radius: string;
+  font_family: string;
+  suggested_prompts: string[];
+  capabilities: PublicWidgetCapabilities;
+  public_chat_url: string;
 }
 
 export interface ChatMessage {

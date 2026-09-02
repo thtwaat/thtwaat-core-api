@@ -74,6 +74,9 @@ def agent_capabilities(web_config: Optional[Mapping[str, Any]]) -> Dict[str, boo
         "memory": caps.get("memory", True),
         "handoff": caps.get("handoff", True),
         "tools": caps.get("tools", False),
+        # "knowledge" is the canonical key; "rag" is kept as a read fallback
+        # since the agent builder UI has historically written that key.
+        "knowledge": caps.get("knowledge", caps.get("rag", True)),
         "lead_capture": caps.get("lead_capture", True),
         "multilingual": caps.get("multilingual", True),
         "vision": caps.get("vision", False),

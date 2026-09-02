@@ -236,6 +236,15 @@ def update_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     updates = patch.model_dump(exclude_unset=True)
+    if "web_config" in updates and updates["web_config"] is not None:
+        # Shallow top-level merge so a partial patch (e.g. only `capabilities`,
+        # from the Capabilities card) can't silently wipe unrelated web_config
+        # sections (widget, voice, calling, image_generation, ...). Callers that
+        # want to clear a top-level key can still do so explicitly by including
+        # it with a falsy value; only *omitted* keys are preserved.
+        merged_web_config = dict(agent.web_config or {})
+        merged_web_config.update(updates["web_config"])
+        updates["web_config"] = merged_web_config
     for field, value in updates.items():
         setattr(agent, field, value)
 

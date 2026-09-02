@@ -7,7 +7,7 @@ import json
 import logging
 from typing import AsyncIterator, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -25,6 +25,7 @@ from app.agent_platform.publish.schemas import (
     PublicImageRequest,
     PublicImageResponse,
     PublicVoiceResponse,
+    PublicWidgetConfigResponse,
 )
 from app.agent_platform.publish.service import PublishService
 from app.agent_platform.publish.chat_runtime import run_public_chat
@@ -208,6 +209,42 @@ async def public_chat_by_slug(
         handoff=bool(extras.get("handoff")),
         lead=extras.get("lead"),
     )
+
+
+@router.get(
+    "/agents/{slug}/widget-config",
+    response_model=PublicWidgetConfigResponse,
+    summary="Public widget config addressed by agent slug (safe fields only, still requires the agent's api_key)",
+)
+def public_widget_config_by_slug(
+    slug: str,
+    request: Request,
+    api_key: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    """Safe, minimal config the public widget fetches once on init to decide
+    which optional controls (mic, image attach, image-generation) to show.
+
+    Uses the exact same api-key-first, then-scope-by-company_id pattern as
+    ``public_chat_by_slug`` — required because ``AgentConfig.slug`` is only
+    unique per company, not globally, so the slug alone can't safely resolve
+    an agent across tenants.
+    """
+    key = verify_api_key_from_value(api_key, db) if api_key else verify_api_key(request, db)
+
+    agent = (
+        db.query(AgentConfig)
+        .filter(AgentConfig.slug == slug, AgentConfig.company_id == key.company_id)
+        .first()
+    )
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if str(agent.id) != str(key.agent_id):
+        raise HTTPException(status_code=403, detail="API key is not authorized for this agent")
+    if agent.status != "PUBLISHED":
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    return PublishService(db).get_public_widget_config_for_agent(agent)
 
 
 async def _public_voice_turn(

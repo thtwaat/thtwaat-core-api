@@ -689,7 +689,11 @@ export default function NewAgentPage() {
                   ["rag", "Knowledge / RAG", "Answer from uploaded documents"],
                   ["tools", "Tools (planned)", "Reserved in config — no new backend"],
                   ["memory", "Session memory", "Reserved flag in web_config"],
-                  ["handoff", "Human handoff ready", "Aligns with Inbox pending_human"]
+                  ["handoff", "Human handoff ready", "Aligns with Inbox pending_human"],
+                  ["voice", "Voice", "Requires a speech-to-text / text-to-speech provider — configure after creating the agent"],
+                  ["vision", "Vision (image upload)", "Requires a vision-capable model (e.g. GPT-4o class)"],
+                  ["image_generation", "Image generation", "Requires an image-generation provider/model"],
+                  ["calling", "AI calling", "Requires voice + a telephony provider and phone number"]
                 ] as const
               ).map(([key, label, hint]) => (
                 <label

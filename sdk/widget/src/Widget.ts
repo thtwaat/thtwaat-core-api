@@ -145,6 +145,18 @@ export class Widget implements THTWAATApi {
     if (this.options.openOnLoad) this.open();
     this.options.onReady?.(this);
     this.startPolling();
+
+    // One-shot capability discovery for new-style embeds (data-agent-slug +
+    // api key, no explicit data-voice/data-vision/data-image-generation).
+    // Never polls — see loadCapabilitiesFromConfig.
+    if (
+      this.options.agentSlug &&
+      (this.options.voiceEnabled === undefined ||
+        this.options.visionEnabled === undefined ||
+        this.options.imageGenerationEnabled === undefined)
+    ) {
+      void this.loadCapabilitiesFromConfig();
+    }
   }
 
   static fromScript(script: HTMLScriptElement): Widget {
@@ -166,9 +178,20 @@ export class Widget implements THTWAATApi {
     const leadCapture = script.getAttribute("data-lead-capture") === "true";
     const enableHandoff = script.getAttribute("data-handoff") !== "false";
     const agentSlug = script.getAttribute("data-agent-slug") || undefined;
-    const voiceEnabled = script.getAttribute("data-voice") === "true";
-    const visionEnabled = script.getAttribute("data-vision") === "true";
-    const imageGenerationEnabled = script.getAttribute("data-image-generation") === "true";
+    // Only set these from an *explicit* attribute — its absence leaves the
+    // option `undefined` so the widget can fill it in from the fetched
+    // widget-config instead (see Widget.loadCapabilitiesFromConfig). A
+    // legacy embed that does set data-voice/data-vision/data-image-generation
+    // keeps behaving exactly as before: that explicit value always wins.
+    const voiceEnabled = script.hasAttribute("data-voice")
+      ? script.getAttribute("data-voice") === "true"
+      : undefined;
+    const visionEnabled = script.hasAttribute("data-vision")
+      ? script.getAttribute("data-vision") === "true"
+      : undefined;
+    const imageGenerationEnabled = script.hasAttribute("data-image-generation")
+      ? script.getAttribute("data-image-generation") === "true"
+      : undefined;
 
     return new Widget({
       apiKey,
@@ -425,38 +448,6 @@ export class Widget implements THTWAATApi {
         ? ""
         : `<button type="button" class="tht-handoff">${this.escape(s.talkToHuman)}</button>`;
 
-    const micBtn =
-      this.options.voiceEnabled && voiceSupported()
-        ? `<button type="button" class="tht-composer-btn tht-mic" aria-label="${this.escape(s.micLabel)}" title="${this.escape(s.micLabel)}">
-             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-               <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8"/>
-               <path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-             </svg>
-           </button>`
-        : "";
-
-    const attachBtn = this.options.visionEnabled
-      ? `<button type="button" class="tht-composer-btn tht-attach" aria-label="${this.escape(s.attachImageLabel)}" title="${this.escape(s.attachImageLabel)}">
-           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-             <rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/>
-             <circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.5"/>
-             <path d="m5 16 4.5-4.5a2 2 0 0 1 2.8 0L15 14.2m2-2 2.5 2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
-           </svg>
-         </button>`
-      : "";
-
-    const imageGenBtn = this.options.imageGenerationEnabled
-      ? `<button type="button" class="tht-composer-btn tht-imagegen" aria-label="${this.escape(s.generateImageLabel)}" title="${this.escape(s.generateImageLabel)}">
-           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
-             <path d="M12 4v4M12 16v4M4 12h4M16 12h4M6.5 6.5l2 2M15.5 15.5l2 2M17.5 6.5l-2 2M8.5 15.5l-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
-           </svg>
-         </button>`
-      : "";
-
-    const fileInput = this.options.visionEnabled
-      ? `<input type="file" class="tht-file-input" accept="${ACCEPTED_IMAGE_TYPES.join(",")}" hidden />`
-      : "";
-
     return `
       <button type="button" class="tht-launcher" aria-label="${this.escape(s.openChat)}" aria-expanded="false" aria-controls="tht-panel">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -497,13 +488,101 @@ export class Widget implements THTWAATApi {
             </button>
           </div>
           <form class="tht-composer">
-            ${micBtn}${attachBtn}${imageGenBtn}${fileInput}
+            ${this.renderComposerExtras()}
             <textarea class="tht-input" rows="1" placeholder="${this.escape(s.placeholder)}" aria-label="Message"></textarea>
             <button type="submit" class="tht-send">${this.escape(s.send)}</button>
           </form>
         </div>
       </section>
     `;
+  }
+
+  /**
+   * Mic / attach / image-generation buttons + hidden file input — extracted
+   * so they can be re-rendered after `loadCapabilitiesFromConfig` resolves
+   * (fetched capabilities arrive asynchronously, after the initial mount).
+   */
+  private renderComposerExtras(): string {
+    const s = this.strings;
+
+    const micBtn =
+      this.options.voiceEnabled && voiceSupported()
+        ? `<button type="button" class="tht-composer-btn tht-mic" aria-label="${this.escape(s.micLabel)}" title="${this.escape(s.micLabel)}">
+             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+               <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z" stroke="currentColor" stroke-width="1.8"/>
+               <path d="M19 11a7 7 0 0 1-14 0M12 18v3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+             </svg>
+           </button>`
+        : "";
+
+    const attachBtn = this.options.visionEnabled
+      ? `<button type="button" class="tht-composer-btn tht-attach" aria-label="${this.escape(s.attachImageLabel)}" title="${this.escape(s.attachImageLabel)}">
+           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+             <rect x="3.5" y="4.5" width="17" height="15" rx="2" stroke="currentColor" stroke-width="1.8"/>
+             <circle cx="8.5" cy="9.5" r="1.5" stroke="currentColor" stroke-width="1.5"/>
+             <path d="m5 16 4.5-4.5a2 2 0 0 1 2.8 0L15 14.2m2-2 2.5 2.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+           </svg>
+         </button>`
+      : "";
+
+    const imageGenBtn = this.options.imageGenerationEnabled
+      ? `<button type="button" class="tht-composer-btn tht-imagegen" aria-label="${this.escape(s.generateImageLabel)}" title="${this.escape(s.generateImageLabel)}">
+           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+             <path d="M12 4v4M12 16v4M4 12h4M16 12h4M6.5 6.5l2 2M15.5 15.5l2 2M17.5 6.5l-2 2M8.5 15.5l-2 2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+           </svg>
+         </button>`
+      : "";
+
+    const fileInput = this.options.visionEnabled
+      ? `<input type="file" class="tht-file-input" accept="${ACCEPTED_IMAGE_TYPES.join(",")}" hidden />`
+      : "";
+
+    return `${micBtn}${attachBtn}${imageGenBtn}${fileInput}`;
+  }
+
+  /**
+   * Fetch /public/v1/agents/{slug}/widget-config once and fill in any of
+   * voiceEnabled/visionEnabled/imageGenerationEnabled that weren't set
+   * explicitly (via data-* attributes). Re-renders just the composer's
+   * optional buttons — never touches messages, input value, or open state.
+   * No polling: this runs exactly once, from the constructor.
+   */
+  private async loadCapabilitiesFromConfig(): Promise<void> {
+    const slug = this.options.agentSlug;
+    if (!slug) return;
+    const config = await this.client.getWidgetConfig(slug);
+    if (!config || this.destroyed) return;
+
+    const caps = config.capabilities;
+    let changed = false;
+    if (this.options.voiceEnabled === undefined) {
+      this.options.voiceEnabled = Boolean(caps.voice);
+      changed = true;
+    }
+    if (this.options.visionEnabled === undefined) {
+      this.options.visionEnabled = Boolean(caps.vision);
+      changed = true;
+    }
+    if (this.options.imageGenerationEnabled === undefined) {
+      this.options.imageGenerationEnabled = Boolean(caps.image_generation);
+      changed = true;
+    }
+    if (changed) this.refreshComposerExtras();
+  }
+
+  /** Re-renders the mic/attach/image-generation buttons + file input in place
+   * and rebinds their listeners — used after capabilities load asynchronously. */
+  private refreshComposerExtras(): void {
+    const form = this.shadow.querySelector(".tht-composer") as HTMLFormElement | null;
+    if (!form) return;
+    form.querySelectorAll(".tht-mic, .tht-attach, .tht-imagegen, .tht-file-input").forEach((el) => el.remove());
+    form.insertAdjacentHTML("afterbegin", this.renderComposerExtras());
+
+    this.fileInput = this.shadow.querySelector(".tht-file-input") as HTMLInputElement | undefined;
+    this.micBtnEl = this.shadow.querySelector(".tht-mic") as HTMLButtonElement | undefined;
+    this.attachBtnEl = this.shadow.querySelector(".tht-attach") as HTMLButtonElement | undefined;
+    this.imageGenBtnEl = this.shadow.querySelector(".tht-imagegen") as HTMLButtonElement | undefined;
+    this.bindComposerExtrasEvents();
   }
 
   private bindEvents(): void {
@@ -537,31 +616,17 @@ export class Widget implements THTWAATApi {
       void this.requestHuman();
     });
 
-    this.shadow.querySelector(".tht-mic")?.addEventListener("click", () => {
-      void this.startRecording();
-    });
     this.shadow.querySelector(".tht-rec-stop")?.addEventListener("click", () => {
       void this.stopRecordingAndSend();
     });
     this.shadow.querySelector(".tht-rec-cancel")?.addEventListener("click", () => {
       this.cancelRecording();
     });
-
-    this.shadow.querySelector(".tht-attach")?.addEventListener("click", () => {
-      this.fileInput?.click();
-    });
-    this.fileInput?.addEventListener("change", () => {
-      const file = this.fileInput?.files?.[0];
-      if (file) void this.handleFileSelected(file);
-      if (this.fileInput) this.fileInput.value = "";
-    });
     this.shadow.querySelector(".tht-attachment-remove")?.addEventListener("click", () => {
       this.clearPendingImage();
     });
 
-    this.shadow.querySelector(".tht-imagegen")?.addEventListener("click", () => {
-      void this.generateImageFromPrompt();
-    });
+    this.bindComposerExtrasEvents();
 
     this.shadow.addEventListener("keydown", (e: Event) => {
       const ke = e as KeyboardEvent;
@@ -572,6 +637,27 @@ export class Widget implements THTWAATApi {
       if (ke.key === "Tab" && this.openState) {
         this.trapFocus(ke);
       }
+    });
+  }
+
+  /** Binds the mic/attach/image-generation/file-input listeners against
+   * whatever elements currently match those selectors. Called from
+   * `bindEvents` on initial mount and again from `refreshComposerExtras`
+   * after capabilities load asynchronously and the buttons are re-rendered. */
+  private bindComposerExtrasEvents(): void {
+    this.shadow.querySelector(".tht-mic")?.addEventListener("click", () => {
+      void this.startRecording();
+    });
+    this.shadow.querySelector(".tht-attach")?.addEventListener("click", () => {
+      this.fileInput?.click();
+    });
+    this.fileInput?.addEventListener("change", () => {
+      const file = this.fileInput?.files?.[0];
+      if (file) void this.handleFileSelected(file);
+      if (this.fileInput) this.fileInput.value = "";
+    });
+    this.shadow.querySelector(".tht-imagegen")?.addEventListener("click", () => {
+      void this.generateImageFromPrompt();
     });
   }
 

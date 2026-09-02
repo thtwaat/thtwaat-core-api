@@ -53,6 +53,38 @@ describe("agent-builder", () => {
     expect(draft.step).toBe(2);
   });
 
+  it("defaults optional voice/vision/image_generation/calling capabilities to false", () => {
+    const draft = defaultAgentBuilderDraft();
+    expect(draft.capabilities.voice).toBe(false);
+    expect(draft.capabilities.vision).toBe(false);
+    expect(draft.capabilities.image_generation).toBe(false);
+    expect(draft.capabilities.calling).toBe(false);
+    // Existing defaults must stay unchanged.
+    expect(draft.capabilities.rag).toBe(true);
+    expect(draft.capabilities.tools).toBe(false);
+    expect(draft.capabilities.memory).toBe(false);
+    expect(draft.capabilities.handoff).toBe(false);
+  });
+
+  it("serializes toggled optional capabilities into the create payload", () => {
+    const draft = defaultAgentBuilderDraft();
+    draft.name = "Voice Bot";
+    draft.system_prompt_template = "You are a helpful voice assistant.";
+    draft.capabilities = {
+      ...draft.capabilities,
+      voice: true,
+      vision: true,
+      image_generation: false,
+      calling: false
+    };
+    const web = buildAgentCreatePayload(draft).web_config as Record<string, unknown>;
+    const caps = web.capabilities as Record<string, boolean>;
+    expect(caps.voice).toBe(true);
+    expect(caps.vision).toBe(true);
+    expect(caps.image_generation).toBe(false);
+    expect(caps.calling).toBe(false);
+  });
+
   it("builds create payload with web_config provider and widget", () => {
     const draft = defaultAgentBuilderDraft();
     draft.name = "Bot";

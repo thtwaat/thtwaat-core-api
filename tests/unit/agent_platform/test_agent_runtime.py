@@ -79,6 +79,39 @@ def test_capabilities_vision_opt_in():
 
 
 @pytest.mark.unit
+def test_capabilities_new_optional_flags_default_false():
+    """voice/calling/image_generation must default off for agents with no
+    capabilities configured at all — same guarantee as vision above."""
+    caps = agent_capabilities({})
+    assert caps["voice"] is False
+    assert caps["calling"] is False
+    assert caps["image_generation"] is False
+
+    caps = agent_capabilities({"capabilities": {"voice": True, "calling": True, "image_generation": True}})
+    assert caps["voice"] is True
+    assert caps["calling"] is True
+    assert caps["image_generation"] is True
+
+
+@pytest.mark.unit
+def test_capabilities_knowledge_key_and_legacy_rag_alias():
+    # No capabilities configured at all -> defaults to enabled.
+    assert agent_capabilities({})["knowledge"] is True
+    assert agent_capabilities(None)["knowledge"] is True
+
+    # New canonical key.
+    assert agent_capabilities({"capabilities": {"knowledge": False}})["knowledge"] is False
+
+    # Legacy key written by the existing agent-builder UI ("rag") is honored
+    # as a fallback when "knowledge" itself isn't present.
+    assert agent_capabilities({"capabilities": {"rag": False}})["knowledge"] is False
+    assert agent_capabilities({"capabilities": {"rag": True}})["knowledge"] is True
+
+    # "knowledge" wins if both are present.
+    assert agent_capabilities({"capabilities": {"knowledge": True, "rag": False}})["knowledge"] is True
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "provider,model,expected",
     [

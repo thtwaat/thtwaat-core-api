@@ -138,6 +138,7 @@ class AgentCapabilities(BaseModel):
     memory: bool = True
     handoff: bool = True
     tools: bool = False
+    knowledge: bool = True
     lead_capture: bool = True
     multilingual: bool = True
     vision: bool = False

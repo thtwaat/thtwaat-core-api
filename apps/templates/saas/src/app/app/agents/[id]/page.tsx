@@ -14,6 +14,39 @@ import { Input, Label, Select, Textarea } from "@/components/ui/input";
 
 const PROVIDERS = ["openai", "anthropic", "gemini", "ollama", "openrouter"];
 
+type AgentCapabilities = {
+  rag: boolean;
+  memory: boolean;
+  tools: boolean;
+  handoff: boolean;
+  voice: boolean;
+  vision: boolean;
+  image_generation: boolean;
+  calling: boolean;
+};
+
+const DEFAULT_CAPABILITIES: AgentCapabilities = {
+  rag: true,
+  memory: true,
+  tools: false,
+  handoff: true,
+  voice: false,
+  vision: false,
+  image_generation: false,
+  calling: false
+};
+
+const CAPABILITY_FIELDS: Array<{ key: keyof AgentCapabilities; label: string; hint: string }> = [
+  { key: "rag", label: "Knowledge / RAG", hint: "Answer from attached knowledge bases" },
+  { key: "memory", label: "Session memory", hint: "Remember prior turns in the conversation" },
+  { key: "tools", label: "Tools", hint: "Allow the model to call registered tools" },
+  { key: "handoff", label: "Human handoff", hint: "Detect \"talk to a human\" and route to Inbox" },
+  { key: "voice", label: "Voice", hint: "Requires an STT/TTS provider to be configured" },
+  { key: "vision", label: "Vision (image upload)", hint: "Requires a vision-capable model (e.g. GPT-4o class)" },
+  { key: "image_generation", label: "Image generation", hint: "Requires an image-generation provider/model" },
+  { key: "calling", label: "AI calling", hint: "Requires voice + a telephony provider and phone number" }
+];
+
 const STATUS_TONE: Record<string, "success" | "neutral" | "warn"> = {
   PUBLISHED: "success",
   PAUSED: "warn",
@@ -54,6 +87,7 @@ export default function AgentDetailPage() {
   const [model, setModel] = useState("");
   const [temperature, setTemperature] = useState(0.7);
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
+  const [capabilities, setCapabilities] = useState<AgentCapabilities>(DEFAULT_CAPABILITIES);
 
   useEffect(() => {
     if (!agent.data) return;
@@ -64,6 +98,8 @@ export default function AgentDetailPage() {
     setModel(agent.data.model || (agent.data.web_config?.model as string) || "");
     setTemperature(agent.data.temperature);
     setSelectedTools(agent.data.allowed_tools || []);
+    const rawCaps = (agent.data.web_config?.capabilities as Partial<AgentCapabilities>) || {};
+    setCapabilities({ ...DEFAULT_CAPABILITIES, ...rawCaps });
   }, [agent.data]);
 
   async function copyText(value: string, label: string) {
@@ -84,7 +120,11 @@ export default function AgentDetailPage() {
         provider,
         model,
         temperature,
-        allowed_tools: selectedTools
+        allowed_tools: selectedTools,
+        // Spread the agent's full existing web_config so unrelated keys
+        // (widget, voice, calling, image_generation provider settings, ...)
+        // survive this PATCH even if the backend ever stops merging.
+        web_config: { ...(agent.data?.web_config || {}), capabilities }
       }),
     onSuccess: () => {
       toast.success("Agent updated");
@@ -295,6 +335,38 @@ export default function AgentDetailPage() {
             ))}
           </div>
           <p className="mt-3 text-xs text-muted">Save Configuration to apply tool changes.</p>
+        </Card>
+
+        <Card>
+          <CardHeader
+            title="Capabilities"
+            description="Optional capabilities this agent can use. Some require provider setup."
+          />
+          <div className="space-y-2 text-sm">
+            {CAPABILITY_FIELDS.map(({ key, label, hint }) => (
+              <label key={key} className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={capabilities[key]}
+                  onChange={(e) =>
+                    setCapabilities((prev) => ({ ...prev, [key]: e.target.checked }))
+                  }
+                />
+                <span>
+                  <span className="block font-medium text-ink">{label}</span>
+                  <span className="block text-xs text-muted">{hint}</span>
+                  {(key === "voice" || key === "vision" || key === "image_generation" || key === "calling") &&
+                    capabilities[key] && (
+                      <span className="mt-0.5 block text-xs font-medium text-amber-600">
+                        Requires setup — see hint above before publishing.
+                      </span>
+                    )}
+                </span>
+              </label>
+            ))}
+          </div>
+          <p className="mt-3 text-xs text-muted">Save Configuration to apply capability changes.</p>
         </Card>
 
         <Card>

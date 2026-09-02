@@ -197,3 +197,47 @@ class PublicImageResponse(BaseModel):
     images: List[PublicGeneratedImage]
     usage: PublicChatUsage
     status: Optional[str] = None
+
+
+class PublicWidgetCapabilities(BaseModel):
+    """Safe, public mirror of ``agent_runtime.agent_capabilities()`` — booleans only,
+    no provider names, credentials, or configuration values."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    voice: bool = False
+    vision: bool = False
+    image_generation: bool = False
+    calling: bool = False
+    memory: bool = True
+    tools: bool = False
+    knowledge: bool = True
+    handoff: bool = True
+    lead_capture: bool = True
+    multilingual: bool = True
+
+
+class PublicWidgetConfigResponse(BaseModel):
+    """Dedicated response model for GET /public/v1/agents/{slug}/widget-config.
+
+    Deliberately a closed, explicit field list — never ``system_prompt_template``,
+    ``provider``/``model`` internals, ``allowed_tools``, API keys/credentials,
+    or ``company_id``. A field can only leak here if it is added to this model
+    by name; there is no passthrough of the underlying ``AgentConfig`` row.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    agent_name: str
+    slug: Optional[str] = None
+    theme: str = "light"
+    primary_color: str = "#111827"
+    welcome_message: str = "Hi! How can I help you today?"
+    logo: Optional[str] = None
+    avatar: Optional[str] = None
+    position: str = "bottom-right"
+    border_radius: str = "16px"
+    font_family: str = "Inter, system-ui, sans-serif"
+    suggested_prompts: list[str] = Field(default_factory=list)
+    capabilities: PublicWidgetCapabilities
+    public_chat_url: str
