@@ -2604,7 +2604,16 @@ export default function StudioPage() {
             </li>
           ))}
           {!checklistQ.data && !checklistQ.isLoading ? (
-            <li className="text-sm text-slate-500">Select a project to load checklist.</li>
+            <li
+              className={cn(
+                "text-sm",
+                selected && checklistQ.isError ? "text-rose-400" : "text-slate-500"
+              )}
+            >
+              {selected && checklistQ.isError
+                ? "Unable to load launch checklist. Please try again."
+                : "Select a project to load checklist."}
+            </li>
           ) : null}
         </ul>
       </section>
@@ -2741,6 +2750,18 @@ export default function StudioPage() {
               </p>
             </div>
           ))}
+          {!diagnosticsQ.data && !diagnosticsQ.isLoading ? (
+            <p
+              className={cn(
+                "text-sm sm:col-span-2 lg:col-span-4",
+                selected && diagnosticsQ.isError ? "text-rose-400" : "text-slate-500"
+              )}
+            >
+              {selected && diagnosticsQ.isError
+                ? "Unable to load launch diagnostics. Please try again."
+                : "Select a project to load diagnostics."}
+            </p>
+          ) : null}
         </div>
       </section>
 
