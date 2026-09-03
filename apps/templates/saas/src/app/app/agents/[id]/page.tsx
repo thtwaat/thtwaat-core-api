@@ -3,10 +3,11 @@
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { agentsApi, knowledgeApi } from "@/lib/services";
 import { site } from "@/lib/config";
+import { isProviderModelVisionCapable, VISION_MODEL_INCOMPATIBLE_MESSAGE } from "@/lib/agent-builder";
 import { PageHeader } from "@/components/ui/misc";
 import { Badge, Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,14 @@ export default function AgentDetailPage() {
     enabled: Boolean(agent.data?.status === "PUBLISHED")
   });
   const toolsCatalog = useQuery({ queryKey: ["agent-tools-catalog"], queryFn: agentsApi.tools });
+  // Same VISION_CAPABLE_MODELS table the backend validates against and
+  // AgentRuntime gates image requests against (app.agent_platform.
+  // agent_runtime) — fetched once, not re-authored here.
+  const visionModelsQ = useQuery({
+    queryKey: ["agent-vision-capable-models"],
+    queryFn: agentsApi.visionCapableModels,
+    staleTime: Infinity
+  });
   const allBases = useQuery({ queryKey: ["kb-bases"], queryFn: knowledgeApi.listBases });
   const attachedBases = useQuery({
     queryKey: ["agent-kb", id],
@@ -98,6 +107,11 @@ export default function AgentDetailPage() {
   const [temperature, setTemperature] = useState(0.7);
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [capabilities, setCapabilities] = useState<AgentCapabilities>(DEFAULT_CAPABILITIES);
+
+  const visionIncompatible = useMemo(() => {
+    if (!capabilities.vision || !model.trim() || !visionModelsQ.data) return false;
+    return !isProviderModelVisionCapable(provider, model, visionModelsQ.data);
+  }, [capabilities.vision, model, provider, visionModelsQ.data]);
 
   useEffect(() => {
     if (!agent.data) return;
@@ -274,6 +288,11 @@ export default function AgentDetailPage() {
               <div>
                 <Label>Model</Label>
                 <Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="gpt-4o-mini" />
+                {visionIncompatible && (
+                  <p className="mt-1 text-xs font-medium text-red-600" role="alert">
+                    {VISION_MODEL_INCOMPATIBLE_MESSAGE}
+                  </p>
+                )}
               </div>
               <div>
                 <Label>Temperature</Label>
@@ -289,7 +308,11 @@ export default function AgentDetailPage() {
             </div>
           </div>
           <div className="mt-4 flex flex-wrap items-center gap-2">
-            <Button onClick={() => save.mutate()} disabled={save.isPending}>
+            <Button
+              onClick={() => save.mutate()}
+              disabled={save.isPending || visionIncompatible}
+              title={visionIncompatible ? VISION_MODEL_INCOMPATIBLE_MESSAGE : undefined}
+            >
               {save.isPending ? "Saving…" : "Save changes"}
             </Button>
             <Link
@@ -368,6 +391,11 @@ export default function AgentDetailPage() {
                   <span className="block text-xs text-muted">{hint}</span>
                   {note && (
                     <span className="mt-0.5 block text-xs font-medium text-amber-600">{note}</span>
+                  )}
+                  {key === "vision" && visionIncompatible && (
+                    <span className="mt-0.5 block text-xs font-medium text-red-600" role="alert">
+                      {VISION_MODEL_INCOMPATIBLE_MESSAGE}
+                    </span>
                   )}
                 </span>
               </label>

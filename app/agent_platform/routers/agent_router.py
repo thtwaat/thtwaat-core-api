@@ -2,6 +2,7 @@ import base64
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status, Body
 from sqlalchemy.orm import Session
+from types import SimpleNamespace
 from typing import List, Optional
 from uuid import UUID
 
@@ -24,7 +25,11 @@ from app.agent_platform.schemas import (
     AgentUpdate,
     AgentVoiceResponse,
 )
-from app.agent_platform.agent_runtime import slugify
+from app.agent_platform.agent_runtime import (
+    VISION_CAPABLE_MODELS,
+    slugify,
+    validate_vision_model_compatibility,
+)
 from app.agent_platform.models.agent import AgentConfig
 from app.agent_platform.protection import is_protected_agent
 from app.agent_platform.publish.service import PublishService
@@ -118,6 +123,10 @@ def create_agent(
             detail="Protected production agents cannot be created as reusable templates.",
         )
 
+    # Vision requires a vision-capable model — reject before the row is ever
+    # written rather than silently changing provider/model or capabilities.
+    validate_vision_model_compatibility(agent_in)
+
     new_agent = AgentConfig(
         company_id=company_id,
         name=agent_in.name,
@@ -193,6 +202,21 @@ def list_available_tools(
         for name in ToolRegistry.list_tools()
     ]
 
+@router.get("/vision-capable-models")
+def list_vision_capable_models(
+    auth_data: dict = Depends(get_current_user_and_company),
+):
+    """Provider -> vision-capable model-name prefixes, for the Agent Builder
+    UI to disable/flag incompatible models when Vision is enabled.
+
+    Read-only view of the exact same ``VISION_CAPABLE_MODELS`` table the
+    backend validates Agent create/update against (``validate_vision_model_
+    compatibility``) and ``AgentRuntime`` gates image requests against — the
+    UI never maintains its own copy of this list.
+    """
+    _ = auth_data  # JWT required; the compatibility table itself is platform-wide
+    return {provider: list(models) for provider, models in VISION_CAPABLE_MODELS.items()}
+
 @router.get("/{agent_id}", response_model=AgentResponse)
 def get_agent(
     agent_id: UUID,
@@ -245,6 +269,20 @@ def update_agent(
         merged_web_config = dict(agent.web_config or {})
         merged_web_config.update(updates["web_config"])
         updates["web_config"] = merged_web_config
+
+    # Validate the *effective* post-patch state — a partial patch that only
+    # touches, say, `name` must still be rejected if the agent's existing
+    # (unchanged) provider/model can't handle its existing (unchanged)
+    # vision=true, so a broken config is always surfaced rather than silently
+    # persisted again. Never silently changes provider/model/capabilities.
+    validate_vision_model_compatibility(
+        SimpleNamespace(
+            provider=updates.get("provider", agent.provider),
+            model=updates.get("model", agent.model),
+            web_config=updates.get("web_config", agent.web_config),
+        )
+    )
+
     for field, value in updates.items():
         setattr(agent, field, value)
 

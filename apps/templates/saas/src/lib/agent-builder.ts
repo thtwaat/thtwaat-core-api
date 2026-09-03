@@ -170,9 +170,46 @@ export function prefillFromTemplate(
 
 export type StepValidation = { ok: boolean; errors: string[] };
 
+/** Provider -> vision-capable model-name prefixes, as served by
+ * GET /v2/agents/vision-capable-models (agentsApi.visionCapableModels in
+ * lib/services.ts). This is a transport type only — the actual list lives
+ * once, server-side, in app.agent_platform.agent_runtime.VISION_CAPABLE_MODELS;
+ * the frontend never maintains its own copy of which models support vision. */
+export type VisionCapableModelRegistry = Record<string, string[]>;
+
+export const VISION_MODEL_INCOMPATIBLE_MESSAGE =
+  "Vision requires a vision-capable model. Please select a compatible model.";
+
+/** Mirrors the backend's provider_model_supports_vision prefix-match exactly,
+ * against server-sourced data — the *rule* (prefix match) is small enough to
+ * state once per side, but the *data* (which models qualify) always comes
+ * from the registry argument, never a locally hardcoded list. */
+export function isProviderModelVisionCapable(
+  provider: string,
+  model: string,
+  registry: VisionCapableModelRegistry
+): boolean {
+  const prefixes = registry[(provider || "").toLowerCase()] || [];
+  const m = (model || "").toLowerCase();
+  return prefixes.some((p) => m.startsWith(p.toLowerCase()));
+}
+
+function visionModelCompatibilityErrors(
+  draft: AgentBuilderDraft,
+  visionCapableModels?: VisionCapableModelRegistry
+): string[] {
+  // No registry yet (still loading) -> skip client-side checking rather than
+  // false-positive; the backend validates authoritatively on save regardless.
+  if (!visionCapableModels || !draft.capabilities.vision || !draft.model.trim()) return [];
+  const provider = draft.provider === "auto" ? "openai" : draft.provider;
+  if (isProviderModelVisionCapable(provider, draft.model, visionCapableModels)) return [];
+  return [VISION_MODEL_INCOMPATIBLE_MESSAGE];
+}
+
 export function validateAgentBuilderStep(
   step: AgentBuilderStepId,
-  draft: AgentBuilderDraft
+  draft: AgentBuilderDraft,
+  visionCapableModels?: VisionCapableModelRegistry
 ): StepValidation {
   const errors: string[] = [];
   if (step === 1) {
@@ -194,6 +231,12 @@ export function validateAgentBuilderStep(
     if (draft.provider !== "auto" && !draft.model.trim()) {
       errors.push("Select a model for the chosen provider");
     }
+    errors.push(...visionModelCompatibilityErrors(draft, visionCapableModels));
+  }
+  if (step === 5) {
+    // Vision toggle lives on this step — catch enabling Vision against an
+    // already-selected incompatible model immediately, not only on step 4.
+    errors.push(...visionModelCompatibilityErrors(draft, visionCapableModels));
   }
   if (step === 6) {
     if (!draft.widget.welcome_message.trim()) errors.push("Welcome message is required");
@@ -202,8 +245,8 @@ export function validateAgentBuilderStep(
     }
   }
   if (step === 7) {
-    const basic = validateAgentBuilderStep(2, draft);
-    const provider = validateAgentBuilderStep(4, draft);
+    const basic = validateAgentBuilderStep(2, draft, visionCapableModels);
+    const provider = validateAgentBuilderStep(4, draft, visionCapableModels);
     errors.push(...basic.errors, ...provider.errors);
   }
   return { ok: errors.length === 0, errors };

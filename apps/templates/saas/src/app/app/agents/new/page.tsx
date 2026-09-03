@@ -20,10 +20,12 @@ import {
   clearAgentBuilderDraft,
   defaultAgentBuilderDraft,
   docStatusTone,
+  isProviderModelVisionCapable,
   prefillFromTemplate,
   saveAgentBuilderDraft,
   stepProgressPercent,
-  validateAgentBuilderStep
+  validateAgentBuilderStep,
+  VISION_MODEL_INCOMPATIBLE_MESSAGE
 } from "@/lib/agent-builder";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader, EmptyState, Progress } from "@/components/ui/misc";
@@ -152,6 +154,15 @@ export default function NewAgentPage() {
     enabled: draft.step === 4
   });
 
+  // Same VISION_CAPABLE_MODELS table the backend validates against and
+  // AgentRuntime gates image requests against (app.agent_platform.
+  // agent_runtime) — fetched once, not re-authored here.
+  const visionModelsQ = useQuery({
+    queryKey: ["agent-vision-capable-models"],
+    queryFn: agentsApi.visionCapableModels,
+    staleTime: Infinity
+  });
+
   const update = useCallback((patch: Partial<AgentBuilderDraft>) => {
     setDraft((d) => ({ ...d, ...patch }));
   }, []);
@@ -162,7 +173,7 @@ export default function NewAgentPage() {
   };
 
   const next = () => {
-    const v = validateAgentBuilderStep(draft.step, draft);
+    const v = validateAgentBuilderStep(draft.step, draft, visionModelsQ.data);
     if (!v.ok) {
       setStepErrors(v.errors);
       toast.error(v.errors[0] || "Fix validation errors");
@@ -218,7 +229,7 @@ export default function NewAgentPage() {
   }
 
   async function createAgentFromDraft() {
-    const v = validateAgentBuilderStep(7, draft);
+    const v = validateAgentBuilderStep(7, draft, visionModelsQ.data);
     if (!v.ok) {
       setStepErrors(v.errors);
       throw new Error(v.errors[0]);
@@ -319,6 +330,13 @@ export default function NewAgentPage() {
     const raw = modelsQ.data?.models || [];
     return raw.map((m) => (typeof m === "string" ? m : m.id || m.name || "")).filter(Boolean);
   }, [modelsQ.data]);
+
+  const effectiveProvider = draft.provider === "auto" ? "openai" : draft.provider;
+
+  const currentModelVisionIncompatible = useMemo(() => {
+    if (!draft.capabilities.vision || !draft.model.trim() || !visionModelsQ.data) return false;
+    return !isProviderModelVisionCapable(effectiveProvider, draft.model, visionModelsQ.data);
+  }, [draft.capabilities.vision, draft.model, effectiveProvider, visionModelsQ.data]);
 
   if (!hydrated) {
     return <p className="text-sm text-muted" role="status">Loading builder…</p>;
@@ -660,12 +678,29 @@ export default function NewAgentPage() {
                     onChange={(e) => update({ model: e.target.value })}
                   >
                     <option value="">Select model</option>
-                    {models.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
+                    {models.map((m) => {
+                      const incompatible =
+                        draft.capabilities.vision &&
+                        Boolean(visionModelsQ.data) &&
+                        !isProviderModelVisionCapable(effectiveProvider, m, visionModelsQ.data || {});
+                      return (
+                        <option key={m} value={m} disabled={incompatible}>
+                          {m}
+                          {incompatible ? " — no vision support" : ""}
+                        </option>
+                      );
+                    })}
                   </Select>
+                  {draft.capabilities.vision && (
+                    <p className="mt-1 text-xs text-muted">
+                      Vision is on — models without image support are disabled above.
+                    </p>
+                  )}
+                  {currentModelVisionIncompatible && (
+                    <p className="mt-1 text-xs text-red-600" role="alert">
+                      {VISION_MODEL_INCOMPATIBLE_MESSAGE}
+                    </p>
+                  )}
                   <p className="mt-1 text-xs text-muted">
                     <a className="text-brand underline" href="/app/providers">
                       Open AI Providers
@@ -720,6 +755,11 @@ export default function NewAgentPage() {
                     <span className="text-xs text-muted">{hint}</span>
                     {note && (
                       <span className="mt-0.5 block text-xs font-medium text-amber-600">{note}</span>
+                    )}
+                    {key === "vision" && currentModelVisionIncompatible && (
+                      <span className="mt-0.5 block text-xs font-medium text-red-600" role="alert">
+                        {VISION_MODEL_INCOMPATIBLE_MESSAGE}
+                      </span>
                     )}
                   </span>
                 </label>

@@ -381,6 +381,33 @@ def provider_model_supports_vision(provider: str, model: str) -> bool:
     return any(m.startswith(p) for p in prefixes)
 
 
+VISION_MODEL_INCOMPATIBLE_MESSAGE = (
+    "Vision requires a vision-capable model. Please select a compatible model."
+)
+
+
+def validate_vision_model_compatibility(agent_like: Any) -> None:
+    """Raise HTTPException(400) if ``agent_like`` would save with vision
+    enabled on a model that can't accept image input.
+
+    ``agent_like`` is anything exposing ``provider``/``model``/``web_config``
+    attributes — an ``AgentConfig`` row, an ``AgentCreate`` payload, or a
+    lightweight ``SimpleNamespace`` built from a merged ``AgentUpdate`` patch.
+    This is the config-save-time counterpart to
+    ``AgentRuntime.check_vision_request`` (which gates at actual chat-request
+    time) — both resolve provider/model via ``resolve_provider_and_model`` and
+    check ``provider_model_supports_vision`` against the same
+    ``VISION_CAPABLE_MODELS`` table, so there is exactly one place that knows
+    which models support vision.
+    """
+    caps = agent_capabilities(getattr(agent_like, "web_config", None))
+    if not caps.get("vision", False):
+        return
+    provider, model = resolve_provider_and_model(agent_like)
+    if not provider_model_supports_vision(provider, model):
+        raise HTTPException(status_code=400, detail=VISION_MODEL_INCOMPATIBLE_MESSAGE)
+
+
 def search_agent_knowledge(
     db: Any,
     agent_id: Any,

@@ -4,11 +4,14 @@ import {
   buildAgentCreatePayload,
   clearAgentBuilderDraft,
   defaultAgentBuilderDraft,
+  isProviderModelVisionCapable,
   loadAgentBuilderDraft,
   prefillFromTemplate,
   saveAgentBuilderDraft,
   stepProgressPercent,
-  validateAgentBuilderStep
+  validateAgentBuilderStep,
+  VISION_MODEL_INCOMPATIBLE_MESSAGE,
+  type VisionCapableModelRegistry
 } from "./agent-builder";
 
 describe("agent-builder", () => {
@@ -113,6 +116,75 @@ describe("agent-builder", () => {
   it("computes progress percent", () => {
     expect(stepProgressPercent(1)).toBe(14);
     expect(stepProgressPercent(7)).toBe(100);
+  });
+
+  describe("vision <-> model compatibility", () => {
+    // Shape mirrors the backend's app.agent_platform.agent_runtime.VISION_CAPABLE_MODELS
+    // — this test file never re-declares which models are vision-capable in
+    // real usage; the app always fetches this from the server.
+    const REGISTRY: VisionCapableModelRegistry = {
+      openai: ["gpt-4o", "gpt-4.1", "gpt-5", "o4", "o3"]
+    };
+
+    it("matches vision-capable models by provider/prefix", () => {
+      expect(isProviderModelVisionCapable("openai", "gpt-4o-mini", REGISTRY)).toBe(true);
+      expect(isProviderModelVisionCapable("OpenAI", "GPT-4O-MINI", REGISTRY)).toBe(true);
+      expect(isProviderModelVisionCapable("openai", "gpt-3.5-turbo", REGISTRY)).toBe(false);
+      expect(isProviderModelVisionCapable("gemini", "gemini-2.0-flash", REGISTRY)).toBe(false);
+    });
+
+    it("step 4 accepts vision=true with a vision-capable model", () => {
+      const draft = defaultAgentBuilderDraft();
+      draft.provider = "openai";
+      draft.model = "gpt-4o-mini";
+      draft.capabilities.vision = true;
+      expect(validateAgentBuilderStep(4, draft, REGISTRY).ok).toBe(true);
+    });
+
+    it("step 4 rejects vision=true with an incompatible model", () => {
+      const draft = defaultAgentBuilderDraft();
+      draft.provider = "openai";
+      draft.model = "gpt-3.5-turbo";
+      draft.capabilities.vision = true;
+      const v = validateAgentBuilderStep(4, draft, REGISTRY);
+      expect(v.ok).toBe(false);
+      expect(v.errors).toContain(VISION_MODEL_INCOMPATIBLE_MESSAGE);
+    });
+
+    it("step 4 is unaffected by an incompatible model when vision=false", () => {
+      const draft = defaultAgentBuilderDraft();
+      draft.provider = "openai";
+      draft.model = "gpt-3.5-turbo";
+      draft.capabilities.vision = false;
+      expect(validateAgentBuilderStep(4, draft, REGISTRY).ok).toBe(true);
+    });
+
+    it("step 5 (capabilities) surfaces the same error when vision is enabled against an already-selected incompatible model", () => {
+      const draft = defaultAgentBuilderDraft();
+      draft.provider = "openai";
+      draft.model = "gpt-3.5-turbo";
+      draft.capabilities.vision = true;
+      const v = validateAgentBuilderStep(5, draft, REGISTRY);
+      expect(v.ok).toBe(false);
+      expect(v.errors).toContain(VISION_MODEL_INCOMPATIBLE_MESSAGE);
+    });
+
+    it("skips the compatibility check when the registry hasn't loaded yet, rather than false-positive", () => {
+      const draft = defaultAgentBuilderDraft();
+      draft.provider = "openai";
+      draft.model = "gpt-3.5-turbo";
+      draft.capabilities.vision = true;
+      // No registry passed — must not error out just because data hasn't
+      // loaded; the backend is still the authoritative final check.
+      expect(validateAgentBuilderStep(4, draft).ok).toBe(true);
+    });
+
+    it("existing callers that omit the registry argument keep working (backward compatible)", () => {
+      const draft = defaultAgentBuilderDraft();
+      draft.provider = "openai";
+      draft.model = "gpt-4o-mini";
+      expect(validateAgentBuilderStep(4, draft).ok).toBe(true);
+    });
   });
 
   describe("draft persistence (New agent must never resume another agent's draft)", () => {

@@ -42,6 +42,7 @@ export const agentsApi = {
     api.v2<Agent>(`/agents/${id}`, { method: "PATCH", body }),
   clone: (id: string) => api.v2<Agent>(`/agents/${id}/clone`, { method: "POST" }),
   tools: () => api.v2<AgentTool[]>("/agents/tools"),
+  visionCapableModels: () => api.v2<Record<string, string[]>>("/agents/vision-capable-models"),
   chat: (id: string, message: string, conversationId?: string) =>
     api.v2<{ message: string; conversation_id: string; usage: Record<string, unknown> }>(
       `/agents/${id}/chat`,
