@@ -13,6 +13,7 @@ import { useAuth } from "@/lib/auth";
 import { loginSchema } from "@/lib/validators";
 import { authApi, onboardingApi } from "@/lib/services";
 import { ApiError } from "@/lib/api";
+import { isCompanyRequiredError } from "./login-helpers";
 import type { z } from "zod";
 
 type FormValues = z.infer<typeof loginSchema>;
@@ -50,11 +51,13 @@ function LoginForm() {
   const params = useSearchParams();
   const [mfaToken, setMfaToken] = useState<string | null>(null);
   const [totp, setTotp] = useState("");
+  const [companyRequired, setCompanyRequired] = useState(false);
+  const [companyMessage, setCompanyMessage] = useState<string | null>(null);
   const form = useForm<FormValues>({ resolver: zodResolver(loginSchema) });
 
   async function onSubmit(values: FormValues) {
     try {
-      const result = await login(values.email, values.password);
+      const result = await login(values.email, values.password, values.company_slug || undefined);
       if ("mfa_required" in result && result.mfa_required) {
         setMfaToken(result.mfa_token);
         toast.message("Enter your MFA code to continue");
@@ -64,6 +67,16 @@ function LoginForm() {
       const dest = await postLoginDestination(safeNextPath(params.get("next")));
       router.replace(dest);
     } catch (error) {
+      if (isCompanyRequiredError(error)) {
+        setCompanyRequired(true);
+        setCompanyMessage(
+          error instanceof Error
+            ? error.message
+            : "This email belongs to multiple organizations. Enter your company slug to continue."
+        );
+        toast.error("Multiple organizations found — enter your company slug");
+        return;
+      }
       toast.error(error instanceof Error ? error.message : "Login failed");
     }
   }
@@ -104,6 +117,21 @@ function LoginForm() {
               <Label htmlFor="password">Password</Label>
               <Input id="password" type="password" {...form.register("password")} />
             </div>
+            {companyRequired && (
+              <div>
+                <Label htmlFor="company_slug">Company slug</Label>
+                <Input
+                  id="company_slug"
+                  type="text"
+                  placeholder="acme"
+                  autoFocus
+                  {...form.register("company_slug")}
+                />
+                <p className="mt-1 text-xs text-muted">
+                  {companyMessage ?? "This email belongs to multiple organizations. Enter your company slug to continue."}
+                </p>
+              </div>
+            )}
             <Button className="w-full" variant="secondary" disabled={form.formState.isSubmitting}>
               {form.formState.isSubmitting ? "Signing in…" : "Sign in with email"}
             </Button>

@@ -16,7 +16,7 @@ type AuthContextValue = {
   user: UserProfile | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<TokenPair | MfaChallenge>;
+  login: (email: string, password: string, companySlug?: string) => Promise<TokenPair | MfaChallenge>;
   completeMfa: (mfaToken: string, totp: string) => Promise<TokenPair>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -50,11 +50,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })();
   }, [refreshProfile]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string, companySlug?: string) => {
     const result = await api.v1<TokenPair | MfaChallenge>("/auth/login", {
       method: "POST",
       auth: false,
-      body: { email, password }
+      body: companySlug ? { email, password, company_slug: companySlug } : { email, password }
     });
     if ("mfa_required" in result && result.mfa_required) return result;
     setTokens(result as TokenPair);
