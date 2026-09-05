@@ -326,11 +326,14 @@ def bind_hostname_and_ssl(
     """Resolve domain + SSL via the EXISTING Domain Manager / SSL Manager,
     then point the vhost at this deployment's directory OR runtime
     container. No second domain or SSL engine — this is a thin wrapper
-    around app.studio.deploy's own bind_free_subdomain()/bind_domain_and_ssl()
-    plus one extra call so the generated vhost serves files (static
-    deployments, deployment_dir given) or proxies to a runtime container
-    (Next.js deployments, runtime_target given — see nginx_gen.py
-    RUNTIME_PROXY_LOCATION_BLOCK) instead of the default api_backend proxy.
+    around app.studio.deploy's own bind_free_subdomain()/bind_domain_and_ssl(),
+    passing deployment_dir/runtime_target straight through as their optional
+    static_root/runtime_proxy_target so the generated vhost serves files
+    (static deployments, deployment_dir given) or proxies to a runtime
+    container (Next.js deployments, runtime_target given — see nginx_gen.py
+    RUNTIME_PROXY_LOCATION_BLOCK) instead of the default api_backend proxy —
+    all in the SAME call that creates/resolves the domain row, rather than a
+    separate post-hoc SslManager call keyed by a fresh hostname lookup.
 
     Exactly one of deployment_dir/runtime_target should be given; this is
     the seam THTWAAT Phase 3 extends without touching the static path.
@@ -357,37 +360,28 @@ def bind_hostname_and_ssl(
         db_session=ctx.db_session,
         actor_user_id=ctx.actor_user_id,
     )
+    # Mutually exclusive per bind_hostname_and_ssl()'s own contract (docstring
+    # above) — runtime_target takes precedence, matching generate_vhost()'s
+    # own precedence rule if both were somehow given.
+    static_root = str(deployment_dir) if deployment_dir and not runtime_target else None
 
     if mode == "free_subdomain":
-        ssl_info = bind_free_subdomain(deploy_ctx, progress, hostname=hostname, dns_validated=dns_validated)
-    else:
-        ssl_info = bind_domain_and_ssl(deploy_ctx, progress, hostname=hostname, dns_validated=dns_validated)
-
-    if not hostname:
-        return ssl_info
-
-    try:
-        from app.domains.service import DomainService
-        from app.ssl.manager import SslManager
-
-        domain_row = DomainService(ctx.db_session).repo.get_by_hostname(hostname)
-        if domain_row is not None:
-            actor = ctx.actor_user_id or ctx.workspace_id
-            if runtime_target:
-                SslManager(ctx.db_session).set_runtime_proxy_target(
-                    domain_row.id, ctx.workspace_id, runtime_target, actor
-                )
-            else:
-                SslManager(ctx.db_session).set_static_root(
-                    domain_row.id, ctx.workspace_id, str(deployment_dir), actor
-                )
-            ssl_info["domain_id"] = str(domain_row.id)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "vhost_bind_failed hostname=%s deployment_id=%s err=%s",
-            hostname, ctx.deployment_id, exc,
+        ssl_info = bind_free_subdomain(
+            deploy_ctx,
+            progress,
+            hostname=hostname,
+            dns_validated=dns_validated,
+            static_root=static_root,
+            runtime_proxy_target=runtime_target,
         )
-        ssl_info.setdefault("note", "")
-        ssl_info["note"] = (ssl_info.get("note") or "") + " (vhost binding pending retry)"
+    else:
+        ssl_info = bind_domain_and_ssl(
+            deploy_ctx,
+            progress,
+            hostname=hostname,
+            dns_validated=dns_validated,
+            static_root=static_root,
+            runtime_proxy_target=runtime_target,
+        )
 
     return ssl_info

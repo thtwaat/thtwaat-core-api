@@ -298,14 +298,65 @@ def run_database_migration(progress: ProgressCallback, db_session=None) -> Dict[
     return info
 
 
+def _bind_deploy_target(
+    db: Any,
+    domain_id: UUID,
+    workspace_id: UUID,
+    actor_id: UUID,
+    static_root: Optional[str],
+    runtime_proxy_target: Optional[str],
+    ssl_info: Dict[str, Any],
+) -> None:
+    """Point a domain's vhost at THIS deployment's static content directory
+    or Next.js runtime container, in the SAME call that binds the domain/SSL
+    — rather than requiring a separate post-hoc SslManager call keyed by a
+    fresh hostname lookup (the pattern app/static_sites/provider.py used to
+    have to use). No-op when neither is given, which is every caller except
+    app/static_sites/provider.py::bind_hostname_and_ssl() — normal/custom
+    domains and Studio's own "platform reuse" deployments are completely
+    unaffected.
+
+    Mirrors SslManager itself staying generic (app/ssl/manager.py is never
+    touched or imported at module load time here — only on demand, and only
+    when a target was actually given). Failures are swallowed into a soft
+    `ssl_info["note"]` exactly like the old provider.py code did — a vhost-
+    binding hiccup must never downgrade an otherwise-successful domain/SSL
+    provisioning result to an error.
+    """
+    if not static_root and not runtime_proxy_target:
+        return
+    try:
+        from app.ssl.manager import SslManager
+
+        if runtime_proxy_target:
+            SslManager(db).set_runtime_proxy_target(domain_id, workspace_id, runtime_proxy_target, actor_id)
+        else:
+            SslManager(db).set_static_root(domain_id, workspace_id, static_root, actor_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            "deploy_target_bind_failed domain_id=%s err=%s", domain_id, exc,
+        )
+        ssl_info.setdefault("note", "")
+        ssl_info["note"] = (ssl_info.get("note") or "") + " (vhost binding pending retry)"
+
+
 def bind_domain_and_ssl(
     ctx: DeployContext,
     progress: ProgressCallback,
     *,
     hostname: str,
     dns_validated: bool,
+    static_root: Optional[str] = None,
+    runtime_proxy_target: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Reuse Domain Manager + SslManager. SSL only after DNS validation succeeds."""
+    """Reuse Domain Manager + SslManager. SSL only after DNS validation succeeds.
+
+    static_root/runtime_proxy_target (optional, default None — every existing
+    caller's behavior is byte-for-byte unchanged): when a caller already
+    knows this deployment serves static content or proxies to a runtime
+    container, pass it here so the vhost is pointed at it in the same call
+    that creates/resolves the domain row, via _bind_deploy_target() above.
+    """
     emit(progress, DeployStage.SSL.value, message="SSL / domain via Domain Manager")
     if not hostname:
         return {
@@ -361,6 +412,7 @@ def bind_domain_and_ssl(
                 "note": "Domain registered in Domain Manager — complete DNS verify before SSL",
                 "renewal": "ssl.auto_renew",
             }
+            _bind_deploy_target(db, created.id, ctx.workspace_id, actor, static_root, runtime_proxy_target, ssl_info)
         else:
             resp = svc._to_response(existing)
             ssl_info = {
@@ -376,6 +428,7 @@ def bind_domain_and_ssl(
                 "ssl_enabled": False,
                 "renewal": "ssl.auto_renew",
             }
+            _bind_deploy_target(db, resp.id, ctx.workspace_id, actor, static_root, runtime_proxy_target, ssl_info)
             status_val = str(resp.status or "").lower()
             ssl_val = str(resp.ssl_status or "").upper()
             # Only request SSL after DNS validation / verified domain
@@ -413,6 +466,8 @@ def bind_free_subdomain(
     *,
     hostname: str,
     dns_validated: bool,
+    static_root: Optional[str] = None,
+    runtime_proxy_target: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Free *.thtwaat.com subdomain — platform-owned, no DNS proof needed.
 
@@ -422,6 +477,9 @@ def bind_free_subdomain(
     and the scheduler/worker take it to LIVE automatically. Returns the
     truthful current state — usually still pending right after a first
     deploy — rather than a fabricated "already active" status.
+
+    static_root/runtime_proxy_target — see bind_domain_and_ssl()'s docstring;
+    same optional, default-None, backward-compatible contract here.
     """
     emit(progress, DeployStage.SSL.value, message="Free subdomain via Domain Manager")
     if not dns_validated:
@@ -465,6 +523,7 @@ def bind_free_subdomain(
             "note": "Auto-issuing Let's Encrypt — no verify/request step needed for *.thtwaat.com",
             "renewal": "ssl.auto_renew",
         }
+        _bind_deploy_target(db, resp.id, ctx.workspace_id, actor, static_root, runtime_proxy_target, ssl_info)
         emit(progress, DeployStage.SSL.value, message="Free subdomain provisioned", hostname=hostname)
         return ssl_info
     except Exception as exc:  # noqa: BLE001
