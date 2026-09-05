@@ -26,9 +26,23 @@ describe("isCompanyRequiredError", () => {
     expect(isCompanyRequiredError(error)).toBe(true);
   });
 
-  it("ignores other 409s", () => {
-    const error = new ApiError("conflict", 409, { error: { code: "slug_taken" }, code: 409 });
-    expect(isCompanyRequiredError(error)).toBe(false);
+  it("detects the production flat-string envelope with no nested code at all (regression: commit a56a9ea)", () => {
+    const error = new ApiError("This email belongs to multiple organizations; provide company_slug.", 409, {
+      error: "This email belongs to multiple organizations; provide company_slug.",
+      code: 409
+    });
+    expect(isCompanyRequiredError(error)).toBe(true);
+  });
+
+  it("ignores other 409s, including a flat-string message with no multi-org wording", () => {
+    const nestedOther = new ApiError("conflict", 409, { error: { code: "slug_taken" }, code: 409 });
+    expect(isCompanyRequiredError(nestedOther)).toBe(false);
+
+    const flatStringOther = new ApiError("Company slug is already taken", 409, {
+      error: "Company slug is already taken",
+      code: 409
+    });
+    expect(isCompanyRequiredError(flatStringOther)).toBe(false);
   });
 
   it("ignores non-409 errors, including invalid credentials", () => {
