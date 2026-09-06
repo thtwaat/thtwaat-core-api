@@ -143,6 +143,9 @@ export function SiteFooter() {
           <a href={`${site.apiUrl}/docs`} target="_blank" rel="noreferrer" className="hover:text-ink">
             Live OpenAPI
           </a>
+          <a href={site.appUrl} className="hover:text-ink">
+            Open the app
+          </a>
         </div>
       </div>
     </footer>

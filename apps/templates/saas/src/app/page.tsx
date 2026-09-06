@@ -1,85 +1,13 @@
 import Link from "next/link";
-import {
-  ArrowRight,
-  Bot,
-  BookOpen,
-  CheckCircle2,
-  CreditCard,
-  Globe2,
-  MessageSquare,
-  Phone,
-  ShieldCheck,
-  Sparkles,
-  Store,
-  Webhook
-} from "lucide-react";
+import { ArrowRight, CheckCircle2, Sparkles } from "lucide-react";
 import { site } from "@/lib/config";
+import { capabilities, steps, values } from "@/lib/marketing-content";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { MarketingHeader } from "@/components/marketing/site-header";
+import { MarketingFooter } from "@/components/marketing/site-footer";
 
-const capabilities = [
-  {
-    icon: Bot,
-    title: "AI Agents",
-    description: "Configure model, tools, and behavior per agent, then publish or clone in a click."
-  },
-  {
-    icon: MessageSquare,
-    title: "AI Chat",
-    description: "An embeddable chat widget with a shared inbox for every conversation your agents have."
-  },
-  {
-    icon: Phone,
-    title: "Voice / Calling",
-    description: "Give an agent a phone number, a greeting, and a human handoff line for real calls."
-  },
-  {
-    icon: BookOpen,
-    title: "Knowledge",
-    description: "Upload documents into knowledge bases and attach them to any agent for grounded answers."
-  },
-  {
-    icon: Webhook,
-    title: "Integrations",
-    description: "API keys and webhooks push agent, billing, and domain events into your own systems."
-  },
-  {
-    icon: Globe2,
-    title: "Deployment / Custom Domains",
-    description: "Connect a custom domain and provision SSL without leaving the dashboard."
-  },
-  {
-    icon: Store,
-    title: "Marketplace / Templates",
-    description: "Install a prebuilt template or describe your product and have it provisioned for you."
-  }
-];
-
-const steps = [
-  {
-    title: "Create your workspace",
-    description: "Sign up and get a company workspace provisioned instantly — no backend to stand up."
-  },
-  {
-    title: "Build or generate an agent",
-    description: "Configure an agent by hand, or describe your product and let the generator provision it."
-  },
-  {
-    title: "Connect knowledge & channels",
-    description: "Attach a knowledge base, then turn on chat, voice calling, or both for that agent."
-  },
-  {
-    title: "Publish",
-    description: "Embed the widget, connect a custom domain with SSL, and go live."
-  }
-];
-
-const values = [
-  { icon: ShieldCheck, text: "JWT + OTP authentication out of the box" },
-  { icon: CreditCard, text: "Usage tracking and billing, with Stripe and Razorpay checkout" },
-  { icon: Globe2, text: "Custom domains with automatic SSL provisioning" },
-  { icon: Webhook, text: "Webhooks and API keys for connecting your own systems" }
-];
+const templatesCapability = capabilities.find((c) => c.title === "Marketplace / Templates")!;
 
 const faqs = [
   {
@@ -125,18 +53,31 @@ export default function MarketingHome() {
           })
         }}
       />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "Organization",
+            name: site.name,
+            url: site.url,
+            logo: `${site.url}/opengraph-image`
+          })
+        }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            "@context": "https://schema.org",
+            "@type": "WebSite",
+            name: site.name,
+            url: site.url
+          })
+        }}
+      />
 
-      <header className="mx-auto flex max-w-6xl items-center justify-between px-5 py-5">
-        <p className="text-lg font-semibold text-ink">{site.name}</p>
-        <div className="flex gap-3">
-          <Link href="/login">
-            <Button variant="secondary">Sign in</Button>
-          </Link>
-          <Link href="/signup">
-            <Button>Start free</Button>
-          </Link>
-        </div>
-      </header>
+      <MarketingHeader />
 
       {/* Hero */}
       <section className="mx-auto grid max-w-6xl gap-10 px-5 py-16 lg:grid-cols-2 lg:items-center">
@@ -145,7 +86,7 @@ export default function MarketingHome() {
             <Sparkles size={14} /> AI SaaS platform
           </p>
           <h1 className="mt-5 text-4xl font-semibold tracking-tight text-ink sm:text-5xl">
-            {site.tagline}.
+            The AI agent platform for chat, voice, and your whole SaaS.
           </h1>
           <p className="mt-4 max-w-xl text-base leading-7 text-muted">{site.description}</p>
           <div className="mt-8 flex flex-wrap gap-3">
@@ -174,7 +115,9 @@ export default function MarketingHome() {
       {/* Product capabilities */}
       <section className="mx-auto max-w-6xl px-5 py-16">
         <div className="max-w-2xl">
-          <h2 className="text-3xl font-semibold tracking-tight text-ink">Everything an AI product needs</h2>
+          <h2 className="text-3xl font-semibold tracking-tight text-ink">
+            Build AI agents for chat, voice calling, and knowledge search
+          </h2>
           <p className="mt-3 text-muted">
             Every capability below is available today in the dashboard — nothing here is a roadmap item.
           </p>
@@ -193,7 +136,9 @@ export default function MarketingHome() {
       {/* How it works */}
       <section className="border-y border-line bg-panel py-16">
         <div className="mx-auto max-w-6xl px-5">
-          <h2 className="text-3xl font-semibold tracking-tight text-ink">How it works</h2>
+          <h2 className="text-3xl font-semibold tracking-tight text-ink">
+            How teams build AI products on THTWAAT
+          </h2>
           <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
             {steps.map((step, i) => (
               <div key={step.title}>
@@ -212,7 +157,9 @@ export default function MarketingHome() {
       <section className="mx-auto max-w-6xl px-5 py-16">
         <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
           <div>
-            <h2 className="text-3xl font-semibold tracking-tight text-ink">Built on production infrastructure</h2>
+            <h2 className="text-3xl font-semibold tracking-tight text-ink">
+              Everything an AI SaaS needs — auth, billing, and custom domains
+            </h2>
             <p className="mt-3 max-w-lg text-muted">
               The dashboard is a thin layer over the THTWAAT Core API — the same auth, billing, and
               domain systems back every workspace.
@@ -229,18 +176,48 @@ export default function MarketingHome() {
         </div>
       </section>
 
-      {/* Pricing CTA */}
+      {/* Templates / marketplace */}
       <section className="border-y border-line bg-panel py-16">
+        <div className="mx-auto grid max-w-6xl gap-10 px-5 lg:grid-cols-2 lg:items-center">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-ink">
+              Launch faster with prebuilt AI agent templates
+            </h2>
+            <p className="mt-3 max-w-lg text-muted">{templatesCapability.description}</p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link href="/platform">
+                <Button size="lg" variant="secondary">
+                  Explore the platform <ArrowRight size={16} />
+                </Button>
+              </Link>
+              <Link href="/signup">
+                <Button size="lg">Start free</Button>
+              </Link>
+            </div>
+          </div>
+          <div className="rounded-2xl border border-line bg-canvas p-6 shadow-soft">
+            <templatesCapability.icon className="text-brand" size={22} />
+            <p className="mt-3 font-semibold text-ink">{templatesCapability.title}</p>
+            <p className="mt-2 text-sm leading-6 text-muted">
+              Install a template into your workspace, or describe your product and let the generator
+              provision agents, knowledge bases, and channels for you.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing CTA */}
+      <section className="py-16">
         <div className="mx-auto flex max-w-6xl flex-col items-start justify-between gap-6 px-5 sm:flex-row sm:items-center">
           <div>
             <h2 className="text-2xl font-semibold tracking-tight text-ink">Usage-based billing</h2>
             <p className="mt-2 max-w-xl text-muted">
-              Plans, invoices, and checkout live in your workspace billing settings once you're signed in.
+              See plans and what's included, then create a workspace to pick one.
             </p>
           </div>
-          <Link href="/app/billing">
+          <Link href="/pricing">
             <Button size="lg">
-              View plans &amp; billing <ArrowRight size={16} />
+              View plans &amp; pricing <ArrowRight size={16} />
             </Button>
           </Link>
         </div>
@@ -284,24 +261,7 @@ export default function MarketingHome() {
         </div>
       </section>
 
-      <footer className="border-t border-line">
-        <div className="mx-auto flex max-w-6xl flex-col gap-4 px-5 py-8 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
-          <p>
-            &copy; {new Date().getFullYear()} {site.name}
-          </p>
-          <div className="flex flex-wrap gap-5">
-            <Link href="/login" className="hover:text-ink">
-              Sign in
-            </Link>
-            <Link href="/signup" className="hover:text-ink">
-              Create workspace
-            </Link>
-            <a href={site.developerPortalUrl} className="hover:text-ink">
-              Developer docs
-            </a>
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter />
     </main>
   );
 }

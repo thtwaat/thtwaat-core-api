@@ -2,6 +2,7 @@ export const site = {
   name: process.env.NEXT_PUBLIC_SITE_NAME || "THTWAAT Developer Portal",
   url: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3400",
   apiUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
+  appUrl: process.env.NEXT_PUBLIC_APP_URL || "https://app.thtwaat.com",
   version: process.env.NEXT_PUBLIC_DOCS_VERSION || "1.0.0",
   description:
     "Build AI products on THTWAAT — REST API, JavaScript SDK, Widget SDK, webhooks, and interactive API explorer."
