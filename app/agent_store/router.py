@@ -11,6 +11,9 @@ from app.agent_store.schemas import (
     AbuseReportCreate,
     AbuseReportResponse,
     AbuseResolveRequest,
+    AgentStorePurchaseOrderRequest,
+    AgentStorePurchaseOrderResponse,
+    AgentStorePurchaseVerifyRequest,
     ListingCreate,
     ListingDetailResponse,
     ListingResponse,
@@ -118,6 +121,51 @@ def install_listing(
     service: AgentStoreService = Depends(get_agent_store_service),
 ):
     return service.install(
+        UUID(str(user.company_id)),
+        UUID(str(user.id)),
+        listing_id_or_slug,
+        payload,
+    )
+
+
+@router.post(
+    "/listings/{listing_id_or_slug}/purchase/razorpay-order",
+    response_model=AgentStorePurchaseOrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a Razorpay order for a paid Agent Store listing",
+)
+def create_purchase_order(
+    listing_id_or_slug: str,
+    payload: AgentStorePurchaseOrderRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    """Step 1 of the paid-install flow. Returns an ``order_id`` for the
+    Razorpay Checkout.js modal; the amount is pinned server-side to the
+    listing's real price and never taken from the client."""
+    return service.create_purchase_order(
+        UUID(str(user.company_id)),
+        UUID(str(user.id)),
+        listing_id_or_slug,
+        payload,
+    )
+
+
+@router.post(
+    "/listings/{listing_id_or_slug}/purchase/razorpay-verify",
+    response_model=StoreInstallResponse,
+    summary="Verify Razorpay payment signature and install a paid listing",
+)
+def verify_purchase_and_install(
+    listing_id_or_slug: str,
+    payload: AgentStorePurchaseVerifyRequest,
+    user: UserProfileResponse = Depends(require_permission(Permission.TEMPLATES_MANAGE)),
+    service: AgentStoreService = Depends(get_agent_store_service),
+):
+    """Step 2 of the paid-install flow. Verifies the Razorpay HMAC-SHA256
+    signature server-side, then installs the listing — this is the only
+    path that can complete a paid purchase."""
+    return service.verify_purchase_and_install(
         UUID(str(user.company_id)),
         UUID(str(user.id)),
         listing_id_or_slug,

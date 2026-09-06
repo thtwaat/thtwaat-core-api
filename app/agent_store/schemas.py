@@ -236,6 +236,38 @@ class StoreInstallResponse(BaseModel):
     publish_status: Optional[str] = None
 
 
+# ── Paid listing checkout (Razorpay order + verify, mirrors
+# app.payments.subscriptions) ────────────────────────────────────────────────
+
+class AgentStorePurchaseOrderRequest(BaseModel):
+    """Install-time options captured now and replayed at verify-time, once
+    payment is confirmed — the paid path must not provision anything before
+    that confirmation exists."""
+
+    customer_name: str
+    customer_email: str
+    customer_phone: Optional[str] = None
+    agent_id: Optional[UUID] = None
+    create_api_key: bool = True
+    config_overrides: Dict[str, Any] = Field(default_factory=dict)
+    version: Optional[str] = None
+    publish_agent: bool = False
+
+
+class AgentStorePurchaseOrderResponse(BaseModel):
+    order_id: str
+    purchase_id: UUID
+    amount: Decimal
+    currency: str
+    provider: str = "razorpay"
+
+
+class AgentStorePurchaseVerifyRequest(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
 # ── Reviews ───────────────────────────────────────────────────────────────────
 
 class ReviewCreate(BaseModel):

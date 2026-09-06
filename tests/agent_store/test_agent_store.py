@@ -69,6 +69,40 @@ def test_publisher_slug_pattern():
 
 
 @pytest.mark.unit
+def test_purchase_order_request_requires_customer_identity():
+    """customer_name/customer_email are required — everything else about the
+    install (agent_id, config_overrides, publish_agent, ...) has a safe
+    default so a minimal checkout payload is just the buyer's identity."""
+    req = AgentStorePurchaseOrderRequest(customer_name="Buyer", customer_email="buyer@example.com")
+    assert req.agent_id is None
+    assert req.create_api_key is True
+    assert req.config_overrides == {}
+    assert req.version is None
+    assert req.publish_agent is False
+
+    with pytest.raises(ValidationError):
+        AgentStorePurchaseOrderRequest(customer_email="buyer@example.com")  # missing customer_name
+    with pytest.raises(ValidationError):
+        AgentStorePurchaseOrderRequest(customer_name="Buyer")  # missing customer_email
+
+
+@pytest.mark.unit
+def test_purchase_verify_request_requires_all_three_razorpay_fields():
+    """The verify payload is never optional-any-of — a forged/incomplete
+    verification request must fail validation before it ever reaches the
+    signature check in the service."""
+    AgentStorePurchaseVerifyRequest(
+        razorpay_order_id="order_1", razorpay_payment_id="pay_1", razorpay_signature="sig"
+    )
+    with pytest.raises(ValidationError):
+        AgentStorePurchaseVerifyRequest(razorpay_payment_id="pay_1", razorpay_signature="sig")
+    with pytest.raises(ValidationError):
+        AgentStorePurchaseVerifyRequest(razorpay_order_id="order_1", razorpay_signature="sig")
+    with pytest.raises(ValidationError):
+        AgentStorePurchaseVerifyRequest(razorpay_order_id="order_1", razorpay_payment_id="pay_1")
+
+
+@pytest.mark.unit
 def test_install_delegates_to_marketplace_without_db():
     """Install must call MarketplaceService.install — never reimplement."""
     db = MagicMock()
@@ -882,6 +916,96 @@ def test_create_listing_calls_marketplace_create_template():
     assert listing.status == ListingStatus.DRAFT
     db.add.assert_called()
     db.commit.assert_called()
+
+
+@pytest.mark.unit
+def test_purchase_router_endpoints_delegate_with_authenticated_tenant_and_enforce_permission():
+    """Router-level check (no live DB — get_agent_store_service and
+    get_current_user are dependency-overridden) for both new purchase
+    endpoints: an authorized caller's OWN company_id/user_id must be what
+    reaches the service (never anything client-supplied), and a caller
+    lacking Permission.TEMPLATES_MANAGE must be rejected before the service
+    is ever invoked."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from app.agent_store import router as agent_store_router_module
+    from app.agent_store.schemas import AgentStorePurchaseOrderResponse, StoreInstallResponse
+    from app.auth.router import get_current_user
+
+    app = FastAPI()
+    app.include_router(agent_store_router_module.router, prefix="/api/v1")
+
+    company_id, user_id = uuid.uuid4(), uuid.uuid4()
+
+    fake_order_resp = AgentStorePurchaseOrderResponse(
+        order_id="order_router_test", purchase_id=uuid.uuid4(), amount=Decimal("29.00"), currency="USD"
+    )
+    fake_install_resp = StoreInstallResponse(
+        listing_id=uuid.uuid4(), installation_id=uuid.uuid4(), status="ready"
+    )
+    fake_service = MagicMock()
+    fake_service.create_purchase_order.return_value = fake_order_resp
+    fake_service.verify_purchase_and_install.return_value = fake_install_resp
+
+    app.dependency_overrides[agent_store_router_module.get_agent_store_service] = lambda: fake_service
+
+    def _authorized_user():
+        user = MagicMock()
+        user.company_id = company_id
+        user.id = user_id
+        user.role = "company_owner"  # has Permission.TEMPLATES_MANAGE
+        return user
+
+    app.dependency_overrides[get_current_user] = _authorized_user
+
+    with TestClient(app) as client:
+        order_resp = client.post(
+            "/api/v1/agent-store/listings/my-listing/purchase/razorpay-order",
+            json={"customer_name": "Buyer", "customer_email": "buyer@example.com"},
+        )
+        assert order_resp.status_code == 201, order_resp.text
+        assert order_resp.json()["order_id"] == "order_router_test"
+
+        verify_resp = client.post(
+            "/api/v1/agent-store/listings/my-listing/purchase/razorpay-verify",
+            json={
+                "razorpay_order_id": "order_router_test",
+                "razorpay_payment_id": "pay_x",
+                "razorpay_signature": "sig_x",
+            },
+        )
+        assert verify_resp.status_code == 200, verify_resp.text
+
+    fake_service.create_purchase_order.assert_called_once()
+    order_args = fake_service.create_purchase_order.call_args.args
+    assert order_args[0] == company_id  # authenticated tenant, never client-supplied
+    assert order_args[1] == user_id
+    assert order_args[2] == "my-listing"
+
+    fake_service.verify_purchase_and_install.assert_called_once()
+    verify_args = fake_service.verify_purchase_and_install.call_args.args
+    assert verify_args[0] == company_id
+    assert verify_args[1] == user_id
+    assert verify_args[2] == "my-listing"
+
+    # A role without Permission.TEMPLATES_MANAGE must be rejected before the
+    # service is ever touched.
+    def _unauthorized_user():
+        user = MagicMock()
+        user.company_id = uuid.uuid4()
+        user.id = uuid.uuid4()
+        user.role = "not-a-real-role"
+        return user
+
+    app.dependency_overrides[get_current_user] = _unauthorized_user
+    with TestClient(app) as client:
+        denied = client.post(
+            "/api/v1/agent-store/listings/my-listing/purchase/razorpay-order",
+            json={"customer_name": "Buyer", "customer_email": "buyer@example.com"},
+        )
+    assert denied.status_code == 403
+    fake_service.create_purchase_order.assert_called_once()  # still just the one authorized call
 
 
 # ── Integration (requires Postgres) ───────────────────────────────────────────
