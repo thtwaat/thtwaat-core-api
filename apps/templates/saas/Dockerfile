@@ -25,6 +25,11 @@ ENV NEXT_TELEMETRY_DISABLED=1 \
 RUN echo "$NEXT_PUBLIC_API_URL" | grep -Eq '^https://api\.thtwaat\.com/?$' \
     || (echo "NEXT_PUBLIC_API_URL must be https://api.thtwaat.com (got: $NEXT_PUBLIC_API_URL)" >&2 && exit 1)
 
+# NEXT_PUBLIC_SITE_URL feeds metadataBase/canonical/OG/robots+sitemap URLs —
+# a silent fallback to the localhost default would bake that into every page.
+RUN echo "$NEXT_PUBLIC_SITE_URL" | grep -Eq '^https://app\.thtwaat\.com/?$' \
+    || (echo "NEXT_PUBLIC_SITE_URL must be https://app.thtwaat.com (got: $NEXT_PUBLIC_SITE_URL)" >&2 && exit 1)
+
 RUN npm run build
 
 FROM node:20-alpine AS runner

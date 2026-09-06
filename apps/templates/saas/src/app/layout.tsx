@@ -6,10 +6,24 @@ import "./globals.css";
 export const metadata: Metadata = {
   metadataBase: new URL(site.url),
   title: {
-    default: `${site.name} — AI SaaS Starter`,
+    default: `${site.name} — ${site.tagline}`,
     template: `%s · ${site.name}`
   },
-  description: "Production-ready AI SaaS dashboard connected to the THTWAAT Core API."
+  description: site.description,
+  alternates: { canonical: site.url },
+  openGraph: {
+    type: "website",
+    url: site.url,
+    title: `${site.name} — ${site.tagline}`,
+    description: site.description,
+    siteName: site.name
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: `${site.name} — ${site.tagline}`,
+    description: site.description
+  },
+  robots: { index: true, follow: true, googleBot: { index: true, follow: true } }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
