@@ -70,15 +70,17 @@ export default async function PricingPage() {
 
       <section className="mx-auto max-w-6xl px-5 pb-16">
         {error && (
-          <EmptyState
-            title="Pricing is temporarily unavailable"
-            description="We couldn't reach the billing service just now — please try again shortly, or create a workspace to see current plans."
-            action={
+          <>
+            <EmptyState
+              title="Pricing is temporarily unavailable"
+              description="We couldn't reach the billing service just now — please try again shortly, or create a workspace to see current plans."
+            />
+            <div className="mt-4 flex justify-center">
               <Link href="/signup">
                 <Button size="sm">Create workspace</Button>
               </Link>
-            }
-          />
+            </div>
+          </>
         )}
 
         {!error && plans && plans.length === 0 && (
