@@ -1,13 +1,22 @@
 """AI Agent Store facade — discovery, monetization, publisher portal.
 
 Install / update / rollback / uninstall delegate to MarketplaceService.
-Paid installs gate through PaymentService before MarketplaceService.install.
+
+Paid listings are gated by a Razorpay order + signature-verify handshake
+(create_purchase_order / verify_purchase_and_install below), mirroring the
+proven pattern in app.payments.subscriptions.service — never by the generic
+PaymentService/provider-stub path, which only confirms that an order/
+PaymentIntent object was *created*, not that it was ever paid. Direct
+`install()` on a paid listing fails closed (see `install()`) rather than
+trusting a client-supplied gateway.
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 from datetime import datetime, timezone
 from decimal import Decimal
-from typing import List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from uuid import UUID
 
 from fastapi import HTTPException
@@ -30,6 +39,9 @@ from app.agent_store.schemas import (
     AbuseReportCreate,
     AbuseReportResponse,
     AbuseResolveRequest,
+    AgentStorePurchaseOrderRequest,
+    AgentStorePurchaseOrderResponse,
+    AgentStorePurchaseVerifyRequest,
     ListingCreate,
     ListingDetailResponse,
     ListingResponse,
@@ -51,12 +63,11 @@ from app.agent_store.schemas import (
     StoreInstallResponse,
     StorefrontResponse,
 )
+from app.config.settings import settings
 from app.marketplace.schemas import InstallRequest, TemplateCreate, TemplateUpdate, TemplateVersionCreate
 from app.marketplace.service import MarketplaceService
 from app.notifications.events import NotificationEventBus
-from app.payments.model import Gateway, PaymentMethod, PaymentStatus
-from app.payments.schema import PaymentCreate
-from app.payments.service import PaymentService
+from app.payments.provider_flags import razorpay_enabled
 
 
 def _now() -> datetime:
@@ -67,7 +78,6 @@ class AgentStoreService:
     def __init__(self, db: Session):
         self.db = db
         self.marketplace = MarketplaceService(db)
-        self.payments = PaymentService(db)
 
     # ── Publisher portal ──────────────────────────────────────────────────────
 
@@ -788,12 +798,25 @@ class AgentStoreService:
         if listing.pricing_model != PricingModel.FREE:
             existing = self._completed_purchase(listing.id, company_id)
             if not existing:
-                payment_id, purchase_id = self._charge_and_record_purchase(
-                    listing, publisher, company_id, user_id, payload
+                # Direct install of a paid listing is never permitted here —
+                # a client-supplied `gateway` string used to be enough to
+                # flip this to COMPLETED via the generic PaymentService/
+                # provider-stub path, which only confirms an order/
+                # PaymentIntent was *created*, never that it was paid. Fail
+                # closed rather than trust that path again; paid listings
+                # must go through create_purchase_order/verify_purchase_and_install.
+                raise HTTPException(
+                    status_code=402,
+                    detail=(
+                        "This is a paid listing. Create a Razorpay order via "
+                        "POST /agent-store/listings/{listing}/purchase/razorpay-order, "
+                        "complete payment, then confirm it via "
+                        "POST /agent-store/listings/{listing}/purchase/razorpay-verify. "
+                        "Installing a paid listing without a verified payment is not permitted."
+                    ),
                 )
-            else:
-                purchase_id = existing.id
-                payment_id = existing.payment_id
+            purchase_id = existing.id
+            payment_id = existing.payment_id
 
         install_resp = self.marketplace.install(
             company_id,
@@ -818,9 +841,10 @@ class AgentStoreService:
         if purchase_id:
             purchase = self.db.get(AgentStorePurchase, purchase_id)
             if purchase:
+                # purchase_id is only ever set above from _completed_purchase(),
+                # so this row is already COMPLETED by construction — there is no
+                # PENDING-purchase path through this single-shot install().
                 purchase.installation_id = install_resp.id
-                if purchase.status == PurchaseStatus.PENDING:
-                    purchase.status = PurchaseStatus.COMPLETED
 
         publish_status = None
         if payload.publish_agent and install_resp.agent_id:
@@ -1128,75 +1152,316 @@ class AgentStoreService:
             .first()
         )
 
-    def _charge_and_record_purchase(
+    def _pending_purchase(
+        self, listing_id: UUID, company_id: UUID
+    ) -> Optional[AgentStorePurchase]:
+        return (
+            self.db.query(AgentStorePurchase)
+            .filter(
+                AgentStorePurchase.listing_id == listing_id,
+                AgentStorePurchase.buyer_company_id == company_id,
+                AgentStorePurchase.status == PurchaseStatus.PENDING,
+            )
+            .first()
+        )
+
+    def _lock_relevant_purchase(
+        self, listing_id: UUID, company_id: UUID
+    ) -> Optional[AgentStorePurchase]:
+        """SELECT ... FOR UPDATE the buyer's COMPLETED (preferred) or PENDING
+        purchase row for this listing, inside the caller's transaction.
+
+        This is the concurrency guard for verify_purchase_and_install: two
+        simultaneous verify calls for the same purchase now serialize on this
+        row lock instead of both reading PENDING and both installing/paying
+        out. The row is re-checked (status) immediately after this returns,
+        since the lock only guarantees no OTHER transaction is mid-write on
+        it right now — not that it is still PENDING.
+        """
+        completed = (
+            self.db.query(AgentStorePurchase)
+            .filter(
+                AgentStorePurchase.listing_id == listing_id,
+                AgentStorePurchase.buyer_company_id == company_id,
+                AgentStorePurchase.status == PurchaseStatus.COMPLETED,
+            )
+            .with_for_update()
+            .first()
+        )
+        if completed:
+            return completed
+        return (
+            self.db.query(AgentStorePurchase)
+            .filter(
+                AgentStorePurchase.listing_id == listing_id,
+                AgentStorePurchase.buyer_company_id == company_id,
+                AgentStorePurchase.status == PurchaseStatus.PENDING,
+            )
+            .with_for_update()
+            .first()
+        )
+
+    def create_purchase_order(
         self,
-        listing: AgentStoreListing,
-        publisher: Optional[AgentStorePublisher],
         company_id: UUID,
         user_id: UUID,
-        payload: StoreInstallRequest,
-    ) -> Tuple[UUID, UUID]:
-        try:
-            gateway = Gateway(payload.gateway)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid payment gateway") from exc
-        try:
-            method = PaymentMethod(payload.payment_method)
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail="Invalid payment method") from exc
+        listing_id_or_slug: str,
+        payload: AgentStorePurchaseOrderRequest,
+    ) -> AgentStorePurchaseOrderResponse:
+        """Step 1 of the authoritative paid-install flow: create a Razorpay
+        order pinned server-side to this listing's real price, and record a
+        PENDING purchase mapping it to (listing, buyer company). No
+        entitlement, install, or revenue-share exists yet — those are only
+        created by verify_purchase_and_install after a real signature check."""
+        listing = self._resolve_listing(listing_id_or_slug)
+        if listing.status != ListingStatus.PUBLISHED:
+            raise HTTPException(status_code=400, detail="Listing is not published")
 
-        amount = Decimal(str(listing.price_amount))
-        payment = self.payments.create_payment(
-            PaymentCreate(
-                amount=amount,
-                currency=listing.currency,
-                payment_method=method,
-                gateway=gateway,
-                invoice_number=f"ASTORE-{listing.slug[:40]}",
-                payment_metadata={
+        publisher = self.db.get(AgentStorePublisher, listing.publisher_id)
+        if publisher and publisher.company_id == company_id:
+            raise HTTPException(status_code=400, detail="Cannot install your own listing")
+
+        if listing.pricing_model == PricingModel.FREE:
+            raise HTTPException(status_code=400, detail="This listing is free — install it directly")
+
+        if self._completed_purchase(listing.id, company_id):
+            raise HTTPException(status_code=409, detail="This listing has already been purchased")
+
+        if not razorpay_enabled():
+            raise HTTPException(
+                status_code=503, detail="Razorpay is not configured; paid Agent Store checkout is unavailable."
+            )
+
+        amount = Decimal(str(listing.price_amount or 0))
+        if amount <= 0:
+            raise HTTPException(status_code=400, detail="Paid listing price must be greater than zero")
+        currency = (listing.currency or "USD").upper()
+
+        import razorpay
+
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        order = client.order.create(
+            data={
+                "amount": int(amount * 100),
+                "currency": currency,
+                "payment_capture": 1,
+                "notes": {
                     "agent_store_listing_id": str(listing.id),
-                    "pricing_model": listing.pricing_model.value,
+                    "buyer_company_id": str(company_id),
+                    "buyer_user_id": str(user_id),
                 },
-            ),
-            company_id,
-            user_id,
+            }
         )
-        if payment.status != PaymentStatus.SUCCESS:
+
+        install_request: Dict[str, Any] = {
+            "agent_id": str(payload.agent_id) if payload.agent_id else None,
+            "create_api_key": payload.create_api_key,
+            "config_overrides": payload.config_overrides or {},
+            "version": payload.version,
+            "publish_agent": payload.publish_agent,
+        }
+        meta = {
+            "razorpay_order_id": order["id"],
+            "install_request": install_request,
+            "customer_name": payload.customer_name,
+            "customer_email": payload.customer_email,
+        }
+
+        # Reuse an existing PENDING row for this (listing, buyer) pair rather
+        # than piling up a new one on every retry/re-open of the checkout.
+        purchase = self._pending_purchase(listing.id, company_id)
+        if purchase:
+            purchase.buyer_user_id = user_id
+            purchase.amount = amount
+            purchase.currency = currency
+            purchase.pricing_model = listing.pricing_model.value
+            purchase.meta = meta
+        else:
             purchase = AgentStorePurchase(
                 listing_id=listing.id,
                 buyer_company_id=company_id,
                 buyer_user_id=user_id,
-                payment_id=payment.id,
                 amount=amount,
-                currency=listing.currency,
-                status=PurchaseStatus.FAILED,
+                currency=currency,
+                status=PurchaseStatus.PENDING,
                 pricing_model=listing.pricing_model.value,
-                meta={"payment_status": payment.status.value},
+                meta=meta,
             )
             self.db.add(purchase)
-            self.db.commit()
-            raise HTTPException(status_code=402, detail="Payment failed for paid agent")
+        self.db.commit()
+        self.db.refresh(purchase)
+
+        return AgentStorePurchaseOrderResponse(
+            order_id=order["id"],
+            purchase_id=purchase.id,
+            amount=amount,
+            currency=currency,
+        )
+
+    def verify_purchase_and_install(
+        self,
+        company_id: UUID,
+        user_id: UUID,
+        listing_id_or_slug: str,
+        payload: AgentStorePurchaseVerifyRequest,
+    ) -> StoreInstallResponse:
+        """Step 2: verify the Razorpay HMAC-SHA256 signature server-side
+        (never trust the client's claim of success), resolve the pending
+        purchase via the server-side order mapping created in
+        create_purchase_order (never a client-supplied purchase/plan id),
+        and only mark it COMPLETED / book publisher-platform revenue shares
+        AFTER the underlying template install actually succeeds — a failed
+        install must leave the verified payment PENDING and retryable, never
+        a phantom completed sale with nothing installed.
+
+        Idempotent on razorpay_payment_id so a retried/replayed verify call
+        never creates a second purchase, installation, or revenue-share
+        record. A SELECT ... FOR UPDATE on the purchase row (see
+        _lock_relevant_purchase) serializes two concurrent verify calls for
+        the same purchase so they can't both observe PENDING and both
+        install/pay out — see the try/except around marketplace.install()
+        below for the narrow window that lock can't cover (MarketplaceService
+        .install() commits this same session internally, which releases the
+        lock the instant it succeeds, before we get to mark COMPLETED)."""
+        listing = self._resolve_listing(listing_id_or_slug)
+
+        publisher = self.db.get(AgentStorePublisher, listing.publisher_id)
+        if publisher and publisher.company_id == company_id:
+            raise HTTPException(status_code=400, detail="Cannot install your own listing")
+
+        if not razorpay_enabled():
+            raise HTTPException(
+                status_code=503, detail="Razorpay is not configured; paid Agent Store checkout is unavailable."
+            )
+
+        msg = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}"
+        expected = hmac.new(
+            settings.RAZORPAY_KEY_SECRET.encode(), msg.encode(), hashlib.sha256
+        ).hexdigest()
+        if not hmac.compare_digest(expected, payload.razorpay_signature):
+            raise HTTPException(status_code=400, detail="Invalid Razorpay signature. Payment verification failed.")
+
+        purchase = self._lock_relevant_purchase(listing.id, company_id)
+
+        if purchase and purchase.status == PurchaseStatus.COMPLETED:
+            if (purchase.meta or {}).get("razorpay_payment_id") == payload.razorpay_payment_id:
+                # Replay of an already-verified payment — return the existing
+                # result rather than re-installing or re-crediting anyone.
+                return StoreInstallResponse(
+                    listing_id=listing.id,
+                    installation_id=purchase.installation_id,
+                    purchase_id=purchase.id,
+                    payment_id=purchase.payment_id,
+                    agent_id=None,
+                    status="ready",
+                )
+            raise HTTPException(status_code=409, detail="This listing has already been purchased")
+
+        if not purchase:
+            raise HTTPException(
+                status_code=400, detail="No pending purchase found for this listing — create an order first."
+            )
+
+        order_meta = dict(purchase.meta or {})
+        if order_meta.get("razorpay_order_id") != payload.razorpay_order_id:
+            raise HTTPException(
+                status_code=400, detail="Order does not match the pending purchase for this listing."
+            )
+
+        install_req = order_meta.get("install_request") or {}
+        try:
+            install_resp = self.marketplace.install(
+                company_id,
+                user_id,
+                str(listing.template_id),
+                InstallRequest(
+                    version=install_req.get("version") or listing.current_version,
+                    agent_id=UUID(install_req["agent_id"]) if install_req.get("agent_id") else None,
+                    create_api_key=install_req.get("create_api_key", True),
+                    api_key_name=f"Agent Store: {listing.title}",
+                    config_overrides={
+                        **(install_req.get("config_overrides") or {}),
+                        "agent_store_listing_id": str(listing.id),
+                        "agent_store_slug": listing.slug,
+                    },
+                ),
+            )
+        except HTTPException as exc:
+            if exc.status_code == 409:
+                # A concurrent verify call for the same purchase won the
+                # race: MarketplaceService.install() commits its own
+                # transaction on success, which released the row lock we
+                # held above before we got to mark this purchase COMPLETED,
+                # so this call re-read PENDING and also tried to install —
+                # marketplace's own (company, template) uniqueness caught
+                # it. Fold back to the same idempotent response instead of
+                # surfacing a confusing "already installed"; if the other
+                # request's final commit hasn't landed yet, ask for a retry
+                # rather than risk a second install/payout.
+                self.db.rollback()
+                completed = self._completed_purchase(listing.id, company_id)
+                if completed and (completed.meta or {}).get("razorpay_payment_id") == payload.razorpay_payment_id:
+                    return StoreInstallResponse(
+                        listing_id=listing.id,
+                        installation_id=completed.installation_id,
+                        purchase_id=completed.id,
+                        payment_id=completed.payment_id,
+                        agent_id=None,
+                        status="ready",
+                    )
+                raise HTTPException(
+                    status_code=409,
+                    detail="This purchase is being completed by another request — please retry.",
+                ) from exc
+            # Any other failure (quota exceeded, template unavailable, etc.)
+            # — `purchase` above is still PENDING and untouched: nothing has
+            # been marked COMPLETED and no revenue share has been booked, so
+            # the verified payment is not lost and a retried verify call can
+            # complete it once the underlying issue is resolved.
+            raise
 
         bps = publisher.revenue_share_bps if publisher else 7000
+        amount = purchase.amount
         publisher_share = (amount * Decimal(bps) / Decimal(10000)).quantize(Decimal("0.01"))
         platform_share = (amount - publisher_share).quantize(Decimal("0.01"))
 
-        purchase = AgentStorePurchase(
-            listing_id=listing.id,
-            buyer_company_id=company_id,
-            buyer_user_id=user_id,
-            payment_id=payment.id,
-            amount=amount,
-            currency=listing.currency,
-            publisher_share=publisher_share,
-            platform_share=platform_share,
-            status=PurchaseStatus.COMPLETED,
-            pricing_model=listing.pricing_model.value,
-            meta={"payment_status": payment.status.value},
+        order_meta["razorpay_payment_id"] = payload.razorpay_payment_id
+        purchase.status = PurchaseStatus.COMPLETED
+        purchase.publisher_share = publisher_share
+        purchase.platform_share = platform_share
+        purchase.installation_id = install_resp.id
+        purchase.meta = order_meta
+
+        listing.install_count = int(listing.install_count or 0) + 1
+        listing.download_count = int(listing.download_count or 0) + 1
+
+        publish_status = None
+        if install_req.get("publish_agent") and install_resp.agent_id:
+            try:
+                pub_install = self.marketplace.publish_installation(company_id, install_resp.id)
+                publish_status = pub_install.status
+            except HTTPException:
+                publish_status = "publish_skipped"
+
+        self.db.commit()
+
+        NotificationEventBus.dispatch(
+            event_type="agent_store.installed",
+            db=self.db,
+            company_id=company_id,
+            user_id=user_id,
+            data={"listing_title": listing.title, "listing_id": str(listing.id)},
         )
-        self.db.add(purchase)
-        self.db.flush()
-        return payment.id, purchase.id
+
+        return StoreInstallResponse(
+            listing_id=listing.id,
+            installation_id=install_resp.id,
+            purchase_id=purchase.id,
+            payment_id=purchase.payment_id,
+            agent_id=install_resp.agent_id,
+            status=install_resp.status,
+            publish_status=publish_status,
+        )
 
     def _recompute_rating(self, listing: AgentStoreListing) -> None:
         agg = (
