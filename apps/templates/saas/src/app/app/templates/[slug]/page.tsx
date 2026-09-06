@@ -11,6 +11,7 @@ import {
   type TemplateVersion
 } from "@/lib/services";
 import { ApiError } from "@/lib/api";
+import { trackEvent } from "@/lib/analytics";
 import { cn, formatDate } from "@/lib/utils";
 import { EmptyState } from "@/components/ui/misc";
 import { Badge, Card } from "@/components/ui/card";
@@ -225,6 +226,7 @@ export default function TemplateDetailPage() {
     onSuccess: (data) => {
       toast.success(`${data.template_name || data.template_slug} installed`);
       if (data.api_key) toast.message(`API key (copy now): ${data.api_key}`);
+      trackEvent("template_installed", { template_slug: data.template_slug || slug });
       setConfirmInstall(false);
       qc.invalidateQueries({ queryKey: ["mkt-template", slug] });
       qc.invalidateQueries({ queryKey: ["mkt-home"] });

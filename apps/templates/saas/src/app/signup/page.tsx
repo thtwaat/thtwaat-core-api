@@ -11,6 +11,7 @@ import { Input, Label } from "@/components/ui/input";
 import { ApiError, setTokens } from "@/lib/api";
 import { authApi, onboardingApi } from "@/lib/services";
 import { useAuth } from "@/lib/auth";
+import { trackEvent } from "@/lib/analytics";
 import { signupSchema } from "@/lib/validators";
 import { clearOnboardingDraft, defaultOnboardingDraft, saveOnboardingDraft } from "@/lib/onboarding";
 import type { z } from "zod";
@@ -32,6 +33,7 @@ export default function SignupPage() {
   });
 
   async function onSubmit(values: FormValues) {
+    trackEvent("sign_up_started");
     try {
       const started = await onboardingApi.start({
         account: {
@@ -50,6 +52,7 @@ export default function SignupPage() {
         toast.error("Unable to create workspace.");
         return;
       }
+      trackEvent("workspace_created");
       setTokens({
         access_token: started.access_token,
         refresh_token: started.refresh_token,

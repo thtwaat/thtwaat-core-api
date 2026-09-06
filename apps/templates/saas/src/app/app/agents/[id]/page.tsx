@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { agentsApi, knowledgeApi } from "@/lib/services";
 import { site } from "@/lib/config";
+import { trackEvent } from "@/lib/analytics";
 import { isProviderModelVisionCapable, VISION_MODEL_INCOMPATIBLE_MESSAGE } from "@/lib/agent-builder";
 import { PageHeader } from "@/components/ui/misc";
 import { Badge, Card, CardHeader } from "@/components/ui/card";
@@ -163,6 +164,7 @@ export default function AgentDetailPage() {
     onSuccess: (data) => {
       toast.success("Published");
       if (data.api_key) setCreatedKey(data.api_key);
+      trackEvent("agent_published", { agent_id: id, source: "detail_page" });
       qc.invalidateQueries({ queryKey: ["agent", id] });
       qc.invalidateQueries({ queryKey: ["agents"] });
     },

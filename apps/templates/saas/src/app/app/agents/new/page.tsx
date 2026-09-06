@@ -27,6 +27,7 @@ import {
   validateAgentBuilderStep,
   VISION_MODEL_INCOMPATIBLE_MESSAGE
 } from "@/lib/agent-builder";
+import { trackEvent } from "@/lib/analytics";
 import { cn, formatDate } from "@/lib/utils";
 import { PageHeader, EmptyState, Progress } from "@/components/ui/misc";
 import { Badge, Card, CardHeader } from "@/components/ui/card";
@@ -313,6 +314,7 @@ export default function NewAgentPage() {
       const published = await agentsApi.publish(agentId);
       if (published.api_key) setPublishKey(published.api_key);
       update({ published: true });
+      trackEvent("agent_published", { agent_id: agentId, source: "builder_wizard" });
       toast.success("Agent published");
       clearAgentBuilderDraft();
     } catch (e) {

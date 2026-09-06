@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { billingApi, usageApi } from "@/lib/services";
 import { site } from "@/lib/config";
+import { trackEvent } from "@/lib/analytics";
 import { useAuth } from "@/lib/auth";
 import { formatDate, formatNumber } from "@/lib/utils";
 import {
@@ -215,18 +216,27 @@ export default function BillingPage() {
         "No payment provider available. Enable Stripe or Razorpay (BILLING_ENABLE_* + secrets), and ensure Razorpay key_id is returned by /payments/subscriptions/providers."
       );
     },
-    onSuccess: async (result) => {
+    onSuccess: async (result, plan) => {
       if (result && "provider" in result && result.provider === "manual") {
         toast.success("Plan updated");
+        trackEvent("checkout_completed", { plan_id: plan.id, plan_name: plan.name, provider: "manual" });
         await refreshBillingState();
         return;
       }
+      // Stripe redirects off-app to Checkout and returns via success_url
+      // (?upgraded=1). That query param is not proof of payment — a user
+      // can append it manually, and it never fires if Stripe declines the
+      // card after redirecting back. Authoritative Stripe completion must
+      // come from a server-side webhook (checkout.session.completed), which
+      // is out of scope for this client-only change. No checkout_completed
+      // event is fired for the Stripe path here — known limitation.
       if (result && "status" in result && result.status === "redirect") return;
       if (!result || !("status" in result)) return;
 
       switch (result.status) {
         case "success":
           toast.success("Payment verified. Your plan is updating.");
+          trackEvent("checkout_completed", { plan_id: plan.id, plan_name: plan.name, provider: "razorpay" });
           await refreshBillingState();
           break;
         case "cancelled":
