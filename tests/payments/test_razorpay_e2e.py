@@ -1,7 +1,7 @@
 """
 tests/payments/test_razorpay_e2e.py
 
-End-to-end test suite for the Razorpay Live payment integration.
+End-to-end test suite for the Razorpay TEST-mode payment integration.
 Covers all 12 checklist items from the implementation spec.
 
 Each test function documents:
@@ -10,10 +10,26 @@ Each test function documents:
     Fix Applied (if failed)
 
 Architecture:
-  - Order creation calls the REAL Razorpay Live API (safe — no charge until payment).
-  - Signature verification uses HMAC computed with the live secret (mirrors what Razorpay does).
+  - Order creation calls the REAL Razorpay TEST-mode API (safe — no charge
+    until payment, and test-mode never moves real money regardless).
+  - Signature verification uses HMAC computed with the configured test-mode
+    key secret (mirrors what Razorpay does).
   - Webhook tests POST a correctly-signed payload to the webhook endpoint.
   - All DB assertions query through the API so no direct DB access is needed.
+
+SAFETY — environment-driven, never hardcoded:
+  - RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET are read from `app.config.settings`
+    (itself populated from the process environment / .env) — this file must
+    never contain a literal Razorpay credential value.
+  - A module-level guard below refuses to even collect this file if the
+    configured RAZORPAY_KEY_ID looks like a LIVE-mode key (`rzp_live_*`).
+    This suite must only ever run against Razorpay TEST-mode credentials
+    (`rzp_test_*`).
+  - If no Razorpay credentials are configured at all, the module skips
+    cleanly (same pattern as the other integration tests in this
+    directory) rather than erroring.
+  - No test prints a credential value — assertion messages below reference
+    only prefixes/booleans, never the secret or the full key id.
 """
 
 import uuid
@@ -23,16 +39,48 @@ import json
 import pytest
 from fastapi.testclient import TestClient
 
+from app.config.settings import settings
+
+# ---------------------------------------------------------------------------
+# Fail-fast credential guard (collection-time, before any fixture/test runs)
+# ---------------------------------------------------------------------------
+
+_configured_key_id = (settings.RAZORPAY_KEY_ID or "").strip()
+
+if _configured_key_id.startswith("rzp_live_"):
+    raise RuntimeError(
+        "Refusing to collect tests/payments/test_razorpay_e2e.py: the configured "
+        "RAZORPAY_KEY_ID is a LIVE-mode Razorpay key (rzp_live_*). This suite must "
+        "only ever run against Razorpay TEST-mode credentials (rzp_test_*) — set "
+        "RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET to test-mode values before running it. "
+        "(No key value is printed here on purpose.)"
+    )
+
+if not _configured_key_id or not (settings.RAZORPAY_KEY_SECRET or "").strip():
+    pytest.skip(
+        "Razorpay TEST-mode credentials are not configured "
+        "(RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET) — skipping this E2E suite.",
+        allow_module_level=True,
+    )
 
 # ---------------------------------------------------------------------------
 # Shared helpers
 # ---------------------------------------------------------------------------
 
-RAZORPAY_KEY_SECRET = "6tg4vKLaVKO6PMfeNZPuGF9j"
-RAZORPAY_KEY_ID = "rzp_live_Suexgjxrs68uwU"
-# Webhook signatures are verified with the dedicated webhook secret, never
-# RAZORPAY_KEY_SECRET (that one is only for order/payment verification).
-RAZORPAY_WEBHOOK_SECRET = "whsec_e2e_test_razorpay_webhook_secret"
+# Environment-driven only — sourced from settings (see guard above), never a
+# literal in this file. Required to be genuine Razorpay TEST-mode
+# credentials because the order-creation tests below call the real
+# Razorpay API (test mode never moves real money, but still needs a
+# key Razorpay will actually authenticate).
+RAZORPAY_KEY_ID = _configured_key_id
+RAZORPAY_KEY_SECRET = settings.RAZORPAY_KEY_SECRET.strip()
+
+# Not a real credential — a synthetic value this suite monkeypatches into
+# the running app's webhook-verification setting for the duration of each
+# test (see `_razorpay_webhook_secret` fixture below). It never leaves this
+# process and is never sent to Razorpay, so a fixed literal here is safe —
+# unlike RAZORPAY_KEY_SECRET above, which must match a real Razorpay key.
+_SYNTHETIC_WEBHOOK_SECRET_FOR_TEST = "whsec_e2e_test_razorpay_webhook_secret"
 
 
 def _compute_razorpay_signature(order_id: str, payment_id: str) -> str:
@@ -48,7 +96,7 @@ def _compute_razorpay_signature(order_id: str, payment_id: str) -> str:
 def _compute_webhook_signature(payload_bytes: bytes) -> str:
     """Compute HMAC-SHA256 over the raw webhook body using the webhook secret."""
     return hmac.new(
-        RAZORPAY_WEBHOOK_SECRET.encode(),
+        _SYNTHETIC_WEBHOOK_SECRET_FOR_TEST.encode(),
         payload_bytes,
         hashlib.sha256
     ).hexdigest()
@@ -107,7 +155,10 @@ def _get_or_create_test_plan(client: TestClient, headers: dict) -> str:
 # ---------------------------------------------------------------------------
 
 @pytest.fixture(scope="module")
-def client():
+def client(integration_stack):
+    """FastAPI TestClient — depends on `integration_stack` (tests/conftest.py)
+    so this suite skips cleanly when Postgres/Redis aren't running, instead
+    of erroring mid-test like the previous local override of this fixture."""
     from main import app
     with TestClient(app) as c:
         yield c
@@ -115,10 +166,15 @@ def client():
 
 @pytest.fixture(autouse=True)
 def _razorpay_webhook_secret(monkeypatch):
-    """Webhook verification uses RAZORPAY_WEBHOOK_SECRET, not RAZORPAY_KEY_SECRET."""
+    """Webhook verification uses RAZORPAY_WEBHOOK_SECRET, not RAZORPAY_KEY_SECRET.
+
+    Monkeypatches a synthetic, non-secret test value for the duration of
+    each test — this never reads or depends on whatever real
+    RAZORPAY_WEBHOOK_SECRET (if any) is configured in the environment.
+    """
     monkeypatch.setattr(
         "app.payments.webhooks.router.settings.RAZORPAY_WEBHOOK_SECRET",
-        RAZORPAY_WEBHOOK_SECRET,
+        _SYNTHETIC_WEBHOOK_SECRET_FOR_TEST,
     )
 
 
@@ -140,13 +196,20 @@ class TestRazorpaySDKIntegration:
         provider = RazorpayProvider()
         assert provider.client is not None
 
-    def test_razorpay_provider_uses_live_key(self):
-        """PASS if the SDK client is initialised with the live key id."""
+    def test_razorpay_provider_uses_test_mode_key(self):
+        """PASS if the SDK client is initialised with a TEST-mode key id.
+
+        This suite must never require (or accept) a live key — the
+        module-level guard at the top of this file already refuses to
+        collect the file at all if RAZORPAY_KEY_ID is rzp_live_*; this test
+        is the positive-path companion assertion. Never prints the key
+        value itself, only whether the expected prefix matches.
+        """
         from app.payments.providers.razorpay import RazorpayProvider
-        from app.config.settings import settings
         assert settings.RAZORPAY_KEY_ID is not None
-        assert settings.RAZORPAY_KEY_ID.startswith("rzp_live_"), (
-            f"Expected a live key, got: {settings.RAZORPAY_KEY_ID}"
+        assert settings.RAZORPAY_KEY_ID.startswith("rzp_test_"), (
+            "Expected a Razorpay TEST-mode key (rzp_test_*) — refusing to treat "
+            "this as a pass for any other key format."
         )
         assert settings.RAZORPAY_KEY_SECRET is not None
         provider = RazorpayProvider()
