@@ -30,6 +30,9 @@ from fastapi.testclient import TestClient
 
 RAZORPAY_KEY_SECRET = "6tg4vKLaVKO6PMfeNZPuGF9j"
 RAZORPAY_KEY_ID = "rzp_live_Suexgjxrs68uwU"
+# Webhook signatures are verified with the dedicated webhook secret, never
+# RAZORPAY_KEY_SECRET (that one is only for order/payment verification).
+RAZORPAY_WEBHOOK_SECRET = "whsec_e2e_test_razorpay_webhook_secret"
 
 
 def _compute_razorpay_signature(order_id: str, payment_id: str) -> str:
@@ -43,9 +46,9 @@ def _compute_razorpay_signature(order_id: str, payment_id: str) -> str:
 
 
 def _compute_webhook_signature(payload_bytes: bytes) -> str:
-    """Compute HMAC-SHA256 over the raw webhook body using key secret."""
+    """Compute HMAC-SHA256 over the raw webhook body using the webhook secret."""
     return hmac.new(
-        RAZORPAY_KEY_SECRET.encode(),
+        RAZORPAY_WEBHOOK_SECRET.encode(),
         payload_bytes,
         hashlib.sha256
     ).hexdigest()
@@ -108,6 +111,15 @@ def client():
     from main import app
     with TestClient(app) as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _razorpay_webhook_secret(monkeypatch):
+    """Webhook verification uses RAZORPAY_WEBHOOK_SECRET, not RAZORPAY_KEY_SECRET."""
+    monkeypatch.setattr(
+        "app.payments.webhooks.router.settings.RAZORPAY_WEBHOOK_SECRET",
+        RAZORPAY_WEBHOOK_SECRET,
+    )
 
 
 # ===========================================================================
@@ -388,7 +400,7 @@ class TestWebhookVerification:
         """
         PASS if a correctly-signed webhook returns 200 with {received: True}.
         FAIL > Root Cause: HMAC key mismatch or missing header.
-               Fix Applied: Webhook uses RAZORPAY_KEY_SECRET for verification.
+               Fix Applied: Webhook uses RAZORPAY_WEBHOOK_SECRET for verification.
         """
         payload = {
             "event": "payment.failed",
@@ -407,7 +419,7 @@ class TestWebhookVerification:
         assert resp.status_code == 200, (
             f"FAIL > Webhook rejected with status {resp.status_code}: {resp.text}\n"
             "Root Cause: Signature verification failed.\n"
-            "Fix Applied: X-Razorpay-Signature computed with RAZORPAY_KEY_SECRET over raw body."
+            "Fix Applied: X-Razorpay-Signature computed with RAZORPAY_WEBHOOK_SECRET over raw body."
         )
         assert resp.json().get("received") is True
 
@@ -422,6 +434,34 @@ class TestWebhookVerification:
             }
         )
         assert resp.status_code == 400
+
+    def test_webhook_rejects_signature_computed_with_key_secret(self, client):
+        """A signature computed with RAZORPAY_KEY_SECRET (the checkout secret)
+        must NOT validate against the webhook endpoint — they are different
+        secrets by design."""
+        payload_bytes = b'{"event": "payment.captured", "payload": {}}'
+        bad_sig = hmac.new(
+            RAZORPAY_KEY_SECRET.encode(), payload_bytes, hashlib.sha256
+        ).hexdigest()
+        resp = client.post(
+            "/api/v1/payments/webhooks/razorpay",
+            content=payload_bytes,
+            headers={
+                "Content-Type": "application/json",
+                "X-Razorpay-Signature": bad_sig,
+            }
+        )
+        assert resp.status_code == 400
+
+    def test_webhook_missing_webhook_secret_fails_closed(self, client, monkeypatch):
+        """If RAZORPAY_WEBHOOK_SECRET is not configured, the webhook must
+        reject everything (503) rather than falling back to another secret."""
+        monkeypatch.setattr(
+            "app.payments.webhooks.router.settings.RAZORPAY_WEBHOOK_SECRET", None
+        )
+        payload = {"event": "payment.captured", "payload": {}}
+        resp = self._post_webhook(client, payload)
+        assert resp.status_code == 503
 
     def test_webhook_missing_signature_returns_400(self, client):
         """PASS if a webhook with no signature header returns 400."""

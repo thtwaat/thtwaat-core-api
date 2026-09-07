@@ -196,7 +196,7 @@ async def razorpay_webhook(
     db: Session = Depends(get_db)
 ):
     """Razorpay webhook handler with HMAC-SHA256 signature verification."""
-    if not settings.RAZORPAY_KEY_SECRET:
+    if not settings.RAZORPAY_WEBHOOK_SECRET:
         raise HTTPException(status_code=503, detail="Razorpay webhooks are not configured.")
 
     import hmac
@@ -208,7 +208,7 @@ async def razorpay_webhook(
         raise HTTPException(status_code=400, detail="Missing X-Razorpay-Signature header.")
 
     expected = hmac.new(
-        settings.RAZORPAY_KEY_SECRET.encode(),
+        settings.RAZORPAY_WEBHOOK_SECRET.encode(),
         payload,
         hashlib.sha256
     ).hexdigest()
