@@ -6,8 +6,9 @@ Orchestrates subscription lifecycle for both Stripe and Razorpay.
 import uuid
 import logging
 from typing import Optional, List
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 from fastapi import HTTPException, status
 
 import stripe
@@ -17,8 +18,10 @@ from app.payments.plans.repository import PlanRepository
 from app.payments.subscriptions.model import Subscription, SubscriptionStatus, SubscriptionProvider
 from app.payments.subscriptions.schema import (
     StripeCheckoutRequest, RazorpayCheckoutRequest, RazorpayVerifyRequest,
+    RazorpaySubscriptionCheckoutRequest, RazorpaySubscriptionVerifyRequest,
     CheckoutSessionResponse, SubscriptionResponse, ChangePlanRequest
 )
+from app.payments.providers.razorpay import extract_subscription_period
 from app.payments.subscriptions.repository import SubscriptionRepository
 from app.payments.invoices.model import Invoice, InvoiceStatus
 from app.payments.invoices.repository import InvoiceRepository
@@ -242,16 +245,29 @@ class SubscriptionService:
                     auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
                 )
                 try:
-                    client.subscription.cancel(sub.provider_subscription_id)
+                    # cancel_at_cycle_end=1 schedules the cancellation for the
+                    # end of the current billing cycle instead of cancelling
+                    # (and revoking the mandate) immediately. Local status
+                    # stays ACTIVE/cancel_at_period_end=True until Razorpay's
+                    # subscription.cancelled webhook confirms it actually
+                    # ended — mirrors the Stripe branch above, which also
+                    # only flips a flag here and lets the webhook finalize.
+                    client.subscription.cancel(
+                        sub.provider_subscription_id, {"cancel_at_cycle_end": 1}
+                    )
                 except Exception as exc:
                     logger.warning("razorpay cancel remote failed: %s", exc)
-            self.sub_repo.update(
-                sub,
-                {
-                    "cancel_at_period_end": True,
-                    "cancelled_at": datetime.now(timezone.utc),
-                },
-            )
+            else:
+                # Legacy one-time Razorpay "subscription" (no real provider
+                # subscription — see docs/billing/razorpay-recurring.md).
+                # There is nothing recurring to cancel on Razorpay's side;
+                # cancelling locally just stops it from being billed again
+                # under this row (it was never going to auto-renew anyway).
+                logger.info(
+                    "razorpay cancel: sub=%s has no provider_subscription_id (legacy one-time order)",
+                    sub.id,
+                )
+            self.sub_repo.update(sub, {"cancel_at_period_end": True})
         else:
             # Manual / free
             self.sub_repo.update(
@@ -284,6 +300,22 @@ class SubscriptionService:
             stripe.Subscription.modify(
                 sub.provider_subscription_id,
                 cancel_at_period_end=False,
+            )
+        elif sub.provider == SubscriptionProvider.RAZORPAY and sub.provider_subscription_id:
+            # The installed Razorpay SDK (razorpay.resources.subscription)
+            # exposes create/cancel/pause/resume/edit/cancel_scheduled_changes
+            # but no documented way to reverse a cancel_at_cycle_end request
+            # once Razorpay has accepted it. Flipping our local flag back
+            # without an equivalent remote change would desync local state
+            # from what Razorpay will actually do at cycle end — refuse
+            # instead of guessing at an unconfirmed API call.
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This Razorpay subscription is scheduled to cancel at the end of "
+                    "the current billing cycle and cannot be resumed via the API. "
+                    "Let it lapse and re-subscribe, or contact support."
+                ),
             )
         self.sub_repo.update(sub, {"cancel_at_period_end": False, "cancelled_at": None})
         self.db.refresh(sub)
@@ -596,8 +628,10 @@ class SubscriptionService:
             "payment_id": data.razorpay_payment_id,
         })
 
-        # Create invoice record
-        invoice = self.invoice_repo.create({
+        # Create invoice record — idempotent by provider_payment_id (DB-enforced
+        # via a unique index, not just this pre-check) so this is safe even if
+        # the payment.captured webhook for the same payment races this call.
+        invoice, created = self.invoice_repo.create_idempotent_by_payment_id({
             "company_id": company_id,
             "subscription_id": sub.id,
             "provider": "razorpay",
@@ -612,16 +646,343 @@ class SubscriptionService:
         # Update subscription with invoice ref
         self.sub_repo.update(sub, {"invoice_id": invoice.id})
 
-        # Update company plan and status from trusted server-side plan only
-        self._activate_company_plan(company_id, plan)
+        # Update company plan/status/limits and grant AI credits — but only
+        # the first time this payment's invoice is actually created. If the
+        # payment.captured webhook already created it (raced ahead of this
+        # call), activation already happened there; doing it again here would
+        # double-grant credits for the same payment.
+        if created:
+            self._activate_company_plan(company_id, plan)
 
         self.db.refresh(sub)
         return sub
 
+    # ─── Razorpay recurring Subscriptions (real recurring billing) ─────────
+    #
+    # create_razorpay_order/verify_razorpay_payment above remain a one-time
+    # Order+verify flow and are left untouched for any non-recurring caller.
+    # The methods below use the Razorpay *Subscription* API so a plan can
+    # actually auto-renew. See docs/billing/razorpay-recurring.md.
+
+    def _ensure_razorpay_plan(self, client, plan, use_yearly: bool, billing_region) -> str:
+        """Resolve (creating if necessary) the Razorpay Plan id for this
+        Plan/interval. Never creates a duplicate Razorpay Plan once an id is
+        already recorded. Amount/currency/interval always come from the
+        server-side Plan row — the caller never supplies price or interval
+        for plan creation.
+        """
+        field = "razorpay_yearly_plan_id" if use_yearly else "razorpay_plan_id"
+        self.db.refresh(plan)
+        existing = getattr(plan, field, None)
+        if existing:
+            return existing
+
+        amount_dec = plan_price_for_region(
+            plan, billing_region, interval="year" if use_yearly else "month"
+        )
+        if amount_dec <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Plan amount must be greater than zero for a Razorpay recurring subscription.",
+            )
+        currency = plan_currency_for_region(plan, billing_region)
+
+        razorpay_plan = client.plan.create(data={
+            "period": "yearly" if use_yearly else "monthly",
+            "interval": int(plan.interval_count or 1),
+            "item": {
+                "name": f"{plan.name} ({'Yearly' if use_yearly else 'Monthly'})",
+                "amount": int(float(amount_dec) * 100),
+                "currency": currency.upper(),
+                "description": plan.description or plan.name,
+            },
+            "notes": {"plan_id": str(plan.id), "interval": "year" if use_yearly else "month"},
+        })
+        razorpay_plan_id = razorpay_plan["id"]
+
+        # Re-check right before writing: a concurrent request may have
+        # created and persisted one while this call was talking to Razorpay.
+        # Keep whichever id landed first rather than overwriting it —
+        # Razorpay has no delete-plan API, so a rare duplicate Plan object on
+        # their side is harmless; an orphaned reference in our own DB is not.
+        self.db.refresh(plan)
+        winner = getattr(plan, field, None)
+        if winner:
+            return winner
+        self.plan_repo.update(plan, {field: razorpay_plan_id})
+        return razorpay_plan_id
+
+    def create_razorpay_subscription(
+        self,
+        company_id: uuid.UUID,
+        data: RazorpaySubscriptionCheckoutRequest,
+        *,
+        request=None,
+    ) -> CheckoutSessionResponse:
+        """Creates a real, recurring Razorpay Subscription (not an Order)."""
+        if not razorpay_enabled():
+            raise HTTPException(status_code=503, detail="Razorpay billing is not enabled or configured.")
+        import razorpay
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+        company = self.company_repo.get_by_id(company_id)
+        if not company:
+            raise HTTPException(status_code=404, detail="Company not found.")
+
+        plan = self.plan_repo.get_by_id(data.plan_id)
+        if not plan or not plan.is_active:
+            raise HTTPException(status_code=404, detail="Plan not found or inactive.")
+        if getattr(plan, "is_custom_pricing", False):
+            raise HTTPException(
+                status_code=400,
+                detail="Enterprise plan uses custom pricing. Contact sales.",
+            )
+
+        # Never create a second live Razorpay Subscription (mandate) while an
+        # existing one is already active — that would orphan the original
+        # (still auto-charging on Razorpay's side, but no longer tracked
+        # locally once its provider_subscription_id is overwritten below).
+        # A row with no provider_subscription_id is either a legacy one-time
+        # Order-flow row or a not-yet-authorized INCOMPLETE attempt — neither
+        # has a live mandate, so it is safe to proceed/reuse (see the reuse
+        # branch further down).
+        existing = self.sub_repo.get_active_by_company(company_id)
+        if existing and existing.provider == SubscriptionProvider.RAZORPAY and existing.provider_subscription_id:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "An active Razorpay recurring subscription already exists for this "
+                    "company. Cancel it before starting a new one."
+                ),
+            )
+
+        region = resolve_region_for_company(
+            self.db, company_id, request, country=getattr(data, "country", None)
+        )
+        # Razorpay recurring billing is INR/India-only in this codebase,
+        # same constraint as the one-time order flow above.
+        billing_region = region
+        if region.region != "IN":
+            from app.payments.region_pricing import BillingRegion
+
+            billing_region = BillingRegion(
+                "IN", "INR", "razorpay", region.country_code or "IN", "razorpay_subscription_checkout"
+            )
+
+        use_yearly = (data.interval or plan.interval or "month").lower() == "year"
+        razorpay_plan_id = self._ensure_razorpay_plan(client, plan, use_yearly, billing_region)
+
+        total_count = (
+            int(getattr(settings, "RAZORPAY_SUBSCRIPTION_TOTAL_COUNT_YEARLY", 15) or 15)
+            if use_yearly
+            else int(getattr(settings, "RAZORPAY_SUBSCRIPTION_TOTAL_COUNT_MONTHLY", 120) or 120)
+        )
+
+        razorpay_sub = client.subscription.create(data={
+            "plan_id": razorpay_plan_id,
+            "total_count": total_count,
+            "quantity": 1,
+            "customer_notify": 1,
+            "notes": {
+                "company_id": str(company_id),
+                "plan_id": str(plan.id),
+                "customer_name": data.customer_name,
+                "customer_email": data.customer_email,
+                "billing_region": billing_region.region,
+                "interval": "year" if use_yearly else "month",
+            },
+        })
+        razorpay_sub_id = razorpay_sub["id"]
+
+        sub_meta = {
+            "pending_plan_id": str(plan.id),
+            "razorpay_plan_id": razorpay_plan_id,
+            "customer_name": data.customer_name,
+            "customer_email": data.customer_email,
+            "interval": "year" if use_yearly else "month",
+        }
+
+        # Only reuse an existing row that is already a Razorpay subscription
+        # attempt — never overwrite an active Stripe/manual subscription's
+        # row with Razorpay identifiers. (The conflict guard above already
+        # ruled out `existing` being a live recurring Razorpay mandate.)
+        if existing and existing.provider == SubscriptionProvider.RAZORPAY:
+            meta = dict(existing.metadata_ or {})
+            meta.update(sub_meta)
+            sub = self.sub_repo.update(existing, {
+                "provider_subscription_id": razorpay_sub_id,
+                "plan_id": plan.id,
+                "status": SubscriptionStatus.INCOMPLETE,
+                "metadata_": meta,
+            })
+        else:
+            pending = self.sub_repo.get_incomplete_by_company(
+                company_id, SubscriptionProvider.RAZORPAY
+            )
+            if pending:
+                meta = dict(pending.metadata_ or {})
+                meta.update(sub_meta)
+                sub = self.sub_repo.update(pending, {
+                    "plan_id": plan.id,
+                    "provider_subscription_id": razorpay_sub_id,
+                    "metadata_": meta,
+                    "status": SubscriptionStatus.INCOMPLETE,
+                })
+            else:
+                sub = self.sub_repo.create({
+                    "company_id": company_id,
+                    "plan_id": plan.id,
+                    "provider": SubscriptionProvider.RAZORPAY,
+                    "provider_subscription_id": razorpay_sub_id,
+                    "status": SubscriptionStatus.INCOMPLETE,
+                    "metadata_": sub_meta,
+                })
+
+        return CheckoutSessionResponse(
+            razorpay_subscription_id=razorpay_sub_id,
+            subscription_id=sub.id,
+            provider="razorpay",
+        )
+
+    def verify_razorpay_subscription_payment(
+        self,
+        company_id: uuid.UUID,
+        data: RazorpaySubscriptionVerifyRequest,
+    ) -> SubscriptionResponse:
+        """Verifies the first-charge signature for a Razorpay Subscription.
+
+        Signature verification proves the (payment_id, subscription_id) pair
+        is genuine, but it does NOT activate the subscription, populate the
+        billing period, or write an invoice — that happens only in the
+        subscription.charged/subscription.activated webhook handlers, which
+        carry the real current_start/current_end and are delivered
+        regardless of whether the customer's browser survives the checkout
+        redirect. This call is intentionally a no-op beyond verification and
+        an idempotent bookkeeping note.
+        """
+        if not settings.RAZORPAY_KEY_SECRET:
+            raise HTTPException(status_code=503, detail="Razorpay is not configured.")
+
+        import razorpay
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        try:
+            client.utility.verify_subscription_payment_signature({
+                "razorpay_subscription_id": data.razorpay_subscription_id,
+                "razorpay_payment_id": data.razorpay_payment_id,
+                "razorpay_signature": data.razorpay_signature,
+            })
+        except razorpay.errors.SignatureVerificationError:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid Razorpay signature. Payment verification failed.",
+            )
+
+        sub = self.sub_repo.get_by_provider_subscription_id(data.razorpay_subscription_id)
+        if not sub or sub.company_id != company_id:
+            raise HTTPException(
+                status_code=400,
+                detail="No subscription found for this Razorpay subscription id.",
+            )
+
+        trusted_plan_id = self._trusted_plan_id_from_subscription(sub)
+        if data.plan_id != trusted_plan_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Submitted plan_id does not match the plan bound to this subscription.",
+            )
+
+        if sub.status != SubscriptionStatus.ACTIVE:
+            meta = dict(sub.metadata_ or {})
+            meta["first_charge_verified_payment_id"] = data.razorpay_payment_id
+            sub = self.sub_repo.update(sub, {"metadata_": meta})
+
+        return sub
+
+    def reconcile_razorpay_subscriptions(self, *, grace_hours: int = 24) -> dict:
+        """Safety net for dropped/delayed Razorpay webhooks.
+
+        Finds real Razorpay subscriptions (``provider_subscription_id`` set —
+        legacy one-time Razorpay rows never have one and are never touched
+        here, see docs/billing/razorpay-recurring.md) whose local
+        ``current_period_end`` lapsed more than ``grace_hours`` ago with no
+        follow-up webhook, re-checks the *actual* status with Razorpay
+        directly (never assumes non-payment from a missing webhook alone),
+        and resyncs local state from that authoritative answer.
+        """
+        if not razorpay_enabled():
+            return {"checked": 0, "flagged": 0, "skipped": "razorpay_disabled"}
+
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=grace_hours)
+        stale = list(self.db.execute(
+            select(Subscription).where(
+                Subscription.provider == SubscriptionProvider.RAZORPAY,
+                Subscription.provider_subscription_id.isnot(None),
+                Subscription.status.in_([
+                    SubscriptionStatus.ACTIVE.value,
+                    SubscriptionStatus.PAST_DUE.value,
+                ]),
+                Subscription.current_period_end.isnot(None),
+                Subscription.current_period_end < cutoff,
+            )
+        ).scalars().all())
+
+        if not stale:
+            return {"checked": 0, "flagged": 0}
+
+        import razorpay
+        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+
+        flagged = 0
+        for sub in stale:
+            try:
+                remote = client.subscription.fetch(sub.provider_subscription_id)
+            except Exception as exc:
+                logger.warning("reconcile_razorpay: fetch failed sub=%s err=%s", sub.id, exc)
+                continue
+
+            remote_status = remote.get("status")
+            if remote_status == "active":
+                start, end = extract_subscription_period(remote)
+                update = {"status": SubscriptionStatus.ACTIVE}
+                if start:
+                    update["current_period_start"] = start
+                if end:
+                    update["current_period_end"] = end
+                self.sub_repo.update(sub, update)
+            elif remote_status == "pending":
+                self.sub_repo.update(sub, {"status": SubscriptionStatus.PAST_DUE})
+            elif remote_status in ("halted", "cancelled", "completed", "expired"):
+                self.sub_repo.update(
+                    sub,
+                    {
+                        "status": (
+                            SubscriptionStatus.UNPAID
+                            if remote_status == "halted"
+                            else SubscriptionStatus.CANCELLED
+                        ),
+                        "cancelled_at": datetime.now(timezone.utc),
+                    },
+                )
+                self._downgrade_to_free(sub.company_id)
+                flagged += 1
+            else:
+                logger.warning(
+                    "reconcile_razorpay: unrecognized remote status=%s sub=%s",
+                    remote_status, sub.id,
+                )
+
+        return {"checked": len(stale), "flagged": flagged}
+
     # ─── Shared helpers ─────────────────────────────────────────────────────
 
-    def _activate_company_plan(self, company_id: uuid.UUID, plan) -> None:
-        """Updates company plan, status, limits, and AI credits after successful payment."""
+    def _sync_company_plan_metadata(self, company_id: uuid.UUID, plan) -> None:
+        """Updates company plan, status, and limits. Idempotent — safe to call
+        on every webhook delivery/retry/reconcile pass for the same plan, since
+        it only ever sets fields to their current-plan value and never
+        accumulates anything. Deliberately excludes AI credits — see
+        ``_grant_plan_credits``, which is NOT safe to call more than once per
+        real charge.
+        """
         company = self.company_repo.get_by_id(company_id)
         if not company:
             return
@@ -630,9 +991,6 @@ class SubscriptionService:
         company.status = CompanyStatus.ACTIVE
         company.max_users = plan.max_users
         company.max_apps = plan.max_apps
-        # Top up AI credits
-        from decimal import Decimal
-        company.credits_balance = (company.credits_balance or Decimal("0")) + Decimal(str(plan.ai_credits))
         self.db.commit()
 
         # Sync usage meter limits immediately (Task 29)
@@ -646,6 +1004,37 @@ class SubscriptionService:
             )
         except Exception as e:
             logger.error(f"Failed to apply usage plan limits: {e}")
+
+    def _grant_plan_credits(self, company_id: uuid.UUID, plan) -> None:
+        """Tops up AI credits for one real charge. NOT idempotent by itself —
+        it additively increments ``credits_balance`` every time it is called,
+        so a caller must guarantee this runs exactly once per payment (e.g.
+        gated on having just newly created that payment's Invoice row via
+        ``InvoiceRepository.create_idempotent_by_payment_id`` — see the
+        Razorpay webhook handlers). Never call this more than once for the
+        same charge/payment id.
+        """
+        company = self.company_repo.get_by_id(company_id)
+        if not company:
+            return
+        from decimal import Decimal
+        company.credits_balance = (company.credits_balance or Decimal("0")) + Decimal(str(plan.ai_credits))
+        self.db.commit()
+
+    def _activate_company_plan(self, company_id: uuid.UUID, plan) -> None:
+        """Full activation: metadata sync + a one-time AI-credit grant.
+
+        Used by flows where a single event represents both the entitlement
+        change AND a real charge (Stripe subscription events, the legacy
+        Razorpay one-time Order verify/webhook). Razorpay recurring
+        subscriptions split status activation (``subscription.activated``)
+        from the actual charge (``subscription.charged``) into two distinct
+        webhook events — those callers must invoke
+        ``_sync_company_plan_metadata``/``_grant_plan_credits`` directly
+        instead of this method, or the credit grant would double-fire.
+        """
+        self._sync_company_plan_metadata(company_id, plan)
+        self._grant_plan_credits(company_id, plan)
 
     def handle_stripe_subscription_event(self, stripe_sub_data: dict, event_type: str) -> None:
         """Called by the Stripe webhook handler to sync subscription state."""

@@ -8,14 +8,21 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.payments.admin_router import admin_billing_analytics
-from app.payments.subscriptions.model import SubscriptionStatus
+from app.payments.subscriptions.model import SubscriptionProvider, SubscriptionStatus
 
 
 @pytest.mark.unit
 def test_admin_billing_analytics_shape():
     db = MagicMock()
     plan = SimpleNamespace(id="p1", name="Starter", amount=Decimal("29"), interval="month")
-    sub = SimpleNamespace(plan_id="p1", status=SubscriptionStatus.ACTIVE, company_id="c1")
+    sub = SimpleNamespace(
+        plan_id="p1",
+        status=SubscriptionStatus.ACTIVE,
+        company_id="c1",
+        provider=SubscriptionProvider.STRIPE,
+        provider_subscription_id="sub_stripe_1",
+        current_period_end=None,
+    )
 
     db.query.return_value.filter.return_value.all.return_value = [sub]
     db.get.return_value = plan

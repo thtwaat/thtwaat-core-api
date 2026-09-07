@@ -103,7 +103,7 @@ def test_verify_valid_payment_activates_trusted_plan():
     svc.sub_repo.get_by_payment_id.return_value = sub
     svc.plan_repo.get_by_id.return_value = plan
     svc.sub_repo.update.side_effect = lambda s, data: setattr(s, "status", data.get("status", s.status)) or s
-    svc.invoice_repo.create.return_value = SimpleNamespace(id=uuid.uuid4())
+    svc.invoice_repo.create_idempotent_by_payment_id.return_value = (SimpleNamespace(id=uuid.uuid4()), True)
 
     with patch.object(svc, "_activate_company_plan") as activate:
         result = svc.verify_razorpay_payment(
@@ -114,7 +114,7 @@ def test_verify_valid_payment_activates_trusted_plan():
     assert result is sub
     activate.assert_called_once_with(company_id, plan)
     svc.plan_repo.get_by_id.assert_called_with(plan.id)
-    created = svc.invoice_repo.create.call_args[0][0]
+    created = svc.invoice_repo.create_idempotent_by_payment_id.call_args[0][0]
     assert created["provider_payment_id"] == payment_id
     assert created["status"] == InvoiceStatus.PAID
 
@@ -140,7 +140,7 @@ def test_verify_rejects_modified_plan_id():
 
     assert exc.value.status_code == 400
     assert "plan_id" in str(exc.value.detail).lower()
-    svc.invoice_repo.create.assert_not_called()
+    svc.invoice_repo.create_idempotent_by_payment_id.assert_not_called()
     svc.plan_repo.get_by_id.assert_not_called()
 
 
@@ -164,7 +164,7 @@ def test_verify_rejects_missing_order_mapping():
 
     assert exc.value.status_code == 400
     assert "order mapping" in str(exc.value.detail).lower()
-    svc.invoice_repo.create.assert_not_called()
+    svc.invoice_repo.create_idempotent_by_payment_id.assert_not_called()
 
 
 @pytest.mark.unit
@@ -199,7 +199,7 @@ def test_verify_duplicate_is_idempotent():
 
     assert result is sub
     activate.assert_not_called()
-    svc.invoice_repo.create.assert_not_called()
+    svc.invoice_repo.create_idempotent_by_payment_id.assert_not_called()
 
 
 @pytest.mark.unit
@@ -217,7 +217,7 @@ def test_verify_rejects_invalid_signature():
     assert exc.value.status_code == 400
     assert "signature" in str(exc.value.detail).lower()
     svc.sub_repo.get_by_payment_id.assert_not_called()
-    svc.invoice_repo.create.assert_not_called()
+    svc.invoice_repo.create_idempotent_by_payment_id.assert_not_called()
 
 
 @pytest.mark.unit
@@ -243,7 +243,7 @@ def test_trusted_plan_prefers_pending_plan_id_metadata():
     svc.sub_repo.get_by_payment_id.return_value = sub
     svc.plan_repo.get_by_id.return_value = pending_plan
     svc.sub_repo.update.side_effect = lambda s, data: s
-    svc.invoice_repo.create.return_value = SimpleNamespace(id=uuid.uuid4())
+    svc.invoice_repo.create_idempotent_by_payment_id.return_value = (SimpleNamespace(id=uuid.uuid4()), True)
 
     with patch.object(svc, "_activate_company_plan") as activate:
         # Client must send the pending (ordered) plan, not the old active plan.

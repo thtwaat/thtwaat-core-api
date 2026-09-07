@@ -19,6 +19,7 @@ from app.payments.billing_region import (
 from app.payments.provider_flags import billing_providers_status, razorpay_enabled, stripe_enabled
 from app.payments.subscriptions.schema import (
     StripeCheckoutRequest, RazorpayCheckoutRequest, RazorpayVerifyRequest,
+    RazorpaySubscriptionCheckoutRequest, RazorpaySubscriptionVerifyRequest,
     CheckoutSessionResponse, SubscriptionResponse, ChangePlanRequest
 )
 from app.payments.subscriptions.service import SubscriptionService
@@ -99,6 +100,49 @@ def verify_razorpay_payment(
     then activates the subscription and updates the company plan.
     """
     return service.verify_razorpay_payment(current_user.company_id, payload)
+
+
+@router.post(
+    "/razorpay/subscription",
+    response_model=CheckoutSessionResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a real recurring Razorpay Subscription for a plan",
+)
+def create_razorpay_subscription(
+    payload: RazorpaySubscriptionCheckoutRequest,
+    request: Request,
+    current_user: UserProfileResponse = Depends(get_current_user),
+    service: SubscriptionService = Depends(get_sub_service),
+):
+    """
+    Creates a Razorpay Subscription (recurring — auto-renews each billing
+    cycle), not a one-time Order. The frontend uses the returned
+    `razorpay_subscription_id` with the Razorpay JS SDK (subscription mode)
+    to open the payment/mandate popup. See /razorpay/order for the
+    one-time-payment flow.
+    """
+    return service.create_razorpay_subscription(current_user.company_id, payload, request=request)
+
+
+@router.post(
+    "/razorpay/subscription/verify",
+    response_model=SubscriptionResponse,
+    summary="Verify Razorpay subscription first-charge signature",
+)
+def verify_razorpay_subscription_payment(
+    payload: RazorpaySubscriptionVerifyRequest,
+    current_user: UserProfileResponse = Depends(get_current_user),
+    service: SubscriptionService = Depends(get_sub_service),
+):
+    """
+    Verifies the Razorpay subscription-mode HMAC-SHA256 signature from the
+    frontend callback. Does NOT activate the subscription — activation,
+    period dates, and the invoice ledger entry are written only by the
+    subscription.charged/subscription.activated webhook (authoritative
+    source). The returned subscription may still show status=incomplete
+    immediately after this call; poll GET /me or wait for the webhook.
+    """
+    return service.verify_razorpay_subscription_payment(current_user.company_id, payload)
 
 
 @router.get(

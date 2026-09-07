@@ -106,6 +106,22 @@ def tick(r):
             r.setex(retention_key, 86400, "1")
             logger.info("enterprise_retention_complete %s", result)
 
+        # Razorpay recurring-subscription reconciliation — safety net for a
+        # dropped/delayed subscription.charged/halted/cancelled webhook.
+        # Hourly throttle (not daily): a lapsed period should be caught
+        # within the hour, not sit stale until the next calendar day.
+        razorpay_reconcile_tick = "thtwaat:billing:razorpay_reconcile:tick"
+        if not r.get(razorpay_reconcile_tick):
+            from app.payments.subscriptions.service import SubscriptionService
+
+            try:
+                result = SubscriptionService(db).reconcile_razorpay_subscriptions()
+                r.setex(razorpay_reconcile_tick, 3600, "1")
+                if result.get("checked"):
+                    logger.info("razorpay_reconcile %s", result)
+            except Exception as exc:
+                logger.error("razorpay_reconcile_failed %s", exc)
+
         # Daily soft-deleted agent permanent purge (after retention window).
         agent_purge_key = (
             f"thtwaat:agents:purge:"

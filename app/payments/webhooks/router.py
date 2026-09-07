@@ -243,6 +243,7 @@ async def razorpay_webhook(
     from app.payments.invoices.repository import InvoiceRepository
     from app.payments.invoices.model import InvoiceStatus
     from app.companies.repository import CompanyRepository
+    from app.payments.providers.razorpay import extract_subscription_period
     import uuid
     from datetime import datetime, timezone
 
@@ -288,10 +289,17 @@ async def razorpay_webhook(
                         "payment_id": razorpay_payment_id,
                     })
 
-                    # --- Create Invoice (idempotent) ---
-                    if razorpay_payment_id and not invoice_repo.get_by_provider_id(razorpay_payment_id):
+                    # --- Create Invoice (idempotent by provider_payment_id —
+                    # DB-enforced via a unique index, not just this check, so
+                    # this is safe even if /razorpay/verify creates the same
+                    # payment's invoice concurrently). NOTE: the previous
+                    # version of this check queried provider_invoice_id,
+                    # which Razorpay never populates — it always missed the
+                    # existing invoice and created a duplicate. ---
+                    created = False
+                    if razorpay_payment_id:
                         plan = sub_service.plan_repo.get_by_id(sub.plan_id)
-                        invoice_repo.create({
+                        _invoice, created = invoice_repo.create_idempotent_by_payment_id({
                             "company_id": company_id,
                             "subscription_id": sub.id,
                             "provider": "razorpay",
@@ -303,8 +311,12 @@ async def razorpay_webhook(
                             "paid_at": datetime.now(timezone.utc),
                         })
 
-                    # --- Activate company plan ---
-                    if plan_id_str:
+                    # --- Activate company plan + grant AI credits — only the
+                    # first time this payment's invoice is actually created.
+                    # /razorpay/verify may have already done this for the
+                    # same payment if it ran first; doing it again here would
+                    # double-grant credits for a single payment. ---
+                    if created and plan_id_str:
                         try:
                             plan = sub_service.plan_repo.get_by_id(uuid.UUID(plan_id_str))
                             if plan:
@@ -348,41 +360,63 @@ async def razorpay_webhook(
         elif event_type == "subscription.activated":
             sub_entity = event_data.get("subscription", {}).get("entity", {})
             razorpay_sub_id = sub_entity.get("id")
-            razorpay_order_id = sub_entity.get("payment_id")  # linked order/payment
+            razorpay_order_id = sub_entity.get("payment_id")  # legacy order-flow fallback only
             notes = sub_entity.get("notes", {})
             company_id_str = notes.get("company_id")
             plan_id_str = notes.get("plan_id")
 
             logger.info(f"[Razorpay Webhook] Subscription activated: {razorpay_sub_id}")
 
-            if company_id_str:
-                company_id = uuid.UUID(company_id_str)
-                sub_service = SubscriptionService(db)
+            sub_service = SubscriptionService(db)
 
-                # Find subscription by provider order/payment id
+            # Real recurring subscriptions are created with
+            # provider_subscription_id already set at checkout time (see
+            # SubscriptionService.create_razorpay_subscription) — look up by
+            # that first. The order-id/active-company fallbacks below only
+            # matter for older rows that predate that flow.
+            sub = None
+            if razorpay_sub_id:
+                sub = sub_service.sub_repo.get_by_provider_subscription_id(razorpay_sub_id)
+            if not sub and razorpay_order_id:
                 from sqlalchemy import select
                 from app.payments.subscriptions.model import Subscription
-                sub = None
-                if razorpay_order_id:
-                    sub = db.execute(
-                        select(Subscription).where(Subscription.payment_id == razorpay_order_id)
-                    ).scalar_one_or_none()
-                if not sub:
-                    sub = sub_service.sub_repo.get_active_by_company(company_id)
+                sub = db.execute(
+                    select(Subscription).where(Subscription.payment_id == razorpay_order_id)
+                ).scalar_one_or_none()
+            if not sub and company_id_str:
+                sub = sub_service.sub_repo.get_active_by_company(uuid.UUID(company_id_str))
 
-                if sub:
-                    sub_service.sub_repo.update(sub, {
-                        "status": SubscriptionStatus.ACTIVE,
-                        "provider_subscription_id": razorpay_sub_id,
-                    })
+            if sub:
+                update = {
+                    "status": SubscriptionStatus.ACTIVE,
+                    "provider_subscription_id": razorpay_sub_id,
+                }
+                start, end = extract_subscription_period(sub_entity)
+                if start:
+                    update["current_period_start"] = start
+                if end:
+                    update["current_period_end"] = end
+                sub_service.sub_repo.update(sub, update)
 
-                if plan_id_str:
-                    try:
-                        plan = sub_service.plan_repo.get_by_id(uuid.UUID(plan_id_str))
-                        if plan:
-                            sub_service._activate_company_plan(company_id, plan)
-                    except Exception as exc:
-                        logger.error(f"[Razorpay Webhook] Failed to activate company plan: {exc}")
+                company_id = sub.company_id
+                effective_plan_id_str = plan_id_str
+                if not effective_plan_id_str:
+                    effective_plan_id_str = str(sub.plan_id)
+                try:
+                    plan = sub_service.plan_repo.get_by_id(uuid.UUID(effective_plan_id_str))
+                    if plan:
+                        # Metadata/limits sync only — NOT the credit grant.
+                        # Razorpay also sends subscription.charged for this
+                        # same first cycle (a distinct event with its own
+                        # event_id, so the webhook-dedup layer does not and
+                        # should not collapse the two); subscription.charged
+                        # is the single authoritative place credits are
+                        # granted, keyed to its payment id. Calling the full
+                        # _activate_company_plan here too would double-grant
+                        # credits on every new subscription's first cycle.
+                        sub_service._sync_company_plan_metadata(company_id, plan)
+                except Exception as exc:
+                    logger.error(f"[Razorpay Webhook] Failed to sync company plan: {exc}")
 
                 NotificationEventBus.dispatch(
                     event_type="subscription.created",
@@ -390,6 +424,160 @@ async def razorpay_webhook(
                     company_id=company_id,
                     user_id=None,
                     data={"plan_name": notes.get("plan_name", "your selected")}
+                )
+            else:
+                logger.warning(
+                    f"[Razorpay Webhook] subscription.activated: no local subscription found "
+                    f"for razorpay_sub_id={razorpay_sub_id}"
+                )
+
+        elif event_type == "subscription.charged":
+            # The actual RENEWAL event — fired on every successful billing
+            # cycle charge, including the very first one. This is the only
+            # place current_period_start/end and the invoice ledger are
+            # authoritatively written for a Razorpay recurring subscription.
+            sub_entity = event_data.get("subscription", {}).get("entity", {})
+            payment_entity = event_data.get("payment", {}).get("entity", {})
+            razorpay_sub_id = sub_entity.get("id")
+            razorpay_payment_id = payment_entity.get("id")
+            notes = sub_entity.get("notes", {}) or payment_entity.get("notes", {}) or {}
+            plan_id_str = notes.get("plan_id")
+            amount = (payment_entity.get("amount") or 0) / 100
+            currency = (payment_entity.get("currency") or "INR")
+
+            sub_service = SubscriptionService(db)
+            invoice_repo = InvoiceRepository(db)
+
+            sub = None
+            if razorpay_sub_id:
+                sub = sub_service.sub_repo.get_by_provider_subscription_id(razorpay_sub_id)
+            if not sub:
+                logger.warning(
+                    f"[Razorpay Webhook] subscription.charged: no local subscription found "
+                    f"for razorpay_sub_id={razorpay_sub_id}"
+                )
+            else:
+                start, end = extract_subscription_period(sub_entity)
+                update = {"status": SubscriptionStatus.ACTIVE}
+                if start:
+                    update["current_period_start"] = start
+                if end:
+                    update["current_period_end"] = end
+                if razorpay_payment_id:
+                    update["payment_id"] = razorpay_payment_id
+                sub_service.sub_repo.update(sub, update)
+
+                # Idempotent by provider_payment_id — DB-enforced via a
+                # unique index (not just this pre-check), so a duplicate
+                # delivery of the same charge event (Razorpay's own retries,
+                # a re-claimed unprocessed event, or a genuine concurrent
+                # race) can never create a second invoice for the same
+                # payment.
+                created = False
+                if razorpay_payment_id:
+                    plan = sub_service.plan_repo.get_by_id(sub.plan_id)
+                    _invoice, created = invoice_repo.create_idempotent_by_payment_id({
+                        "company_id": sub.company_id,
+                        "subscription_id": sub.id,
+                        "provider": "razorpay",
+                        "provider_payment_id": razorpay_payment_id,
+                        "amount_due": float(plan.amount) if plan else amount,
+                        "amount_paid": amount,
+                        "currency": currency,
+                        "status": InvoiceStatus.PAID,
+                        "period_start": start,
+                        "period_end": end,
+                        "paid_at": datetime.now(timezone.utc),
+                    })
+
+                effective_plan_id_str = plan_id_str or str(sub.plan_id)
+                try:
+                    plan = sub_service.plan_repo.get_by_id(uuid.UUID(effective_plan_id_str))
+                    if plan:
+                        # Metadata/limits sync every renewal (idempotent).
+                        sub_service._sync_company_plan_metadata(sub.company_id, plan)
+                        # Credit grant only for a genuinely new charge/payment
+                        # id — this is the single authoritative place credits
+                        # are granted for both the first cycle and every
+                        # renewal (see subscription.activated above, which
+                        # deliberately does not grant credits).
+                        if created:
+                            sub_service._grant_plan_credits(sub.company_id, plan)
+                except Exception as exc:
+                    logger.error(f"[Razorpay Webhook] Failed to activate company plan on charge: {exc}")
+
+                NotificationEventBus.dispatch(
+                    event_type="subscription.renewed",
+                    db=db,
+                    company_id=sub.company_id,
+                    user_id=None,
+                    data={"plan_name": notes.get("plan_name", "your")}
+                )
+                NotificationEventBus.dispatch(
+                    event_type="payment.success",
+                    db=db,
+                    company_id=sub.company_id,
+                    user_id=None,
+                    data={"amount": amount, "currency": currency, "payment_id": razorpay_payment_id}
+                )
+
+        elif event_type == "subscription.pending":
+            # Razorpay is mid-retry after a failed renewal charge — the
+            # subscription is not yet halted. Per the audit's explicit
+            # instruction: do NOT downgrade while still inside Razorpay's own
+            # retry/collection lifecycle. Only subscription.halted (below) is
+            # the final failure state.
+            sub_entity = event_data.get("subscription", {}).get("entity", {})
+            razorpay_sub_id = sub_entity.get("id")
+            sub_service = SubscriptionService(db)
+            sub = sub_service.sub_repo.get_by_provider_subscription_id(razorpay_sub_id) if razorpay_sub_id else None
+            if sub:
+                sub_service.sub_repo.update(sub, {"status": SubscriptionStatus.PAST_DUE})
+                NotificationEventBus.dispatch(
+                    event_type="payment.failed",
+                    db=db,
+                    company_id=sub.company_id,
+                    user_id=None,
+                    data={"amount": 0, "currency": "INR"}
+                )
+            else:
+                logger.warning(
+                    f"[Razorpay Webhook] subscription.pending: no local subscription found "
+                    f"for razorpay_sub_id={razorpay_sub_id}"
+                )
+
+        elif event_type == "subscription.halted":
+            # Razorpay has exhausted its retry schedule — this is the final
+            # renewal failure state, not a transient one. Downgrade using the
+            # same _downgrade_to_free path as a customer-initiated
+            # cancellation (existing billing rule), but keep status=UNPAID
+            # (not CANCELLED) so it stays distinguishable from a voluntary
+            # cancellation, matching the Stripe status vocabulary already
+            # used elsewhere in this file.
+            sub_entity = event_data.get("subscription", {}).get("entity", {})
+            razorpay_sub_id = sub_entity.get("id")
+            sub_service = SubscriptionService(db)
+            sub = sub_service.sub_repo.get_by_provider_subscription_id(razorpay_sub_id) if razorpay_sub_id else None
+            if sub:
+                sub_service.sub_repo.update(
+                    sub,
+                    {
+                        "status": SubscriptionStatus.UNPAID,
+                        "cancelled_at": datetime.now(timezone.utc),
+                    },
+                )
+                sub_service._downgrade_to_free(sub.company_id)
+                NotificationEventBus.dispatch(
+                    event_type="payment.failed",
+                    db=db,
+                    company_id=sub.company_id,
+                    user_id=None,
+                    data={"amount": 0, "currency": "INR"}
+                )
+            else:
+                logger.warning(
+                    f"[Razorpay Webhook] subscription.halted: no local subscription found "
+                    f"for razorpay_sub_id={razorpay_sub_id}"
                 )
 
         elif event_type in ("subscription.cancelled", "subscription.canceled"):

@@ -433,6 +433,14 @@ class Settings(BaseSettings):
     BILLING_ENABLE_STRIPE: bool = True
     BILLING_ENABLE_RAZORPAY: bool = True
     BILLING_DEFAULT_PROVIDER: str = "auto"  # auto|stripe|razorpay
+    # Razorpay does not support an unbounded subscription — total_count is a
+    # required field on Subscription.create. These defaults approximate
+    # "until cancelled" and must be reconciled against the actual max cycle
+    # count Razorpay allows for the merchant account/plan period (Dashboard
+    # limit, not something this codebase can query) before go-live; see
+    # docs/billing/razorpay-recurring.md.
+    RAZORPAY_SUBSCRIPTION_TOTAL_COUNT_MONTHLY: int = 120
+    RAZORPAY_SUBSCRIPTION_TOTAL_COUNT_YEARLY: int = 15
 
     # Telephony (AI Calling) — platform-level Twilio account, mirrors how
     # STRIPE_SECRET_KEY/RAZORPAY_KEY_SECRET are global platform credentials

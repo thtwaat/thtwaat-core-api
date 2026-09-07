@@ -6,12 +6,26 @@ Real Razorpay payment provider using the official Razorpay Python SDK.
 import logging
 import hmac
 import hashlib
-from typing import Optional, Dict
+from datetime import datetime, timezone
+from typing import Optional, Dict, Tuple
 import razorpay
 from app.payments.providers.base import PaymentProviderBase, PaymentResult
 from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
+
+
+def extract_subscription_period(entity: Dict) -> Tuple[Optional[datetime], Optional[datetime]]:
+    """Read ``current_start``/``current_end`` (unix seconds) off a Razorpay
+    Subscription entity, as sent on subscription.activated/charged webhook
+    payloads and by ``client.subscription.fetch()``. Either may be absent
+    depending on the event/lifecycle stage — callers must tolerate ``None``.
+    """
+    start_ts = entity.get("current_start")
+    end_ts = entity.get("current_end")
+    start = datetime.fromtimestamp(start_ts, tz=timezone.utc) if start_ts else None
+    end = datetime.fromtimestamp(end_ts, tz=timezone.utc) if end_ts else None
+    return start, end
 
 class RazorpayProvider(PaymentProviderBase):
     def __init__(self):

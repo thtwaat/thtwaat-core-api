@@ -2,9 +2,10 @@
 app/payments/invoices/repository.py
 """
 import uuid
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from app.payments.invoices.model import Invoice
 
 
@@ -18,6 +19,44 @@ class InvoiceRepository:
         self.db.commit()
         self.db.refresh(invoice)
         return invoice
+
+    def create_idempotent_by_payment_id(self, data: dict) -> Tuple[Invoice, bool]:
+        """Get-or-create keyed by ``provider_payment_id``.
+
+        Financial ledger identity for a payment must never depend on which
+        caller (a webhook handler vs. a client-triggered verify endpoint) or
+        how many times (retry, duplicate delivery, concurrent race) happens
+        to run first. A pre-check catches the common case cheaply; the
+        surrounding ``IntegrityError`` catch is the real guarantee — it
+        relies on the DB-level unique index on ``provider_payment_id`` (see
+        the Alembic migration) so two concurrent callers can never both
+        insert an invoice for the same payment, even if both pass the
+        pre-check before either commits.
+
+        Returns ``(invoice, created)`` — ``created`` is False whenever an
+        invoice for this payment id already existed (found via the
+        pre-check or recovered after losing the race), so callers can gate
+        non-idempotent side effects (e.g. crediting an account) on it.
+        """
+        provider_payment_id = data.get("provider_payment_id")
+        if provider_payment_id:
+            existing = self.get_by_provider_payment_id(provider_payment_id)
+            if existing:
+                return existing, False
+
+        invoice = Invoice(**data)
+        self.db.add(invoice)
+        try:
+            self.db.commit()
+        except IntegrityError:
+            self.db.rollback()
+            if provider_payment_id:
+                existing = self.get_by_provider_payment_id(provider_payment_id)
+                if existing:
+                    return existing, False
+            raise
+        self.db.refresh(invoice)
+        return invoice, True
 
     def get_by_id(self, invoice_id: uuid.UUID) -> Optional[Invoice]:
         return self.db.execute(

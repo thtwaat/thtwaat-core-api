@@ -275,6 +275,33 @@ export const billingApi = {
       method: "POST",
       body
     }),
+  // Recurring Razorpay Subscription (not a one-time Order) — see
+  // app/payments/subscriptions/router.py razorpay/subscription endpoints.
+  razorpaySubscription: (body: {
+    plan_id: string;
+    customer_name: string;
+    customer_email: string;
+    customer_phone?: string;
+    interval?: string;
+    country?: string;
+  }) =>
+    api.v1<{ razorpay_subscription_id: string; subscription_id?: string; provider?: string }>(
+      "/payments/subscriptions/razorpay/subscription",
+      {
+        method: "POST",
+        body
+      }
+    ),
+  razorpaySubscriptionVerify: (body: {
+    razorpay_subscription_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    plan_id: string;
+  }) =>
+    api.v1("/payments/subscriptions/razorpay/subscription/verify", {
+      method: "POST",
+      body
+    }),
   stripeCheckout: (body: {
     plan_id: string;
     success_url: string;

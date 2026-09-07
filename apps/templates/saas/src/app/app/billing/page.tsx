@@ -23,8 +23,8 @@ import {
 } from "@/lib/billing-providers";
 import {
   loadRazorpayCheckoutScript,
-  openRazorpayCheckout,
-  runRazorpayCheckout
+  openRazorpaySubscriptionCheckout,
+  runRazorpaySubscriptionCheckout
 } from "@/lib/razorpay-checkout";
 import { BillingCountrySelector } from "@/components/billing/BillingCountrySelector";
 import { PageHeader, EmptyState, Progress, Stat } from "@/components/ui/misc";
@@ -170,28 +170,37 @@ export default function BillingPage() {
       const key = resolveRazorpayCheckoutKey(providerStatus, site.razorpayKey);
 
       if (chosen === "razorpay" && key) {
+        // Recurring Razorpay Subscriptions don't yet support coupons (no
+        // Razorpay Offer mapping — see docs/billing/razorpay-recurring.md).
+        // Refuse rather than silently charging full price when a discount
+        // was expected.
+        if (coupon.trim()) {
+          throw new Error(
+            "Coupons aren't supported for Razorpay subscription billing yet. Remove the coupon to continue, or contact support."
+          );
+        }
+
         const customerName =
           [user?.first_name, user?.last_name].filter(Boolean).join(" ").trim() ||
           user?.email?.split("@")[0] ||
           "Customer";
         const customerEmail = user?.email || "";
 
-        return runRazorpayCheckout({
+        return runRazorpaySubscriptionCheckout({
           planId: plan.id,
           planName: plan.name,
           customerName,
           customerEmail,
           deps: {
             razorpayKey: key,
-            createOrder: (body) =>
-              billingApi.razorpayOrder({
+            createSubscription: (body) =>
+              billingApi.razorpaySubscription({
                 ...body,
-                coupon_code: coupon || undefined,
                 country: billingCountry
               }),
-            verifyPayment: billingApi.razorpayVerify,
+            verifySubscriptionPayment: billingApi.razorpaySubscriptionVerify,
             loadCheckoutScript: loadRazorpayCheckoutScript,
-            openCheckout: openRazorpayCheckout
+            openSubscriptionCheckout: openRazorpaySubscriptionCheckout
           }
         });
       }

@@ -44,10 +44,36 @@ class RazorpayVerifyRequest(BaseModel):
     plan_id: uuid.UUID
 
 
+class RazorpaySubscriptionCheckoutRequest(BaseModel):
+    """Creates a real Razorpay Subscription (recurring), not a one-time Order.
+
+    No ``coupon_code`` — recurring-subscription discounts require a Razorpay
+    Offer mapped to the coupon and are out of scope for this iteration (see
+    docs/billing/razorpay-recurring.md). Use the order+verify flow if a
+    coupon must be applied.
+    """
+    plan_id: uuid.UUID
+    customer_name: str
+    customer_email: str
+    customer_phone: Optional[str] = None
+    interval: Optional[str] = Field(None, pattern="^(month|year)$")
+    country: Optional[str] = Field(None, max_length=8, description="ISO country override for pricing")
+
+
+class RazorpaySubscriptionVerifyRequest(BaseModel):
+    razorpay_subscription_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+    plan_id: uuid.UUID
+
+
 class CheckoutSessionResponse(BaseModel):
     checkout_url: Optional[str] = None
     order_id: Optional[str] = None
     subscription_id: Optional[uuid.UUID] = None
+    razorpay_subscription_id: Optional[str] = Field(
+        None, description="Provider subscription id — pass to Razorpay Checkout.js as `subscription_id`."
+    )
     provider: str
 
 

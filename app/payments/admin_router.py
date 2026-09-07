@@ -15,7 +15,7 @@ from app.database.database import get_db
 from app.payments.invoices.model import Invoice, InvoiceStatus
 from app.payments.plans.model import Plan
 from app.payments.provider_flags import billing_providers_status
-from app.payments.subscriptions.model import Subscription, SubscriptionStatus
+from app.payments.subscriptions.model import Subscription, SubscriptionProvider, SubscriptionStatus
 from app.rbac.dependencies import RequirePermission
 from app.rbac.enums import Permission
 from app.usage.models import CompanyUsageMeter
@@ -54,7 +54,25 @@ def admin_billing_analytics(
     plan_cache: Dict[Any, Plan] = {}
     mrr = Decimal("0")
     plan_counts: Dict[str, int] = {}
+    legacy_razorpay_count = 0
+    now = datetime.now(timezone.utc)
     for sub in subs:
+        # A Razorpay row created by the pre-recurring one-time Order+verify
+        # flow has no provider_subscription_id and never gets a
+        # current_period_end — it was charged once and will never renew.
+        # Counting it toward MRR/ARR overstates real recurring revenue (see
+        # docs/billing/razorpay-recurring.md). It is never silently migrated
+        # here — just excluded from the recurring-revenue figures and
+        # surfaced separately below so it stays identifiable.
+        if sub.provider == SubscriptionProvider.RAZORPAY:
+            period_end = sub.current_period_end
+            if period_end and period_end.tzinfo is None:
+                period_end = period_end.replace(tzinfo=timezone.utc)
+            is_recurring = bool(sub.provider_subscription_id) and bool(period_end) and period_end > now
+            if not is_recurring:
+                legacy_razorpay_count += 1
+                continue
+
         plan = plan_cache.get(sub.plan_id)
         if plan is None:
             plan = db.get(Plan, sub.plan_id)
@@ -138,6 +156,8 @@ def admin_billing_analytics(
         "refunds": refunds,
         "failed_payments": failed_payments,
         "active_subscriptions": len(subs),
+        "recurring_subscriptions": len(subs) - legacy_razorpay_count,
+        "legacy_one_time_razorpay_subscriptions": legacy_razorpay_count,
         "top_customers": top_customers,
         "top_plans": top_plans,
         "token_usage": token_usage,
