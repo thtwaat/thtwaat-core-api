@@ -14,8 +14,21 @@ invoice rows before applying this migration to a database that predates the
 fix.
 
 Revision ID: m6a7b8c9d0e1
-Revises: 64a265978b92
+Revises: 27603ebdcff8
 Create Date: 2026-09-07
+
+Note: this originally pointed to down_revision "64a265978b92"
+("ai_calling_quota"), which was never committed to this repository — it
+existed only as an uncommitted, in-progress file in a shared working
+directory at the time this migration was authored, so `alembic heads` on
+that filesystem resolved to it as the apparent current head. From git's
+history (and any clean checkout, CI run, or production deploy, which only
+ever see committed files) that revision does not exist, breaking the chain.
+The actual current head in committed history is `27603ebdcff8`
+(preview_deployments) — corrected below. If/when `ai_calling_quota` is
+committed on top of `27603ebdcff8` separately, it will become a sibling of
+this migration rather than its parent, which is the correct relationship
+since neither depends on the other's schema changes.
 """
 from __future__ import annotations
 
@@ -25,7 +38,7 @@ import sqlalchemy as sa
 from alembic import op
 
 revision: str = "m6a7b8c9d0e1"
-down_revision: Union[str, Sequence[str], None] = "64a265978b92"
+down_revision: Union[str, Sequence[str], None] = "27603ebdcff8"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
