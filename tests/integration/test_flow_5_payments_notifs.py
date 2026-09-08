@@ -3,25 +3,39 @@ import pytest
 
 from unittest.mock import patch
 from app.payments.providers.base import PaymentResult
+from app.rbac.enums import EnterpriseRole
+from app.users.model import User
 
-def test_payment_notification_flow(client):
+def test_payment_notification_flow(client, db_session):
     with patch("app.payments.providers.stripe.StripeProvider.process_payment") as mock_process, \
          patch("app.payments.providers.stripe.StripeProvider.refund_payment") as mock_refund:
-        
+
         mock_process.return_value = PaymentResult(success=True, transaction_id="txn_mock", provider_data={"status": "succeeded"})
         mock_refund.return_value = PaymentResult(success=True, transaction_id="re_mock", provider_data={"status": "succeeded"})
-        
+
         # Setup Auth
         company_slug = f"comp-{uuid.uuid4().hex[:8]}"
         company_resp = client.post("/api/v1/companies/", json={"name": "Pay Notif Flow", "slug": company_slug})
         company_id = company_resp.json()["id"]
 
+        # PATCH /payments/{id}/status and POST /payments/{id}/refund are
+        # platform-admin-only (see app/payments/router.py — closes the
+        # audit's CRITICAL/HIGH findings on client-controlled payment
+        # status and an unauthorized refund trigger). Public signup can
+        # never mint a privileged role (tests/users/test_signup_roles.py),
+        # so bootstrap an ordinary user and elevate it directly in the DB,
+        # mirroring test_signup_roles.py::test_authenticated_platform_admin_can_create_super_admin.
         email = f"user-{uuid.uuid4().hex[:8]}@example.com"
+        password = "securepassword"
         client.post("/api/v1/users/", json={
-            "email": email, "password": "securepassword", "company_id": company_id,
-            "first_name": "PayNotif", "last_name": "User", "role": "admin"
+            "email": email, "password": password, "company_id": company_id,
+            "first_name": "PayNotif", "last_name": "User", "role": "company_owner"
         })
-        login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": "securepassword"})
+        row = db_session.query(User).filter(User.email == email).one()
+        row.role = EnterpriseRole.SUPER_ADMIN
+        db_session.commit()
+
+        login_resp = client.post("/api/v1/auth/login", json={"email": email, "password": password})
         headers = {"Authorization": f"Bearer {login_resp.json()['access_token']}"}
 
         # 1. Create Payment
@@ -47,4 +61,3 @@ def test_payment_notification_flow(client):
         # 4. Verify notification creation
         hist_resp = client.get("/api/v1/notifications/history", headers=headers)
         assert hist_resp.status_code == 200
-

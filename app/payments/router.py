@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.database.database import get_db
 from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
+from app.payments.admin_router import require_platform_admin
 from app.payments.schema import PaymentCreate, PaymentUpdateStatus, PaymentResponse
 from app.payments.model import PaymentStatus, Gateway
 from app.payments.service import PaymentService
@@ -89,11 +90,14 @@ def get_payment(
 def update_payment_status(
     payment_id: uuid.UUID,
     payload: PaymentUpdateStatus,
-    current_user: UserProfileResponse = Depends(get_current_user),
+    current_user: UserProfileResponse = Depends(require_platform_admin),
     service: PaymentService = Depends(get_payment_service)
 ):
     """
-    Manually updates the status of a payment (e.g., via webhook callbacks).
+    Manually updates the status of a payment. This does not verify anything
+    with the payment gateway (`status`/`gateway_transaction_id` are trusted
+    as given), so it is restricted to platform admins — never callable by an
+    ordinary company user to self-declare a payment successful.
     """
     return service.update_payment_status(payment_id, payload, current_user.company_id)
 
@@ -104,11 +108,15 @@ def update_payment_status(
 )
 def refund_payment(
     payment_id: uuid.UUID,
-    current_user: UserProfileResponse = Depends(get_current_user),
+    current_user: UserProfileResponse = Depends(require_platform_admin),
     service: PaymentService = Depends(get_payment_service)
 ):
     """
     Initiates a refund for a successful payment via the original gateway.
+    Restricted to platform admins — this calls the real gateway provider
+    (e.g. Razorpay/Stripe refund API) using the stored
+    gateway_transaction_id, which must not be triggerable by an ordinary
+    company user.
     """
     return service.refund_payment(payment_id, current_user.company_id)
 
