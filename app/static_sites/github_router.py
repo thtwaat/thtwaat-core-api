@@ -29,11 +29,13 @@ from app.auth.router import get_current_user
 from app.auth.schema import UserProfileResponse
 from app.config.settings import settings
 from app.database.database import get_db
+from app.static_sites import github_client
 from app.static_sites.github_service import GitHubService
 from app.static_sites.schemas import (
     GitHubBranchListResponse,
     GitHubConnectionResponse,
     GitHubConnectStartResponse,
+    GitHubIntegrationStatusResponse,
     GitHubRepositoryListResponse,
     GitHubSelectRepositoryRequest,
 )
@@ -55,6 +57,17 @@ def _frontend_redirect(*, site_id: Optional[UUID] = None, **params: str) -> Redi
     base = settings.PUBLIC_APP_BASE_URL.rstrip("/")
     query = f"?{urlencode(all_params)}" if all_params else ""
     return RedirectResponse(url=f"{base}/app/studio{query}", status_code=status.HTTP_302_FOUND)
+
+
+@router.get(
+    "/github/status",
+    response_model=GitHubIntegrationStatusResponse,
+    summary="Whether the GitHub App integration is configured on this server (no secrets, no site_id)",
+)
+def integration_status(
+    user: UserProfileResponse = Depends(get_current_user),
+):
+    return GitHubIntegrationStatusResponse(configured=github_client.integration_fully_configured())
 
 
 @router.get(

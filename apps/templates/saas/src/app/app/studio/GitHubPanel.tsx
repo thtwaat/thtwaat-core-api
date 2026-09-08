@@ -250,6 +250,8 @@ export function GitHubPanel({ siteId, canManage }: { siteId: string; canManage: 
     enabled: Boolean(siteId)
   });
 
+  const statusQ = useQuery({ queryKey: ["github-integration-status"], queryFn: () => githubApi.getStatus() });
+
   useEffect(() => {
     setShowPicker(false);
   }, [siteId]);
@@ -273,6 +275,23 @@ export function GitHubPanel({ siteId, canManage }: { siteId: string; canManage: 
     },
     onError: (err) => toast.error(githubApiErrorMessage(err))
   });
+
+  // Fails closed on the backend (503 from require_app_configured) when the
+  // GitHub App isn't set up — show that plainly instead of letting a user
+  // click "Connect GitHub" into a guaranteed failure. While statusQ is
+  // still loading, fall through to the normal panel rather than flashing
+  // this state.
+  if (statusQ.data && !statusQ.data.configured) {
+    return (
+      <div className="mt-6">
+        <h4 className="mb-2 text-sm font-semibold text-ink">GitHub</h4>
+        <EmptyState
+          title="GitHub integration is not configured"
+          description="Ask an administrator to set up the GitHub App for this server."
+        />
+      </div>
+    );
+  }
 
   if (!siteId) {
     return (

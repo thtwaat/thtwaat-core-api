@@ -166,10 +166,20 @@ def build_launch_checklist(
         https_ok = bool(ssl.get("ssl_enabled")) or ssl_val in {"ACTIVE", "ISSUED"}
         domain_detail = f"{host or '—'} · {'reachable' if domain_ok else 'pending DNS'}"
 
-    health_ok = bool((health.get("api") or {}).get("ok")) and bool(
-        (health.get("database") or {}).get("ok")
-    )
+    api_probe = health.get("api") or {}
+    health_ok = bool(api_probe.get("ok")) and bool((health.get("database") or {}).get("ok"))
     workers_ok = bool((health.get("workers") or {}).get("ok"))
+
+    # A None ok (PUBLIC_API_BASE_URL unset/unconfigured — see
+    # run_platform_health) must read as a clear warning, not the generic
+    # "API /health and database OK" text, which would otherwise imply a
+    # check that never actually ran.
+    if api_probe.get("ok") is None and api_probe.get("note"):
+        health_detail = str(api_probe.get("note"))
+    elif health_ok:
+        health_detail = "API /health and database OK"
+    else:
+        health_detail = "API /health or database check failing"
 
     items = [
         _item(
@@ -216,7 +226,7 @@ def build_launch_checklist(
             "health",
             "Health",
             ok=health_ok,
-            detail="API /health and database OK",
+            detail=health_detail,
         ),
         _item(
             "workers",
@@ -310,6 +320,14 @@ def build_launch_diagnostics(
             "title": "API",
             "status": _diag_status(health.get("api")),
             "detail": health.get("api") or {},
+        },
+        {
+            # PUBLIC_APP_BASE_URL's probe result (previously computed by
+            # run_platform_health but never surfaced anywhere in the UI).
+            "key": "frontend",
+            "title": "App",
+            "status": _diag_status(health.get("frontend"), soft=True),
+            "detail": health.get("frontend") or {},
         },
         {
             "key": "workers",

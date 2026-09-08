@@ -172,6 +172,32 @@ class TestGetCodingTask:
         assert resp.status_code == 401
 
 
+class TestCodingAgentStatus:
+    """GET /api/v1/coding-agent/status — no secret values, just whether
+    the integration is wired up (see app.coding_agent.service.is_configured)."""
+
+    def test_reports_configured_true(self, client):
+        with patch("app.coding_agent.router.is_configured", return_value=True):
+            resp = client.get("/api/v1/coding-agent/status")
+        assert resp.status_code == 200
+        assert resp.json() == {"configured": True}
+
+    def test_reports_configured_false(self, client):
+        with patch("app.coding_agent.router.is_configured", return_value=False):
+            resp = client.get("/api/v1/coding-agent/status")
+        assert resp.status_code == 200
+        assert resp.json() == {"configured": False}
+
+    def test_requires_authentication(self, unauthenticated_client):
+        resp = unauthenticated_client.get("/api/v1/coding-agent/status")
+        assert resp.status_code == 401
+
+    def test_rbac_denies_viewer_role(self, app, client):
+        app.dependency_overrides[get_current_user] = lambda: _fake_user(role="viewer")
+        resp = client.get("/api/v1/coding-agent/status")
+        assert resp.status_code == 403
+
+
 class TestCancelCodingTask:
     def test_cancel_task(self, client):
         upstream = {

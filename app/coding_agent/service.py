@@ -44,6 +44,16 @@ class ServiceTokenResult:
     scope: str
 
 
+def is_configured() -> bool:
+    """True only when both settings mint_service_token()/client._base_url()
+    each independently require are present — a pure boolean, never the
+    values themselves, so the frontend can show a clear "not configured"
+    state instead of letting a user hit a 503 on task submission."""
+    return bool((settings.CODING_AGENT_API_BASE_URL or "").strip()) and bool(
+        (settings.CODING_AGENT_SERVICE_JWT_SECRET or "").strip()
+    )
+
+
 def mint_service_token(
     *,
     company_id: uuid.UUID,

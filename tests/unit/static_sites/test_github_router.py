@@ -90,6 +90,48 @@ def test_disconnect_forbidden_for_non_manager_propagates(app_and_client):
     assert resp.status_code == 403
 
 
+# ---- integration status (no secrets, no site_id) ----------------------------
+
+
+@pytest.mark.unit
+def test_integration_status_requires_authentication():
+    fastapi_app = FastAPI()
+    fastapi_app.include_router(router)
+
+    def _deny():
+        raise HTTPException(status_code=401, detail="Not authenticated")
+
+    fastapi_app.dependency_overrides[get_current_user] = _deny
+    client = TestClient(fastapi_app)
+    resp = client.get("/api/v2/studio/static-sites/github/status")
+    assert resp.status_code == 401
+
+
+@pytest.mark.unit
+def test_integration_status_reports_configured_true(app_and_client, monkeypatch):
+    _app, client, _fake_service = app_and_client
+    from app.static_sites import github_router
+
+    monkeypatch.setattr(github_router.github_client, "integration_fully_configured", lambda: True)
+    resp = client.get("/api/v2/studio/static-sites/github/status")
+    assert resp.status_code == 200
+    assert resp.json() == {"configured": True}
+
+
+@pytest.mark.unit
+def test_integration_status_reports_configured_false_and_leaks_no_secrets(app_and_client, monkeypatch):
+    _app, client, _fake_service = app_and_client
+    from app.static_sites import github_router
+
+    monkeypatch.setattr(github_router.github_client, "integration_fully_configured", lambda: False)
+    resp = client.get("/api/v2/studio/static-sites/github/status")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body == {"configured": False}
+    for forbidden in ("GITHUB_APP_PRIVATE_KEY", "GITHUB_APP_WEBHOOK_SECRET", "private_key", "webhook_secret"):
+        assert forbidden not in resp.text
+
+
 # ---- get_connection -----------------------------------------------------------
 
 

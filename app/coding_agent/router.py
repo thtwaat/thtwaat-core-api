@@ -7,6 +7,9 @@ Phase 6C-2 (task-creation proxy).
                                                  coding task.
     GET  /api/v1/coding-agent/tasks/{task_id}   — Phase 6C-2: read status.
     POST /api/v1/coding-agent/tasks/{task_id}/cancel — Phase 6C-2: cancel.
+    GET  /api/v1/coding-agent/status           — is the integration
+                                                 configured (bool only,
+                                                 never secret values).
 
 Every route is gated by the SAME auth + RBAC every other Core endpoint
 uses (app.auth.router.get_current_user + app.rbac.dependencies.
@@ -43,12 +46,13 @@ from app.auth.schema import UserProfileResponse
 from app.coding_agent import client as coding_agent_client
 from app.coding_agent.client import CodingAgentError
 from app.coding_agent.schemas import (
+    CodingAgentStatusResponse,
     CodingTaskCancelResponse,
     CodingTaskCreateRequest,
     CodingTaskResponse,
     ServiceTokenResponse,
 )
-from app.coding_agent.service import mint_service_token
+from app.coding_agent.service import is_configured, mint_service_token
 from app.openai_compat.idempotency import validate_idempotency_key
 from app.rbac.dependencies import RequirePermission
 from app.rbac.enums import Permission
@@ -74,6 +78,16 @@ def _to_task_response(data: dict) -> CodingTaskResponse:
         updated_at=data["updated_at"], started_at=data.get("started_at"),
         ended_at=data.get("ended_at"), result=data.get("result"), error=data.get("error"),
     )
+
+
+@router.get("/status", response_model=CodingAgentStatusResponse)
+def coding_agent_status(
+    user: UserProfileResponse = Depends(require_coding_agent_access),
+) -> CodingAgentStatusResponse:
+    """Lets the Studio UI show "Coding AI is not configured" up front
+    instead of letting a user submit a task and hit a 503 — no secret
+    values, just the one bool."""
+    return CodingAgentStatusResponse(configured=is_configured())
 
 
 @router.post("/service-token", response_model=ServiceTokenResponse)

@@ -796,6 +796,20 @@ def package_compose_bundle(ctx: DeployContext, source_dir: Path, progress: Progr
     return bundle
 
 
+def _is_public_url_configured(value: str) -> bool:
+    """A public base URL only counts as configured once it points
+    somewhere other than empty or the built-in localhost placeholder
+    (`PUBLIC_API_BASE_URL`/`PUBLIC_APP_BASE_URL` in app/config/settings.py
+    both default to a localhost URL, so "unset" in practice means either
+    empty or still that shipped default) — an operator who never
+    overrides it must not have that read as a healthy, publicly-reachable
+    check."""
+    v = (value or "").strip().lower()
+    if not v:
+        return False
+    return "localhost" not in v and "127.0.0.1" not in v
+
+
 def run_platform_health(db_session=None, *, api_base: str = "", app_base: str = "") -> Dict[str, Any]:
     """Reuse existing deploy health checks + live HTTP probes for API/Frontend."""
     from app.deploy import health as health_mod
@@ -831,7 +845,7 @@ def run_platform_health(db_session=None, *, api_base: str = "", app_base: str = 
 
     api_url = (api_base or "").rstrip("/")
     app_url = (app_base or "").rstrip("/")
-    if api_url:
+    if api_url and _is_public_url_configured(api_url):
         result["api"] = probe_http(f"{api_url}/health", require_200=True)
         result["ai_gateway"] = probe_http(f"{api_url}/api/v1/ai/health")
         if result["ai_gateway"].get("ok") is False:
@@ -840,12 +854,24 @@ def run_platform_health(db_session=None, *, api_base: str = "", app_base: str = 
             if alt.get("ok"):
                 result["ai_gateway"] = {**alt, "note": "providers endpoint ok"}
     else:
-        result["api"] = {"ok": True, "note": "PUBLIC_API_BASE_URL unset — skipped probe"}
-        result["ai_gateway"] = {"ok": True, "note": "skipped"}
-    if app_url:
+        # ok=None (not True) — this must never read as a passing check:
+        # nothing was actually probed.
+        note = (
+            "PUBLIC_API_BASE_URL is not configured"
+            if not api_url
+            else "PUBLIC_API_BASE_URL is still the localhost placeholder — set it to your public API URL"
+        )
+        result["api"] = {"ok": None, "note": note}
+        result["ai_gateway"] = {"ok": None, "note": note}
+    if app_url and _is_public_url_configured(app_url):
         result["frontend"] = probe_http(app_url)
     else:
-        result["frontend"] = {"ok": True, "note": "app base unset — skipped probe"}
+        note = (
+            "PUBLIC_APP_BASE_URL is not configured"
+            if not app_url
+            else "PUBLIC_APP_BASE_URL is still the localhost placeholder — set it to your public app URL"
+        )
+        result["frontend"] = {"ok": None, "note": note}
     return result
 
 

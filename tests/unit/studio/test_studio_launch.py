@@ -185,6 +185,31 @@ def test_launch_checklist_structure():
 
 
 @pytest.mark.unit
+def test_launch_checklist_health_item_warns_on_unconfigured_public_url():
+    """The checklist's "Health" item must not pass, and must show the
+    actual reason, when the API health probe was never run because
+    PUBLIC_API_BASE_URL isn't configured (ok=None from run_platform_health,
+    not ok=True)."""
+    db = MagicMock()
+    with patch(
+        "app.studio.deploy.run_platform_health",
+        return_value={
+            "api": {"ok": None, "note": "PUBLIC_API_BASE_URL is not configured"},
+            "database": {"ok": True},
+            "storage": {"ok": True},
+            "workers": {"ok": True},
+            "ai_gateway": {"ok": None, "note": "PUBLIC_API_BASE_URL is not configured"},
+        },
+    ), patch("app.studio.launch._env_present", return_value=False):
+        result = build_launch_checklist(
+            db, workspace_id=uuid4(), project_id=uuid4(), deployment=None
+        )
+    health_item = next(i for i in result["items"] if i["key"] == "health")
+    assert health_item["ok"] is False
+    assert "not configured" in health_item["detail"].lower()
+
+
+@pytest.mark.unit
 def test_launch_diagnostics_components():
     db = MagicMock()
     with patch("app.studio.deploy.run_platform_health", return_value={
@@ -201,6 +226,7 @@ def test_launch_diagnostics_components():
     titles = {c["title"] for c in result["components"]}
     assert titles == {
         "API",
+        "App",
         "Workers",
         "Redis",
         "Database",
@@ -212,6 +238,71 @@ def test_launch_diagnostics_components():
     assert result["overall"] in {"healthy", "warning", "failed"}
     workers = next(c for c in result["components"] if c["key"] == "workers")
     assert workers["status"] in {"warning", "failed"}
+    # PUBLIC_APP_BASE_URL was not part of the mocked health payload above
+    # (no "frontend" key) — must read as a warning, never a silent pass.
+    app_component = next(c for c in result["components"] if c["key"] == "frontend")
+    assert app_component["status"] == "warning"
+
+
+@pytest.mark.unit
+def test_run_platform_health_warns_when_public_urls_unset():
+    """PUBLIC_API_BASE_URL/PUBLIC_APP_BASE_URL empty must never read as a
+    successful pass — ok=None (warning), with a note explaining why."""
+    from app.studio.deploy import run_platform_health
+
+    with patch("app.deploy.health.check_storage", return_value={"ok": True}), patch(
+        "app.deploy.health.check_workers", return_value={"ok": True}
+    ), patch("redis.from_url") as mock_redis:
+        mock_redis.return_value.ping.return_value = True
+        mock_redis.return_value.get.return_value = None
+        result = run_platform_health(None, api_base="", app_base="")
+
+    assert result["api"]["ok"] is None
+    assert "not configured" in result["api"]["note"].lower()
+    assert result["ai_gateway"]["ok"] is None
+    assert result["frontend"]["ok"] is None
+    assert "not configured" in result["frontend"]["note"].lower()
+
+
+@pytest.mark.unit
+def test_run_platform_health_warns_when_public_urls_are_localhost_default():
+    """The shipped Settings() defaults are localhost URLs — an operator who
+    never overrides them must still get a warning, not a false pass."""
+    from app.studio.deploy import run_platform_health
+
+    with patch("app.deploy.health.check_storage", return_value={"ok": True}), patch(
+        "app.deploy.health.check_workers", return_value={"ok": True}
+    ), patch("redis.from_url") as mock_redis:
+        mock_redis.return_value.ping.return_value = True
+        mock_redis.return_value.get.return_value = None
+        result = run_platform_health(
+            None, api_base="http://localhost:8000", app_base="http://localhost:3300"
+        )
+
+    assert result["api"]["ok"] is None
+    assert result["frontend"]["ok"] is None
+
+
+@pytest.mark.unit
+def test_run_platform_health_probes_when_public_urls_configured():
+    """A real, non-localhost URL still gets a real probe (no regression)."""
+    from app.studio.deploy import run_platform_health
+
+    fake_probe = {"ok": True, "status_code": 200}
+    with patch("app.deploy.health.check_storage", return_value={"ok": True}), patch(
+        "app.deploy.health.check_workers", return_value={"ok": True}
+    ), patch("redis.from_url") as mock_redis, patch(
+        "app.studio.deploy.probe_http", return_value=fake_probe
+    ) as mock_probe:
+        mock_redis.return_value.ping.return_value = True
+        mock_redis.return_value.get.return_value = None
+        result = run_platform_health(
+            None, api_base="https://api.example.com", app_base="https://app.example.com"
+        )
+
+    assert result["api"]["ok"] is True
+    assert result["frontend"]["ok"] is True
+    assert mock_probe.called
 
 
 @pytest.mark.unit

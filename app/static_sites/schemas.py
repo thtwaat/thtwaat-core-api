@@ -257,6 +257,14 @@ class GitHubConnectStartResponse(BaseModel):
     authorize_url: str
 
 
+class GitHubIntegrationStatusResponse(BaseModel):
+    """No secret values — just whether the GitHub App is configured on
+    this server, so the frontend can show a clear "not configured" state
+    instead of a guaranteed-failing Connect attempt."""
+
+    configured: bool
+
+
 class GitHubRepositoryResponse(BaseModel):
     repository_id: str
     owner: str

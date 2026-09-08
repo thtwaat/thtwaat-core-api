@@ -97,6 +97,31 @@ def test_wrong_audience_fails_verification():
 
 
 @pytest.mark.unit
+def test_is_configured_true_when_both_settings_present(monkeypatch):
+    monkeypatch.setattr(coding_agent_service.settings, "CODING_AGENT_API_BASE_URL", "https://dashboard.thtwaat.com")
+    assert coding_agent_service.is_configured() is True
+
+
+@pytest.mark.unit
+def test_is_configured_false_when_base_url_missing(monkeypatch):
+    monkeypatch.setattr(coding_agent_service.settings, "CODING_AGENT_API_BASE_URL", None)
+    assert coding_agent_service.is_configured() is False
+
+
+@pytest.mark.unit
+def test_is_configured_false_when_secret_missing(monkeypatch):
+    monkeypatch.setattr(coding_agent_service.settings, "CODING_AGENT_API_BASE_URL", "https://dashboard.thtwaat.com")
+    monkeypatch.setattr(coding_agent_service.settings, "CODING_AGENT_SERVICE_JWT_SECRET", None)
+    assert coding_agent_service.is_configured() is False
+
+
+@pytest.mark.unit
+def test_is_configured_false_when_base_url_blank(monkeypatch):
+    monkeypatch.setattr(coding_agent_service.settings, "CODING_AGENT_API_BASE_URL", "   ")
+    assert coding_agent_service.is_configured() is False
+
+
+@pytest.mark.unit
 def test_expired_token_fails_verification(monkeypatch):
     monkeypatch.setattr(coding_agent_service.settings, "CODING_AGENT_SERVICE_TOKEN_TTL_SECONDS", -10)
     result = coding_agent_service.mint_service_token(company_id=uuid.uuid4(), user_id=uuid.uuid4())

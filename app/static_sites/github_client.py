@@ -65,6 +65,16 @@ def require_app_configured() -> None:
         )
 
 
+def integration_fully_configured() -> bool:
+    """Stricter than app_configured(): also requires
+    GITHUB_APP_WEBHOOK_SECRET, needed for push-to-deploy signature
+    verification (app/static_sites/github_webhook.py), not just the
+    connect/OAuth flow. Used only to drive the frontend's "GitHub
+    integration is not configured" state — never exposes the values
+    themselves, just this one bool."""
+    return app_configured() and bool((settings.GITHUB_APP_WEBHOOK_SECRET or "").strip())
+
+
 def new_state() -> str:
     return secrets.token_urlsafe(32)
 

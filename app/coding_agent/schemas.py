@@ -14,6 +14,13 @@ class ServiceTokenResponse(BaseModel):
     scope: str
 
 
+class CodingAgentStatusResponse(BaseModel):
+    """No secret values — just whether the server-side integration is
+    wired up, so the frontend can show a clear "not configured" state."""
+
+    configured: bool
+
+
 # ---------------------------------------------------------------------------
 # Phase 6C-2 — task-creation proxy
 # ---------------------------------------------------------------------------

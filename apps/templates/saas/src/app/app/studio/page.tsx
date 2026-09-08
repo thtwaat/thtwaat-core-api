@@ -2570,6 +2570,9 @@ export default function StudioPage() {
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-white">Launch Checklist</h2>
+            <p className="text-xs uppercase tracking-wide text-emerald-500/70">
+              Studio AI Software Factory project — separate from THTWAAT Deploy static sites above
+            </p>
             <p className="text-sm text-slate-400">
               {checklistQ.data
                 ? `${checklistQ.data.passed}/${checklistQ.data.total} ready${
@@ -2612,7 +2615,7 @@ export default function StudioPage() {
             >
               {selected && checklistQ.isError
                 ? "Unable to load launch checklist. Please try again."
-                : "Select a project to load checklist."}
+                : "Create a project first."}
             </li>
           ) : null}
         </ul>
@@ -2703,6 +2706,9 @@ export default function StudioPage() {
         <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
           <div>
             <h2 className="text-lg font-semibold text-white">Launch Diagnostics</h2>
+            <p className="text-xs uppercase tracking-wide text-amber-500/70">
+              Studio AI Software Factory project — separate from THTWAAT Deploy static sites above
+            </p>
             <p className="text-sm text-slate-400">
               Overall:{" "}
               <span
@@ -2748,6 +2754,9 @@ export default function StudioPage() {
                     ? "Failed"
                     : "Warning"}
               </p>
+              {typeof c.detail?.note === "string" && c.detail.note ? (
+                <p className="mt-0.5 text-xs text-slate-500">{c.detail.note}</p>
+              ) : null}
             </div>
           ))}
           {!diagnosticsQ.data && !diagnosticsQ.isLoading ? (
@@ -2759,7 +2768,7 @@ export default function StudioPage() {
             >
               {selected && diagnosticsQ.isError
                 ? "Unable to load launch diagnostics. Please try again."
-                : "Select a project to load diagnostics."}
+                : "Create a project first."}
             </p>
           ) : null}
         </div>

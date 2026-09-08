@@ -98,6 +98,86 @@ export type AgentDeleteImpact = {
   retention_days: number;
 };
 
+// ── Super Admin agent management (Phase 2) ──────────────────────────────────
+// GET/detail/archive/restore against /v2/admin/agents/* — cross-company,
+// PLATFORM_ADMIN-only (see app/agent_platform/routers/admin_router.py).
+// Deliberately separate from agentsApi above, which is company-scoped.
+
+export type AdminAgentListItem = {
+  id: string;
+  name: string;
+  slug: string | null;
+  company_id: string;
+  company_name: string | null;
+  status: string;
+  provider: string | null;
+  model: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type AdminAgentListResponse = {
+  total: number;
+  page: number;
+  page_size: number;
+  results: AdminAgentListItem[];
+};
+
+export type AdminAgentDetail = AdminAgentListItem & {
+  description: string | null;
+  temperature: number;
+  version: number;
+  is_template: boolean;
+  capabilities: Record<string, unknown>;
+  published_at: string | null;
+  widget_id: string | null;
+  deleted_at: string | null;
+};
+
+export const adminAgentsApi = {
+  list: (params?: {
+    q?: string;
+    company_id?: string;
+    status?: string;
+    sort?: string;
+    page?: number;
+    page_size?: number;
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.company_id) sp.set("company_id", params.company_id);
+    if (params?.status) sp.set("status", params.status);
+    if (params?.sort) sp.set("sort", params.sort);
+    if (params?.page != null) sp.set("page", String(params.page));
+    if (params?.page_size != null) sp.set("page_size", String(params.page_size));
+    const qs = sp.toString();
+    return api.v2<AdminAgentListResponse>(`/admin/agents${qs ? `?${qs}` : ""}`);
+  },
+  get: (id: string) => api.v2<AdminAgentDetail>(`/admin/agents/${id}`),
+  archive: (
+    id: string,
+    body: {
+      keep_conversations?: boolean;
+      keep_knowledge?: boolean;
+      reason?: string;
+      confirm_unpublish?: boolean;
+    } = {}
+  ) =>
+    api.v2<{
+      id: string;
+      company_id: string;
+      status: string;
+      deleted_at: string | null;
+      retention_days: number;
+      message: string;
+    }>(`/admin/agents/${id}/archive`, { method: "POST", body }),
+  restore: (id: string, reason?: string) =>
+    api.v2<{ id: string; status: string; company_id: string; message: string }>(
+      `/admin/agents/${id}/restore`,
+      { method: "POST", body: { reason } }
+    )
+};
+
 export const knowledgeApi = {
   listBases: () => api.v2<KnowledgeBase[]>("/knowledge/bases"),
   createBase: (body: { name: string; description?: string }) =>
@@ -1796,7 +1876,11 @@ export const codingAgentApi = {
   cancelTask: (taskId: string) =>
     api.v1<import("@/lib/coding-agent").CodingTaskCancelResult>(`/coding-agent/tasks/${taskId}/cancel`, {
       method: "POST"
-    })
+    }),
+  // No secret values — just whether CODING_AGENT_API_BASE_URL /
+  // CODING_AGENT_SERVICE_JWT_SECRET are set server-side, so the panel can
+  // show "not configured" instead of letting a task submission 503.
+  getStatus: () => api.v1<{ configured: boolean }>("/coding-agent/status")
 };
 
 // THTWAAT Deploy — static HTML/ZIP sites. Sibling to studioApi, not a
@@ -1931,7 +2015,11 @@ export const githubApi = {
       method: "POST",
       body
     }),
-  disconnect: (siteId: string) => api.apiV2<void>(`/studio/static-sites/${siteId}/github`, { method: "DELETE" })
+  disconnect: (siteId: string) => api.apiV2<void>(`/studio/static-sites/${siteId}/github`, { method: "DELETE" }),
+  // No secret values — just whether GITHUB_APP_ID/PRIVATE_KEY/
+  // WEBHOOK_SECRET are set server-side (no site_id needed), so the panel
+  // can show "not configured" instead of a guaranteed-failing Connect.
+  getStatus: () => api.apiV2<{ configured: boolean }>("/studio/static-sites/github/status")
 };
 
 // THTWAAT Deploy Phase 6A — Preview Deployments. Site-scoped, same auth/

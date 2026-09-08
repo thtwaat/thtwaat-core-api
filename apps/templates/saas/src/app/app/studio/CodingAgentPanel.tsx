@@ -30,6 +30,7 @@ import {
 import { Card, CardHeader, Badge } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Label, Select, Textarea } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/misc";
 
 const MAX_GOAL_CHARS = 20_000;
 
@@ -46,6 +47,8 @@ export function CodingAgentPanel() {
 
   const projects = useQuery({ queryKey: ["studio-projects"], queryFn: () => studioApi.list() });
   const activeProjectId = projectId || projects.data?.items?.[0]?.id || "";
+
+  const statusQ = useQuery({ queryKey: ["coding-agent-status"], queryFn: () => codingAgentApi.getStatus() });
 
   const taskQ = useQuery({
     queryKey: ["coding-agent-task", activeTaskId],
@@ -81,6 +84,26 @@ export function CodingAgentPanel() {
   });
 
   if (!canUse) return null;
+
+  // Fails closed on the backend (503) when CODING_AGENT_API_BASE_URL /
+  // CODING_AGENT_SERVICE_JWT_SECRET aren't set — show that plainly instead
+  // of letting a user submit a task into a guaranteed failure. While
+  // statusQ is still loading, fall through to the normal panel rather than
+  // flashing this state.
+  if (statusQ.data && !statusQ.data.configured) {
+    return (
+      <Card>
+        <CardHeader
+          title="Coding AI"
+          description="Describe a coding task in plain language — it runs against your connected workspace."
+        />
+        <EmptyState
+          title="Coding AI is not configured"
+          description="Ask an administrator to configure the Coding AI integration for this server."
+        />
+      </Card>
+    );
+  }
 
   const task = taskQ.data;
   const hasTerminalOrNoTask = !activeTaskId || (task ? isTerminalStatus(task.status) : false);
